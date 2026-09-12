@@ -210,6 +210,26 @@ ipcMain.on('set-mini', (_e, on) => {
   }
 });
 
+// ---------- 윈도우 시작 시 자동 실행 ----------
+ipcMain.handle('get-auto-start', () => {
+  try { return !!app.getLoginItemSettings().openAtLogin; } catch { return false; }
+});
+ipcMain.handle('set-auto-start', (_e, on) => {
+  try {
+    const opts = { openAtLogin: !!on };
+    if (!app.isPackaged) {
+      // 개발(electron .) 모드에선 electron.exe + 프로젝트 경로를 명시해야 부팅 후 앱이 뜬다.
+      opts.path = process.execPath;
+      opts.args = [path.resolve(__dirname)];
+    }
+    app.setLoginItemSettings(opts);
+    return !!app.getLoginItemSettings().openAtLogin;
+  } catch (e) {
+    console.error('set-auto-start fail', e);
+    return false;
+  }
+});
+
 // ---------- 알림 ----------
 ipcMain.on('notify', (_e, { title, body } = {}) => {
   if (!Notification.isSupported()) return;

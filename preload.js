@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld('api', {
   lmsOpen: (url) => ipcRenderer.send('lms-open', url),
   lmsDump: () => ipcRenderer.invoke('lms-dump'),
   setMini: (on) => ipcRenderer.send('set-mini', on),
+  getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
+  setAutoStart: (on) => ipcRenderer.invoke('set-auto-start', on),
 });

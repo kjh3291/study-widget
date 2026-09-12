@@ -1187,6 +1187,11 @@ $('inp-lms-auto').onchange = () => { state.lmsAuto = $('inp-lms-auto').checked; 
 $('inp-morning').onchange = () => { const h = parseInt(($('inp-morning').value || '8').split(':')[0], 10); state.notifyPrefs.morningHour = isNaN(h) ? 8 : h; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-deadline').checked; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-rollover').onchange = () => { state.rolloverOverdue = $('inp-rollover').checked; persist({ rolloverOverdue: state.rolloverOverdue }); if (state.rolloverOverdue) rolloverOverdue(); rerenderTodoAreas(); };
+$('inp-autostart').onchange = async () => {
+  const on = await window.api.setAutoStart($('inp-autostart').checked);
+  $('inp-autostart').checked = on;
+  showToast(on ? '윈도우 시작 시 자동 실행을 켰어요' : '자동 실행을 껐어요');
+};
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme);
@@ -1247,6 +1252,7 @@ function miniPrompt(title) {
   $('inp-deadline').checked = state.notifyPrefs.deadlineAlerts !== false;
   state.rolloverOverdue = cfg.rolloverOverdue !== false;
   $('inp-rollover').checked = state.rolloverOverdue;
+  try { $('inp-autostart').checked = await window.api.getAutoStart(); } catch (e) {}
   state.todoDraft = { due: todayStr(), subject: null, repeat: null };
   rolloverOverdue();  // 실행 시 지난 미완료 할 일을 오늘로 이월
   renderSummary();
