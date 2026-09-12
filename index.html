@@ -48,6 +48,28 @@
     --hover: rgba(0,0,0,0.035);
     --shadow-lift: 0 8px 28px rgba(0,0,0,0.18);
   }
+  :root[data-theme="gray"] {
+    /* 메모장(윈도우 메모)풍 — 부드러운 중간 회색 */
+    --bg: #2b2b2d;
+    --surface: #333336;
+    --surface2: #3d3d41;
+    --line: rgba(255,255,255,0.09);
+    --line2: rgba(255,255,255,0.16);
+    --text: #eaeaec;
+    --muted: #9a9aa1;
+    --accent: #6aa4ec;
+    --accent-soft: rgba(106,164,236,0.16);
+    --info: #6aa4ec;
+    --info-soft: rgba(106,164,236,0.16);
+    --danger: #ff8f8f;
+    --danger-soft: rgba(255,143,143,0.16);
+    --warn: #f0c070;
+    --ok: #67d6a6;
+    --ok-soft: rgba(103,214,166,0.16);
+    --on-accent: #10233a;
+    --hover: rgba(255,255,255,0.05);
+    --shadow-lift: 0 8px 28px rgba(0,0,0,0.45);
+  }
   :root[data-theme="baekjoon"] {
     /* 백준(acmicpc.net)풍 — 밝은 배경 + BOJ 블루 + '맞았습니다' 그린 */
     --bg: #ffffff;
@@ -298,6 +320,8 @@
   .acc-head .acc-count { flex: none; font-size: 10.5px; color: var(--muted); font-weight: 700; }
   .acc-head .acc-caret { flex: none; font-size: 10px; color: var(--muted); }
   .acc-body { padding-left: 17px; }
+  .mini-read { -webkit-app-region: no-drag; cursor: pointer; flex: none; font-size: 9.5px; font-weight: 700; color: var(--muted); background: var(--surface2); border: 1px solid var(--line2); border-radius: 6px; padding: 2px 7px; margin-left: 2px; font-family: inherit; }
+  .mini-read:hover { color: var(--accent); border-color: var(--accent); }
   /* 테마 세그먼트 */
   .seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 3px; }
   .seg button { -webkit-app-region: no-drag; border: none; background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; padding: 5px 12px; border-radius: 7px; cursor: pointer; }
@@ -555,7 +579,7 @@
     <label>에브리타임 시간표 공유 링크 또는 식별자</label>
     <input type="text" id="inp-id" placeholder="everytime.kr/@Abc12Xyz 또는 Abc12Xyz" />
     <div class="err" id="settings-err"></div>
-    <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-baekjoon">백준</button></span></div>
+    <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
     <div class="row"><span>투명도</span><input type="range" id="inp-opacity" min="30" max="100" value="100" /></div>
     <div class="row"><input type="checkbox" id="inp-top" checked /><label for="inp-top" style="cursor:pointer;">항상 맨 위에 표시</label></div>
     <div class="row"><input type="checkbox" id="inp-lms-auto" checked /><label for="inp-lms-auto" style="cursor:pointer;">LMS 자동 새로고침 (3시간마다)</label></div>

@@ -701,11 +701,13 @@ function renderLms() {
     course.forEach((n) => (byCourse[cleanCourse(n.courseName)] = byCourse[cleanCourse(n.courseName)] || []).push(n));
     Object.keys(byCourse).forEach((cn) => {
       const open = !!state.lmsOpenCourse[cn];
+      const hasUnread = byCourse[cn].some((n) => !isRead(n.id));
       html += `<div class="acc-head" data-course="${escapeHtml(cn)}">
         <span class="subj-dot" style="background:${colorFor(cn)}"></span>
         <span class="name" title="${escapeHtml(cn)}">${escapeHtml(cn)}</span>
-        ${byCourse[cn].some((n) => !isRead(n.id)) ? '<span class="unread-dot"></span>' : ''}
+        ${hasUnread ? '<span class="unread-dot"></span>' : ''}
         <span class="acc-count">${byCourse[cn].length}</span>
+        ${hasUnread ? `<button class="mini-read" data-readcourse="${escapeHtml(cn)}" title="이 과목 공지 모두 읽음">읽음</button>` : ''}
         <span class="acc-caret ${open ? 'open' : ''}">${ICO.chevD}</span>
       </div>`;
       if (open) html += `<div class="acc-body">${byCourse[cn].slice(0, 10).map((n) => noticeRow(n, false)).join('')}</div>`;
@@ -1115,6 +1117,12 @@ $('day-panel').addEventListener('change', (e) => {
   const tog = e.target.closest('[data-toggle]'); if (tog) toggleTodo(tog.dataset.toggle, tog.checked);
 });
 $('lms-content').addEventListener('click', (e) => {
+  const rc = e.target.closest('[data-readcourse]');
+  if (rc) {
+    const cn = rc.dataset.readcourse;
+    ((state.lms && state.lms.courseNotices) || []).filter((n) => cleanCourse(n.courseName) === cn).forEach((n) => { if (!state.readIds.includes(n.id)) state.readIds.push(n.id); });
+    persist({ readIds: state.readIds }); renderLms(); updateLmsBadge(); return;
+  }
   const acc = e.target.closest('[data-course]');
   if (acc) { const cn = acc.dataset.course; state.lmsOpenCourse[cn] = !state.lmsOpenCourse[cn]; renderLms(); return; }
   if (e.target.closest('#gen-toggle')) { state.showGeneral = !state.showGeneral; renderLms(); return; }
@@ -1155,12 +1163,13 @@ $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-d
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme);
-  ['dark', 'light', 'baekjoon'].forEach((t) => { const b = $('theme-' + t); if (b) b.classList.toggle('sel', state.theme === t); });
+  ['dark', 'light', 'baekjoon', 'gray'].forEach((t) => { const b = $('theme-' + t); if (b) b.classList.toggle('sel', state.theme === t); });
 }
 function setTheme(t) { state.theme = t; persist({ theme: t }); applyTheme(); }
 $('theme-dark').onclick = () => setTheme('dark');
 $('theme-light').onclick = () => setTheme('light');
 $('theme-baekjoon').onclick = () => setTheme('baekjoon');
+$('theme-gray').onclick = () => setTheme('gray');
 $('btn-lms-dump').onclick = async () => {
   $('lms-dump-msg').textContent = '저장 중…';
   const r = await window.api.lmsDump();
@@ -1200,7 +1209,7 @@ function miniPrompt(title) {
   state.notifyState = Object.assign({ lastSummaryDate: '', firedIds: [], seenNotices: [] }, cfg.notifyState || {});
   state.lmsAuto = cfg.lmsAuto !== false;
   $('inp-lms-auto').checked = state.lmsAuto;
-  state.theme = ['light', 'baekjoon'].includes(cfg.theme) ? cfg.theme : 'dark';
+  state.theme = ['light', 'baekjoon', 'gray'].includes(cfg.theme) ? cfg.theme : 'dark';
   applyTheme();
   state.focus = cfg.focus && Array.isArray(cfg.focus.sessions) ? cfg.focus : { sessions: [] };
   state.attendance = cfg.attendance && typeof cfg.attendance === 'object' ? { semesterStart: cfg.attendance.semesterStart || '', overrides: cfg.attendance.overrides || {} } : { semesterStart: '', overrides: {} };
