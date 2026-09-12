@@ -48,6 +48,28 @@
     --hover: rgba(0,0,0,0.035);
     --shadow-lift: 0 8px 28px rgba(0,0,0,0.18);
   }
+  :root[data-theme="baekjoon"] {
+    /* 백준(acmicpc.net)풍 — 밝은 배경 + BOJ 블루 + '맞았습니다' 그린 */
+    --bg: #ffffff;
+    --surface: #f7f8fa;
+    --surface2: #eceff3;
+    --line: rgba(0,0,0,0.10);
+    --line2: rgba(0,0,0,0.17);
+    --text: #1c1e21;
+    --muted: #868e96;
+    --accent: #0076c0;
+    --accent-soft: rgba(0,118,192,0.12);
+    --info: #0076c0;
+    --info-soft: rgba(0,118,192,0.12);
+    --danger: #e03131;
+    --danger-soft: rgba(224,49,49,0.12);
+    --warn: #f08c00;
+    --ok: #009874;
+    --ok-soft: rgba(0,152,116,0.14);
+    --on-accent: #ffffff;
+    --hover: rgba(0,0,0,0.035);
+    --shadow-lift: 0 8px 28px rgba(0,0,0,0.18);
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
@@ -533,7 +555,7 @@
     <label>에브리타임 시간표 공유 링크 또는 식별자</label>
     <input type="text" id="inp-id" placeholder="everytime.kr/@Abc12Xyz 또는 Abc12Xyz" />
     <div class="err" id="settings-err"></div>
-    <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button></span></div>
+    <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-baekjoon">백준</button></span></div>
     <div class="row"><span>투명도</span><input type="range" id="inp-opacity" min="30" max="100" value="100" /></div>
     <div class="row"><input type="checkbox" id="inp-top" checked /><label for="inp-top" style="cursor:pointer;">항상 맨 위에 표시</label></div>
     <div class="row"><input type="checkbox" id="inp-lms-auto" checked /><label for="inp-lms-auto" style="cursor:pointer;">LMS 자동 새로고침 (3시간마다)</label></div>

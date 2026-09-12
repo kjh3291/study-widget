@@ -1155,12 +1155,12 @@ $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-d
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme);
-  const dk = $('theme-dark'), lt = $('theme-light');
-  if (dk && lt) { dk.classList.toggle('sel', state.theme === 'dark'); lt.classList.toggle('sel', state.theme === 'light'); }
+  ['dark', 'light', 'baekjoon'].forEach((t) => { const b = $('theme-' + t); if (b) b.classList.toggle('sel', state.theme === t); });
 }
 function setTheme(t) { state.theme = t; persist({ theme: t }); applyTheme(); }
 $('theme-dark').onclick = () => setTheme('dark');
 $('theme-light').onclick = () => setTheme('light');
+$('theme-baekjoon').onclick = () => setTheme('baekjoon');
 $('btn-lms-dump').onclick = async () => {
   $('lms-dump-msg').textContent = '저장 중…';
   const r = await window.api.lmsDump();
@@ -1200,7 +1200,7 @@ function miniPrompt(title) {
   state.notifyState = Object.assign({ lastSummaryDate: '', firedIds: [], seenNotices: [] }, cfg.notifyState || {});
   state.lmsAuto = cfg.lmsAuto !== false;
   $('inp-lms-auto').checked = state.lmsAuto;
-  state.theme = cfg.theme === 'light' ? 'light' : 'dark';
+  state.theme = ['light', 'baekjoon'].includes(cfg.theme) ? cfg.theme : 'dark';
   applyTheme();
   state.focus = cfg.focus && Array.isArray(cfg.focus.sessions) ? cfg.focus : { sessions: [] };
   state.attendance = cfg.attendance && typeof cfg.attendance === 'object' ? { semesterStart: cfg.attendance.semesterStart || '', overrides: cfg.attendance.overrides || {} } : { semesterStart: '', overrides: {} };
