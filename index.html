@@ -205,6 +205,7 @@
   .dday.soon { background: var(--info-soft); color: var(--info); }
   .dday.today { background: var(--accent-soft); color: var(--accent); }
   .dday.over { background: var(--danger-soft); color: var(--danger); }
+  .dday.defer { background: rgba(240,184,102,.16); color: var(--warn); }
   .dday.done { background: var(--ok-soft); color: var(--ok); }
 
   /* 할 일 add-box */
@@ -373,6 +374,8 @@
   .play:hover { color: var(--accent); }
   .study-line { font-size: 12px; color: var(--muted); padding: 10px 2px 2px; }
   .study-line b { color: var(--text); font-weight: 700; }
+  .study-line.defer-line { color: var(--warn); padding-top: 4px; }
+  .study-line.defer-line b { color: var(--warn); }
   .dchip2 { -webkit-app-region: no-drag; cursor: pointer; border: 1px solid var(--line2); background: var(--surface2); color: var(--muted); border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 600; font-family: inherit; }
   .dchip2:hover { border-color: var(--muted); color: var(--text); }
   .dchip2.sel { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
@@ -585,6 +588,7 @@
     <div class="row"><input type="checkbox" id="inp-lms-auto" checked /><label for="inp-lms-auto" style="cursor:pointer;">LMS 자동 새로고침 (3시간마다)</label></div>
     <div class="row" style="justify-content:space-between;"><span>아침 요약 시각</span><input type="time" id="inp-morning" value="08:00" style="width:110px;color-scheme:dark;" /></div>
     <div class="row"><input type="checkbox" id="inp-deadline" checked /><label for="inp-deadline" style="cursor:pointer;">마감 임박 알림</label></div>
+    <div class="row"><input type="checkbox" id="inp-rollover" checked /><label for="inp-rollover" style="cursor:pointer;">지난 할 일 자동으로 오늘로 이월</label></div>
     <div class="hint">에브리타임 앱/웹 → 시간표 → 공유 → URL 복사 후 붙여넣으세요.<br/>시간표가 '공개'로 공유되어 있어야 불러올 수 있습니다.</div>
     <div class="row" style="justify-content:space-between;">
       <button id="btn-lms-dump" class="btn mini">LMS 디버그 저장</button>

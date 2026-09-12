@@ -33,6 +33,7 @@ const state = {
   expandedTodos: {},  // 서브태스크 펼침 상태 (인메모리)
   todoSearch: '',     // 검색어
   mini: false,        // 미니 모드
+  rolloverOverdue: true,  // 지난 미완료 할 일을 오늘로 자동 이월
 };
 
 const ATT_STATES = ['출석', '결석', '지각', '공결', '병결'];
@@ -315,7 +316,7 @@ function allSubjects() {
 function activeItems() {
   const items = [];
   state.todos.forEach((t) => items.push({
-    kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: t.done, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [],
+    kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: t.done, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null,
   }));
   const asg = (state.lms && state.lms.assignments) || [];
   asg.forEach((a) => items.push({
@@ -333,9 +334,28 @@ function sortByDue(a, b) {
   return (ta ? ta.getTime() : 0) - (tb ? tb.getTime() : 0);
 }
 
+// 지난 미완료 할 일을 오늘로 자동 이월. origDue(최초 밀린 날짜)를 보존해 "N일 밀림" 표시.
+// 수동 할 일(state.todos)만 대상 — LMS 과제는 실제 제출 마감이라 건드리지 않음.
+function rolloverOverdue() {
+  if (state.rolloverOverdue === false) return false;
+  const today = todayStr();
+  let changed = false;
+  for (const t of state.todos) {
+    if (t.done || !t.due) continue;
+    if (t.due < today) {
+      if (!t.origDue) t.origDue = t.due;
+      t.due = today;
+      changed = true;
+    }
+  }
+  if (changed) saveTodos();
+  return changed;
+}
+
 function todoRow(it, showSubj) {
   const b = ddayBadge(it.due, it.done, it.time);
   const badge = b ? `<span class="dday ${b.cls}">${b.label}</span>` : '';
+  const defer = (it.origDue && !it.done) ? `<span class="dday defer" title="원래 마감 ${escapeHtml(it.origDue)}">${-daysUntil(it.origDue)}일 밀림</span>` : '';
   const subj = showSubj && it.subject ? `<span class="subj-chip" title="${escapeHtml(it.subject)}">${escapeHtml(it.subject)}</span>` : '';
   const play = `<span class="play" data-play="${escapeHtml(it.text)}" title="집중 시작">${ICO.play}</span>`;
   if (it.kind === 'lms') {
@@ -356,7 +376,7 @@ function todoRow(it, showSubj) {
   return `<div class="todo ${it.done ? 'done' : ''}">
     <input type="checkbox" class="check" data-toggle="${it.id}" ${it.done ? 'checked' : ''}/>
     <span class="todo-text" data-edit="${it.id}" title="더블클릭해 수정">${escapeHtml(it.text)}</span>
-    ${rep}${subj}${subsBadge}${badge}${star}${addSub}${play}
+    ${rep}${subj}${subsBadge}${badge}${defer}${star}${addSub}${play}
     <span class="x" data-del="${it.id}" title="삭제">${ICO.x}</span>
   </div>`;
 }
@@ -371,13 +391,14 @@ function todoBlock(it, showSubj) {
 }
 
 function renderTodos() {
+  rolloverOverdue();
   updateDraftChips();
   const today = todayStr();
   const si = $('td-search'); const q = (state.todoSearch || '').trim().toLowerCase();
 
   // 검색 모드: 활성+완료 전체를 플랫 필터
   if (q) {
-    const all = activeItems().concat(state.todos.filter((t) => t.done).map((t) => ({ kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: true, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [] })));
+    const all = activeItems().concat(state.todos.filter((t) => t.done).map((t) => ({ kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: true, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null })));
     const hit = all.filter((i) => (i.text || '').toLowerCase().includes(q) || (i.subject || '').toLowerCase().includes(q));
     $('todo-list').innerHTML = hit.length
       ? `<div class="cat-head"><span class="ico">${ICO.search}</span>검색 결과<span class="cat-count">${hit.length}</span></div>` + hit.sort(sortByDue).map((it) => todoBlock(it, true)).join('')
@@ -448,6 +469,7 @@ function toggleTodo(id, checked) {
   const t = state.todos.find((x) => x.id === id);
   if (!t) return;
   t.done = checked; t.doneAt = checked ? Date.now() : null;
+  if (checked) delete t.origDue;  // 완료본엔 밀림 마커 불필요
   let spawnedId = null;
   if (checked && t.repeat) {
     const nextDue = addDaysStr(t.due || todayStr(), t.repeat === 'weekly' ? 7 : 1);
@@ -813,6 +835,10 @@ function renderStats() {
   const weekF = fmin(fsess.filter((s) => s.date >= wsStr));
   html += `<div class="study-line">${ICO.clock} 공부시간 — 오늘 <b>${hm(todayF)}</b> <span class="sum-sep">·</span> 이번 주 <b>${hm(weekF)}</b></div>`;
 
+  // 이월(밀린) 할 일 현황 — 자동 이월과 맞물림
+  const deferred = state.todos.filter((t) => !t.done && t.origDue).length;
+  if (deferred) html += `<div class="study-line defer-line">${ICO.repeat} 이월된 할 일 <b>${deferred}</b>개 — 오늘 목록으로 옮겨져 있어요</div>`;
+
   // 완료 잔디(히트맵) — 최근 12주
   html += `<div class="sec-head first">완료 잔디 (최근 12주)</div>` + heatmapHtml(done);
 
@@ -994,6 +1020,7 @@ function tick() {
   checkNotifications();
   const changed = todayStr() !== lastTickDate;
   lastTickDate = todayStr();
+  if (changed) rolloverOverdue();  // 자정 넘겨 켜둔 경우 지난 할 일 이월
   if (currentTab === 'todos' || currentTab === 'lms') reRenderDynamic();
   else if (changed && (currentTab === 'schedule' || currentTab === 'stats')) reRenderDynamic();
   renderSummary();
@@ -1132,7 +1159,7 @@ $('lms-content').addEventListener('click', (e) => {
 $('stats-content').addEventListener('click', (e) => {
   const u = e.target.closest('[data-undo]'); if (!u) return;
   const t = state.todos.find((x) => x.id === u.dataset.undo);
-  if (t) { t.done = false; t.doneAt = null; saveTodos(); renderStats(); }
+  if (t) { t.done = false; t.doneAt = null; rolloverOverdue(); saveTodos(); renderStats(); renderSummary(); }
 });
 $('att-grid').addEventListener('click', (e) => {
   const c = e.target.closest('[data-subj]'); if (c) cycleAtt(c.dataset.subj, +c.dataset.week);
@@ -1159,6 +1186,7 @@ $('inp-top').onchange = () => { window.api.setAlwaysOnTop($('inp-top').checked);
 $('inp-lms-auto').onchange = () => { state.lmsAuto = $('inp-lms-auto').checked; persist({ lmsAuto: state.lmsAuto }); };
 $('inp-morning').onchange = () => { const h = parseInt(($('inp-morning').value || '8').split(':')[0], 10); state.notifyPrefs.morningHour = isNaN(h) ? 8 : h; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-deadline').checked; persist({ notifyPrefs: state.notifyPrefs }); };
+$('inp-rollover').onchange = () => { state.rolloverOverdue = $('inp-rollover').checked; persist({ rolloverOverdue: state.rolloverOverdue }); if (state.rolloverOverdue) rolloverOverdue(); rerenderTodoAreas(); };
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme);
@@ -1217,7 +1245,10 @@ function miniPrompt(title) {
   state.notifyPrefs = Object.assign({ morningHour: 8, deadlineAlerts: true }, cfg.notifyPrefs || {});
   $('inp-morning').value = String(state.notifyPrefs.morningHour).padStart(2, '0') + ':00';
   $('inp-deadline').checked = state.notifyPrefs.deadlineAlerts !== false;
+  state.rolloverOverdue = cfg.rolloverOverdue !== false;
+  $('inp-rollover').checked = state.rolloverOverdue;
   state.todoDraft = { due: todayStr(), subject: null, repeat: null };
+  rolloverOverdue();  // 실행 시 지난 미완료 할 일을 오늘로 이월
   renderSummary();
   updateLmsBadge();
 

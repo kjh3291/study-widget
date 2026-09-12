@@ -1,10 +1,11 @@
 {
   "name": "everytime-widget",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "충북대 LMS·에브리타임 연동 공부용 데스크톱 위젯 (시간표·할 일·일정·출석·기록)",
   "main": "main.js",
   "author": "study-widget contributors",
   "license": "MIT",
+  "repository": "https://github.com/kjh3291/study-widget",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
@@ -48,6 +49,22 @@
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
       "shortcutName": "스터디 위젯"
+    },
+    "mac": {
+      "icon": "icon.png",
+      "category": "public.app-category.education",
+      "identity": null,
+      "artifactName": "StudyWidget-${version}-mac-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["arm64", "x64"]
+        }
+      ]
     }
   }
 }
