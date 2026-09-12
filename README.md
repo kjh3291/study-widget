@@ -4,6 +4,13 @@
 
 > 🏫 **충북대학교(coursemos LMS) 학생용**입니다. LMS 기능은 `lms.chungbuk.ac.kr` 기준이라 다른 학교에서는 LMS 탭이 동작하지 않아요. (시간표·할 일·일정·출석·기록은 학교와 무관하게 사용 가능)
 
+## 미리보기
+| 할 일 | 일정 | LMS |
+|:---:|:---:|:---:|
+| <img src="docs/todos.png" width="250"> | <img src="docs/schedule.png" width="250"> | <img src="docs/lms.png" width="250"> |
+| **기록** | **출석** | |
+| <img src="docs/stats.png" width="250"> | <img src="docs/attend.png" width="250"> | |
+
 ## 주요 기능
 - **시간표** — 에브리타임 공유 링크로 시간표 표시(과목 자동 인식)
 - **할 일** — 과목별 To-do, 오늘/예정/과목/잔업 자동 분류, 마감 D-day·당일 시간 카운트다운, 별표(중요·임박), 반복(매일/매주), 하위 체크리스트, 검색, 완료 실행취소
