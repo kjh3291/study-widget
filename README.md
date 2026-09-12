@@ -21,14 +21,32 @@
 - **집중 타이머(뽀모도로)**, 상단 요약 바, 라이트/다크 테마, 미니 모드, 자동 백업, 데스크톱 알림
 
 ## 설치 & 실행
+
+### 방법 A — 그냥 다운로드해서 쓰기 (권장, Node 불필요)
+[**Releases**](https://github.com/kjh3291/study-widget/releases)에서 최신 파일을 받으세요.
+- `StudyWidget-x.y.z-Setup.exe` — 더블클릭하면 설치되고 시작 메뉴/바탕화면에 바로가기가 생겨요.
+- `StudyWidget-x.y.z-Portable.exe` — 설치 없이 더블클릭하면 바로 실행(USB에 넣어 다녀도 OK).
+
+> ⚠️ 개인 제작 앱이라 서명이 없어, 처음 실행 시 Windows SmartScreen이 뜰 수 있어요 → **추가 정보 → 실행**을 누르면 됩니다.
+
+### 방법 B — 소스로 실행 (개발자용)
 1. [Node.js](https://nodejs.org) 설치 (LTS 권장)
-2. 이 저장소를 받은 뒤 폴더에서:
+2. 저장소를 받은 뒤 폴더에서:
    ```bash
    npm install
    npm start
    ```
-3. **첫 설정**: 시간표 탭 → “공유 링크 등록” → 에브리타임 시간표 **공유 URL**(`everytime.kr/@xxxx`, 공개 상태) 붙여넣기 → 저장.
-   LMS를 쓰려면 LMS 탭 → 로그인(뜨는 LMS 창에서 직접 로그인) → 새로고침.
+
+### 첫 설정 (공통)
+- 시간표 탭 → “공유 링크 등록” → 에브리타임 시간표 **공유 URL**(`everytime.kr/@xxxx`, 공개 상태) 붙여넣기 → 저장.
+- LMS를 쓰려면 LMS 탭 → 로그인(뜨는 LMS 창에서 직접 로그인) → 새로고침.
+
+### 직접 빌드하기 (exe 만들기)
+```bash
+npm install
+npm run dist
+```
+`dist/` 폴더에 설치본(Setup)과 포터블(Portable) exe가 생성됩니다.
 
 ### 배경에서 조용히 실행 / 윈도우 시작 시 자동 실행
 - 폴더의 `시간표위젯.vbs`를 더블클릭하면 콘솔 없이 실행됩니다.

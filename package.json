@@ -3,12 +3,51 @@
   "version": "1.0.0",
   "description": "충북대 LMS·에브리타임 연동 공부용 데스크톱 위젯 (시간표·할 일·일정·출석·기록)",
   "main": "main.js",
-  "scripts": {
-    "start": "electron ."
-  },
-  "author": "",
+  "author": "study-widget contributors",
   "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "pack": "electron-builder --dir"
+  },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.cbnu.studywidget",
+    "productName": "스터디 위젯",
+    "artifactName": "StudyWidget-${version}-Setup.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "lms.js",
+      "index.html",
+      "icon.ico",
+      "icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "icon.ico"
+    },
+    "portable": {
+      "artifactName": "StudyWidget-${version}-Portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "shortcutName": "스터디 위젯"
+    }
   }
 }

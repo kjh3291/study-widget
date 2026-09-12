@@ -139,6 +139,7 @@ function createWindow() {
     ...bounds,
     minWidth: 300,
     minHeight: 300,
+    icon: path.join(__dirname, 'icon.ico'),
     frame: false,
     transparent: true,
     alwaysOnTop: true,

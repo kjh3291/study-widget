@@ -71,7 +71,6 @@ const ICO = {
   calendar: SVG('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>'),
   inbox: SVG('<path d="M5 5h14l2 7v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/><path d="M3 12h4l2 3h6l2-3h4"/>'),
   pin: SVG('<path d="M9 3h6l-1 6 3 3H7l3-3-1-6zM12 15v6"/>'),
-  play: SVG('<circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z"/>'),
   mega: SVG('<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 8a4 4 0 0 1 0 8"/>'),
   undo: SVG('<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'),
   check: SVG('<path d="M20 6 9 17l-5-5"/>'),
