@@ -92,6 +92,28 @@
     --hover: rgba(0,0,0,0.035);
     --shadow-lift: 0 8px 28px rgba(0,0,0,0.18);
   }
+  :root[data-theme="cbnu"] {
+    /* 충북대학교 — CBNU Red(머룬, PANTONE 7425C #B72654) 시그니처 다크 */
+    --bg: #150a0e;
+    --surface: #1d0f14;
+    --surface2: #27151c;
+    --line: rgba(255,255,255,0.08);
+    --line2: rgba(255,255,255,0.15);
+    --text: #f3e9ec;
+    --muted: #ab8c95;
+    --accent: #d23c6c;
+    --accent-soft: rgba(210,60,108,0.17);
+    --info: #d23c6c;
+    --info-soft: rgba(210,60,108,0.17);
+    --danger: #ff6b81;
+    --danger-soft: rgba(255,107,129,0.15);
+    --warn: #f0b866;
+    --ok: #57d6a0;
+    --ok-soft: rgba(87,214,160,0.14);
+    --on-accent: #ffffff;
+    --hover: rgba(255,255,255,0.04);
+    --shadow-lift: 0 8px 28px rgba(0,0,0,0.55);
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
@@ -583,7 +605,7 @@
     <label>에브리타임 시간표 공유 링크 또는 식별자</label>
     <input type="text" id="inp-id" placeholder="everytime.kr/@Abc12Xyz 또는 Abc12Xyz" />
     <div class="err" id="settings-err"></div>
-    <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
+    <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-cbnu">충북대</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
     <div class="row"><span>투명도</span><input type="range" id="inp-opacity" min="30" max="100" value="100" /></div>
     <div class="row"><input type="checkbox" id="inp-top" checked /><label for="inp-top" style="cursor:pointer;">항상 맨 위에 표시</label></div>
     <div class="row"><input type="checkbox" id="inp-autostart" /><label for="inp-autostart" style="cursor:pointer;">윈도우 시작 시 자동 실행</label></div>
