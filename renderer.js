@@ -34,6 +34,7 @@ const state = {
   todoSearch: '',     // 검색어
   mini: false,        // 미니 모드
   rolloverOverdue: true,  // 지난 미완료 할 일을 오늘로 자동 이월
+  lmsDone: {},        // 제출 완료된 LMS 과제 기록 { id: {title, courseName, doneAt} }
 };
 
 const ATT_STATES = ['출석', '결석', '지각', '공결', '병결'];
@@ -775,6 +776,30 @@ async function lmsLogin() {
   await window.api.lmsLogin();
   await doLmsRefresh(false);
 }
+// 새로고침 결과에서 '새로 제출된' LMS 과제를 감지해 완료로 기록(+축하).
+// 완료 기록은 state.lmsDone에 영구 저장 → 목록에서 사라져도 기록 탭에 남는다.
+function detectLmsSubmissions(prevById) {
+  const asg = (state.lms && state.lms.assignments) || [];
+  let changed = false;
+  const transitioned = [];
+  asg.forEach((a) => {
+    if (!a.submitted) return;
+    if (!state.lmsDone[a.id]) {
+      state.lmsDone[a.id] = { title: a.title, courseName: a.courseName, doneAt: Date.now() };
+      changed = true;
+      const prev = prevById[a.id];
+      if (prev && !prev.submitted) transitioned.push(a); // 이번에 진짜 제출된 것만 축하
+    }
+  });
+  if (changed) persist({ lmsDone: state.lmsDone });
+  if (transitioned.length) {
+    const cn = cleanCourse(transitioned[0].courseName) || 'LMS';
+    showToast(transitioned.length === 1 ? `✅ ${cn} 과제 제출 완료!` : `✅ 과제 ${transitioned.length}개 제출 완료!`);
+    transitioned.slice(0, 3).forEach((a) => window.api.notify('과제 제출 완료', `${cleanCourse(a.courseName) || 'LMS'} · ${a.title}`));
+    if (currentTab === 'stats') renderStats();
+  }
+}
+
 async function doLmsRefresh(silent) {
   if (!silent) $('lms-status').textContent = '동기화 중…';
   const res = await window.api.lmsRefresh();
@@ -785,7 +810,10 @@ async function doLmsRefresh(silent) {
   }
   if (res.error) { if (!silent) $('lms-status').textContent = '오류: ' + res.error; return; }
   const prevSeen = state.notifyState.seenNotices || [];
+  const prevAssignById = {};
+  ((state.lms && state.lms.assignments) || []).forEach((a) => { prevAssignById[a.id] = a; });
   state.lms = res.lms;
+  detectLmsSubmissions(prevAssignById);
 
   const notices = allNotices();
   if (!prevSeen.length && notices.length) {
@@ -803,9 +831,21 @@ async function doLmsRefresh(silent) {
 // =====================================================================
 // 기록 (완료 통계)
 // =====================================================================
+// 완료 항목 통합: 내가 체크한 할 일 + 제출 완료된 LMS 과제(state.lmsDone).
+// LMS 완료는 lmsDone에 영구 저장되어 과제가 목록에서 사라져도 기록에 남는다.
+function completedItems() {
+  const out = state.todos.filter((t) => t.done && t.doneAt)
+    .map((t) => ({ kind: 'todo', id: t.id, text: t.text, subject: t.subject || '기타', doneAt: t.doneAt }));
+  const md = state.lmsDone || {};
+  Object.keys(md).forEach((id) => {
+    const r = md[id];
+    if (r && r.doneAt) out.push({ kind: 'lms', id, text: r.title || '과제', subject: cleanCourse(r.courseName) || '기타', doneAt: r.doneAt });
+  });
+  return out;
+}
 function renderStats() {
   const today = todayStr();
-  const done = state.todos.filter((t) => t.done && t.doneAt);
+  const done = completedItems();
   const total = done.length;
   const doneDates = new Set(done.map((t) => fmtD(new Date(t.doneAt))));
 
@@ -818,8 +858,6 @@ function renderStats() {
   let streak = 0; const d = todayMidnight();
   if (!doneDates.has(fmtD(d))) d.setDate(d.getDate() - 1);
   while (doneDates.has(fmtD(d))) { streak++; d.setDate(d.getDate() - 1); }
-
-  const submitted = ((state.lms && state.lms.assignments) || []).filter((a) => a.submitted).length;
 
   let html = `<div class="stat-hero">
     <div class="stat-card"><div class="stat-num accent">${week}</div><div class="stat-label">이번 주 완료</div></div>
@@ -843,8 +881,7 @@ function renderStats() {
   html += `<div class="sec-head first">완료 잔디 (최근 12주)</div>` + heatmapHtml(done);
 
   if (!total) {
-    html += '<div class="empty-note">아직 완료한 할 일이 없어요. 하나씩 체크하면 여기에 기록이 쌓이고, 얼마나 열심히 했는지 보여드릴게요. 💪</div>';
-    if (submitted) html += `<div class="empty-note">LMS 제출 완료 과제: <b>${submitted}</b>개</div>`;
+    html += '<div class="empty-note">아직 완료한 할 일이 없어요. 하나씩 체크하거나 LMS 과제를 제출하면 여기에 기록이 쌓여요. 💪</div>';
     $('stats-content').innerHTML = html;
     return;
   }
@@ -866,13 +903,13 @@ function renderStats() {
   html += `<div class="sec-head" style="margin-top:12px;">최근 완료</div>`;
   html += recent.map((t) => {
     const dd = new Date(t.doneAt);
+    const isLms = t.kind === 'lms';
     return `<div class="done-item"><span class="di-check">${ICO.check}</span>
+      ${isLms ? '<span class="lms-badge">LMS</span>' : ''}
       <span class="di-text" title="${escapeHtml(t.text)}">${escapeHtml(t.text)}</span>
       <span class="di-date">${dd.getMonth() + 1}/${dd.getDate()}</span>
-      <span class="di-undo" data-undo="${t.id}" title="되돌리기">${ICO.undo}</span></div>`;
+      ${isLms ? '' : `<span class="di-undo" data-undo="${t.id}" title="되돌리기">${ICO.undo}</span>`}</div>`;
   }).join('');
-
-  if (submitted) html += `<div class="empty-note" style="margin-top:10px;">여기에 더해 LMS 제출 완료 과제도 <b>${submitted}</b>개! 잘하고 있어요. 🎉</div>`;
 
   $('stats-content').innerHTML = html;
 }
@@ -1253,6 +1290,7 @@ function miniPrompt(title) {
   $('inp-deadline').checked = state.notifyPrefs.deadlineAlerts !== false;
   state.rolloverOverdue = cfg.rolloverOverdue !== false;
   $('inp-rollover').checked = state.rolloverOverdue;
+  state.lmsDone = (cfg.lmsDone && typeof cfg.lmsDone === 'object') ? cfg.lmsDone : {};
   try { $('inp-autostart').checked = await window.api.getAutoStart(); } catch (e) {}
   state.todoDraft = { due: todayStr(), subject: null, repeat: null };
   rolloverOverdue();  // 실행 시 지난 미완료 할 일을 오늘로 이월
@@ -1265,6 +1303,13 @@ function miniPrompt(title) {
   if (state.lms && state.lms.courses && state.lms.courses.length) {
     window.api.lmsStatus().then((s) => { if (s && s.valid) doLmsRefresh(true); });
   }
+
+  // 과제 제출 창을 닫으면 자동 새로고침 → 제출한 과제가 '완료'로 전환
+  window.api.onSubmissionClosed(() => {
+    if (state.lms && state.lms.courses && state.lms.courses.length && state.lms.sessionValid !== false) {
+      setTimeout(() => doLmsRefresh(true), 600);
+    }
+  });
 
   setTimeout(tick, 2500);
   setInterval(tick, 60 * 1000);

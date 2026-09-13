@@ -156,7 +156,7 @@ function openInSession(url) {
     webPreferences: { partition: PARTITION, contextIsolation: true, nodeIntegration: false },
   });
   win.loadURL(url && url.startsWith('http') ? url : LMS_ORIGIN);
-  return { ok: true };
+  return win; // 호출측(main)에서 닫힘 이벤트 추적용
 }
 
 // ---------- 세션 유효성 확인 ----------

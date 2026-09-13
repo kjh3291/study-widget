@@ -275,7 +275,13 @@ ipcMain.handle('lms-refresh', async () => {
 });
 
 ipcMain.on('lms-open', (_e, url) => {
-  lms.openInSession(url);
+  const w = lms.openInSession(url);
+  // 제출 창을 닫으면 위젯에 알려 자동 새로고침(제출→완료 전환) 트리거
+  if (w && typeof w.on === 'function') {
+    w.on('closed', () => {
+      if (win && !win.isDestroyed()) win.webContents.send('lms-submission-closed');
+    });
+  }
 });
 
 ipcMain.handle('lms-dump', async () => {

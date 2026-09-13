@@ -17,4 +17,5 @@ contextBridge.exposeInMainWorld('api', {
   setMini: (on) => ipcRenderer.send('set-mini', on),
   getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
   setAutoStart: (on) => ipcRenderer.invoke('set-auto-start', on),
+  onSubmissionClosed: (cb) => ipcRenderer.on('lms-submission-closed', () => cb()),
 });
