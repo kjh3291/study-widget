@@ -5,3 +5,6 @@ dist/
 build/
 .DS_Store
 Thumbs.db
+
+# 실험용 빌드 자산(로컬)
+icon-dev.*
