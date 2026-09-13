@@ -1352,6 +1352,8 @@ function miniPrompt(title) {
   $('inp-rollover').checked = state.rolloverOverdue;
   state.lmsDone = (cfg.lmsDone && typeof cfg.lmsDone === 'object') ? cfg.lmsDone : {};
   state.materialsDone = (cfg.materialsDone && typeof cfg.materialsDone === 'object') ? cfg.materialsDone : {};
+  // v1.0.11: 예전 잘못 받은 기록(view.php HTML) 1회 초기화 → 다음 새로고침에 올바른 파일로 재다운로드
+  if (!cfg.materialsFix2) { state.materialsDone = {}; persist({ materialsDone: {}, materialsFix2: true }); }
   state.newMaterials = Array.isArray(cfg.newMaterials) ? cfg.newMaterials : [];
   state.autoDownload = cfg.autoDownload !== false;
   $('inp-autodl').checked = state.autoDownload;

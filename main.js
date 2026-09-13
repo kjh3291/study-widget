@@ -321,37 +321,84 @@ function uniquePath(dir, filename) {
   while (fs.existsSync(path.join(dir, `${base} (${i})${ext}`))) i++;
   return path.join(dir, `${base} (${i})${ext}`);
 }
-function downloadMaterial(url, course, title) {
+const hdr = (headers, k) => { const v = headers && headers[k]; return Array.isArray(v) ? v[0] : (v || ''); };
+const EXT_BY_CT = {
+  'application/pdf': '.pdf', 'application/haansofthwp': '.hwp', 'application/x-hwp': '.hwp',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.ms-powerpoint': '.ppt',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.ms-excel': '.xls', 'application/zip': '.zip', 'application/haansofthwpx': '.hwpx',
+  'image/png': '.png', 'image/jpeg': '.jpg', 'text/plain': '.txt',
+};
+function extFromCT(ct) { const key = String(ct || '').split(';')[0].trim().toLowerCase(); return EXT_BY_CT[key] || ''; }
+// Moodle/coursemos 뷰어 HTML에서 실제 파일(pluginfile) 링크 추출
+function extractFileUrl(html, base) {
+  const m = /(?:href|src|data)\s*=\s*["']([^"']*pluginfile\.php\/[^"']+)["']/i.exec(html || '');
+  if (!m) return '';
+  let u = m[1].replace(/&amp;/g, '&');
+  try { u = new URL(u, base).href; } catch (e) {}
+  return u;
+}
+// 수동 리다이렉트 추적 GET (최종 URL/헤더/본문 확보)
+function httpGet(url, ses, maxRedirect) {
+  maxRedirect = maxRedirect == null ? 5 : maxRedirect;
   return new Promise((resolve) => {
-    let done = false;
-    const finish = (r) => { if (!done) { done = true; resolve(r); } };
-    try {
-      const ses = session.fromPartition(lms.PARTITION);
-      const req = net.request({ url, session: ses, redirect: 'follow' });
+    let done = false; const finish = (r) => { if (!done) { done = true; resolve(r); } };
+    const go = (u, n) => {
+      let req;
+      try { req = net.request({ url: u, session: ses, redirect: 'manual' }); }
+      catch (e) { finish({ ok: false, error: String(e && e.message || e) }); return; }
       req.on('response', (res) => {
-        if (res.statusCode >= 400) { finish({ url, ok: false, status: res.statusCode }); return; }
-        const cdh = res.headers['content-disposition'];
-        let filename = parseCdFilename(Array.isArray(cdh) ? cdh[0] : cdh);
-        if (!filename) {
-          const u = decodeURIComponent((url.split('?')[0].split('/').pop()) || '');
-          filename = /\.[a-z0-9]{2,5}$/i.test(u) ? u : safeName(title) + '.pdf';
+        const sc = res.statusCode;
+        const loc = hdr(res.headers, 'location');
+        if (sc >= 300 && sc < 400 && loc && n > 0) {
+          let next = loc; try { next = new URL(loc, u).href; } catch (e) {}
+          res.on('data', () => {}); res.on('end', () => go(next, n - 1)); res.on('error', () => go(next, n - 1));
+          return;
         }
-        filename = safeName(filename);
-        const dir = path.join(STUDECK_DIR(), '수업자료', safeName(course));
-        try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
-        const dest = uniquePath(dir, filename);
         const chunks = [];
         res.on('data', (d) => chunks.push(d));
-        res.on('end', () => {
-          try { fs.writeFileSync(dest, Buffer.concat(chunks)); finish({ url, ok: true, path: dest, filename }); }
-          catch (e) { finish({ url, ok: false, error: String(e && e.message || e) }); }
-        });
-        res.on('error', (e) => finish({ url, ok: false, error: String(e) }));
+        res.on('end', () => finish({ ok: sc < 400, statusCode: sc, headers: res.headers, body: Buffer.concat(chunks), finalUrl: u }));
+        res.on('error', (e) => finish({ ok: false, error: String(e) }));
       });
-      req.on('error', (e) => finish({ url, ok: false, error: String(e && e.message || e) }));
+      req.on('error', (e) => finish({ ok: false, error: String(e && e.message || e) }));
       req.end();
-    } catch (e) { finish({ url, ok: false, error: String(e && e.message || e) }); }
+    };
+    go(url, maxRedirect);
   });
+}
+async function downloadMaterial(url, course, title) {
+  const ses = session.fromPartition(lms.PARTITION);
+  let r = await httpGet(url, ses);
+  if (!r || !r.ok) return { url, ok: false, status: r && r.statusCode, error: r && r.error };
+  let ct = hdr(r.headers, 'content-type');
+  let cd = hdr(r.headers, 'content-disposition');
+  let body = r.body, fromUrl = r.finalUrl;
+  // 뷰어 HTML이면 실제 파일 링크를 찾아 한 번 더 받는다
+  if (/text\/html/i.test(ct) && !/attachment/i.test(cd)) {
+    const fileUrl = extractFileUrl(body.toString('utf8'), r.finalUrl);
+    if (!fileUrl) return { url, ok: false, error: 'no-file-link' };
+    const r2 = await httpGet(fileUrl, ses);
+    if (!r2 || !r2.ok) return { url, ok: false, status: r2 && r2.statusCode, error: 'file-fetch-fail' };
+    ct = hdr(r2.headers, 'content-type'); cd = hdr(r2.headers, 'content-disposition');
+    body = r2.body; fromUrl = r2.finalUrl;
+    if (/text\/html/i.test(ct)) return { url, ok: false, error: 'not-a-file' };
+  }
+  // 파일명 결정 (content-disposition → 최종 URL → 제목+확장자). .php로는 절대 저장 안 함.
+  let filename = parseCdFilename(cd);
+  if (!filename) {
+    const u = decodeURIComponent((fromUrl.split('?')[0].split('/').pop()) || '');
+    filename = (/\.[a-z0-9]{2,5}$/i.test(u) && !/\.(php|acl|do|jsp)$/i.test(u)) ? u : (safeName(title) + (extFromCT(ct) || '.pdf'));
+  }
+  filename = safeName(filename);
+  if (/\.(php|acl|do|jsp|htm|html)$/i.test(filename)) filename = safeName(title) + (extFromCT(ct) || '.pdf');
+  const dir = path.join(STUDECK_DIR(), '수업자료', safeName(course));
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  const dest = uniquePath(dir, filename);
+  try { fs.writeFileSync(dest, body); return { url, ok: true, path: dest, filename }; }
+  catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
 }
 ipcMain.handle('lms-download', async (_e, items) => {
   const out = [];
