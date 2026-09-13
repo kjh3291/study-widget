@@ -274,12 +274,21 @@ ipcMain.handle('lms-refresh', async () => {
   }
 });
 
+// 과제(url)당 제출 창 1개만: 같은 과제를 또 누르면 기존 창을 닫고 새로 띄운다.
+const subWindows = new Map(); // url -> BrowserWindow
 ipcMain.on('lms-open', (_e, url) => {
+  const existing = subWindows.get(url);
+  if (existing && !existing.isDestroyed()) {
+    existing._replacing = true;   // 교체로 닫는 것 → 제출확인 스킵
+    try { existing.close(); } catch (e) {}
+  }
   const w = lms.openInSession(url);
-  // 제출 창을 닫으면 위젯에 알려 자동 새로고침(제출→완료 전환) 트리거
+  subWindows.set(url, w);
   if (w && typeof w.on === 'function') {
     w.on('closed', () => {
-      if (win && !win.isDestroyed()) win.webContents.send('lms-submission-closed');
+      if (subWindows.get(url) === w) subWindows.delete(url);
+      // 사용자가 직접 닫았을 때만(교체 아님) 자동 새로고침(제출→완료 전환) 트리거
+      if (!w._replacing && win && !win.isDestroyed()) win.webContents.send('lms-submission-closed');
     });
   }
 });
