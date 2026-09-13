@@ -231,7 +231,17 @@ const FN_COURSE_PAGE = `
     if (!m || m[1] === '17') continue;
     if (/공지/.test(vs[i].textContent||'')) { board = vs[i].href; break; }
   }
-  return { articles: arts, board: board };
+  // 수업 자료(파일) 링크 — 강의자료 모듈. 동영상(vod)은 제외.
+  var mats = [];
+  var seen = {};
+  document.querySelectorAll('a[href*="/mod/resource/view.php?id="], a[href*="/mod/ubfile/view.php?id="]').forEach(function(a){
+    var t = (a.textContent || '').replace(/\\s+/g,' ').trim();
+    var h = a.href || '';
+    if (!h || seen[h]) return;
+    seen[h] = 1;
+    mats.push({ title: t, url: h });
+  });
+  return { articles: arts, board: board, materials: mats };
 `;
 
 // ---------- 강좌명 정리 (coursemos 대시보드 카드 라벨 제거) ----------
@@ -292,11 +302,12 @@ async function refresh(prev) {
 
   const assignments = [];
   const courseNotices = [];
+  const materials = [];
   const tracked = courses.filter((c) => c.track !== false);
 
-  // 강좌 1개 로드(과제 + 과목별 공지) — 특정 창으로
+  // 강좌 1개 로드(과제 + 과목별 공지 + 자료) — 특정 창으로
   async function loadCourse(wc, c) {
-    const out = { assignments: [], notices: [], needLogin: false };
+    const out = { assignments: [], notices: [], materials: [], needLogin: false };
     const ar = await scrapeWith(wc, `${LMS_ORIGIN}/mod/assign/index.php?id=${c.id}`, FN_ASSIGN);
     if (ar.needLogin) { out.needLogin = true; return out; }
     (ar.data || []).forEach((a) => out.assignments.push({
@@ -306,12 +317,16 @@ async function refresh(prev) {
     const seenT = new Map();
     const cp = await scrapeWith(wc, `${LMS_ORIGIN}/course/view.php?id=${c.id}`, FN_COURSE_PAGE);
     if (cp && cp.needLogin) { out.needLogin = true; return out; }
-    const cpd = (cp && cp.data) || { articles: [], board: '' };
+    const cpd = (cp && cp.data) || { articles: [], board: '', materials: [] };
     (cpd.articles || []).forEach((n) => addNotice(out.notices, seenT, c, n));
     if (cpd.board) {
       const nr = await scrapeWith(wc, cpd.board, FN_ARTICLES);
       (nr && nr.data || []).forEach((n) => addNotice(out.notices, seenT, c, n));
     }
+    (cpd.materials || []).forEach((m) => {
+      if (!m || !m.url) return;
+      out.materials.push({ id: m.url, courseId: c.id, courseName: c.name, title: (m.title || '자료').trim(), url: m.url });
+    });
     return out;
   }
 
@@ -325,6 +340,7 @@ async function refresh(prev) {
       if (r.needLogin) { needLogin = true; break; }
       r.assignments.forEach((a) => assignments.push(a));
       r.notices.forEach((n) => courseNotices.push(n));
+      r.materials.forEach((m) => materials.push(m));
     }
   }));
   if (needLogin) return { needLogin: true };
@@ -342,6 +358,7 @@ async function refresh(prev) {
     assignments,
     courseNotices,
     generalNotices,
+    materials,
     lastSync: Date.now(),
     sessionValid: true,
   };

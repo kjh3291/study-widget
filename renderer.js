@@ -35,6 +35,9 @@ const state = {
   mini: false,        // 미니 모드
   rolloverOverdue: true,  // 지난 미완료 할 일을 오늘로 자동 이월
   lmsDone: {},        // 제출 완료된 LMS 과제 기록 { id: {title, courseName, doneAt} }
+  materialsDone: {},  // 다운로드한 수업 자료 { url: {course, title, path, at} }
+  newMaterials: [],   // 최근 받은 자료(확인 전까지 유지) [{course, title, at}]
+  autoDownload: true, // 새 수업 자료 자동 다운로드
 };
 
 const ATT_STATES = ['출석', '결석', '지각', '공결', '병결'];
@@ -717,6 +720,19 @@ function renderLms() {
   const general = (lms.generalNotices || (lms.courseNotices ? [] : (lms.notices || [])));
 
   let html = '';
+
+  // 새로 받은 수업 자료 패널 (확인 전까지 유지)
+  if (state.newMaterials && state.newMaterials.length) {
+    html += `<div class="newmat"><div class="newmat-head"><span class="ico">${ICO.inbox}</span><b>새로 받은 자료</b><span class="acc-count">${state.newMaterials.length}</span><button class="mini-read" id="clear-newmat" title="목록 지우기">확인</button></div>`;
+    html += state.newMaterials.slice(0, 20).map((m) => `<div class="newmat-row"><span class="subj-dot" style="background:${colorFor(m.course)}"></span><span class="nm-course" title="${escapeHtml(m.course)}">${escapeHtml(m.course)}</span><span class="nm-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</span><button class="fbtn" data-matfolder="${escapeHtml(m.course)}">폴더</button></div>`).join('');
+    html += `</div>`;
+  }
+  // 자동 다운로드 OFF일 때 안 받은 자료 안내
+  if (!state.autoDownload) {
+    const undone = ((lms.materials) || []).filter((m) => m && m.url && !state.materialsDone[m.url]);
+    if (undone.length) html += `<div class="newmat"><div class="newmat-head"><span class="ico">${ICO.inbox}</span><b>안 받은 자료</b><span class="acc-count">${undone.length}</span><button class="mini-read" id="get-newmat" title="모두 다운로드">모두 받기</button></div></div>`;
+  }
+
   html += `<div class="lms-section-title"><span class="ico">${ICO.pin}</span>과목별 공지사항</div>`;
   if (course.length) {
     const byCourse = {};
@@ -744,6 +760,13 @@ function renderLms() {
     html += general.length ? general.slice(0, 15).map((n) => noticeRow(n, true)).join('') : '<div class="empty-note">전체 공지가 없습니다.</div>';
   }
 
+  // 자료·과제 폴더 (과목별 바탕화면\Studeck 폴더 열기)
+  const courseNames = (lms.courses || []).map((c) => cleanCourse(c.name)).filter((v, i, a) => v && a.indexOf(v) === i);
+  if (courseNames.length) {
+    html += `<div class="lms-section-title"><span class="ico">${ICO.inbox}</span>자료 · 과제 폴더</div>`;
+    html += courseNames.map((cn) => `<div class="folder-row"><span class="subj-dot" style="background:${colorFor(cn)}"></span><span class="name" title="${escapeHtml(cn)}">${escapeHtml(cn)}</span><button class="fbtn" data-matfolder="${escapeHtml(cn)}">자료</button><button class="fbtn" data-asgfolder="${escapeHtml(cn)}">과제</button></div>`).join('');
+  }
+
   box.innerHTML = html;
   updateLmsBadge();
 }
@@ -766,7 +789,7 @@ function markRead(id) { if (id && !state.readIds.includes(id)) { state.readIds.p
 function unreadCount() { return allNotices().filter((n) => !isRead(n.id)).length; }
 function updateLmsBadge() {
   const btn = document.querySelector('.tabs button[data-tab="lms"]'); if (!btn) return;
-  const n = unreadCount();
+  const n = unreadCount() + ((state.newMaterials && state.newMaterials.length) || 0);
   btn.classList.toggle('has-badge', n > 0);
   btn.setAttribute('data-badge', n > 99 ? '99+' : String(n));
 }
@@ -800,6 +823,34 @@ function detectLmsSubmissions(prevById) {
   }
 }
 
+// 새 수업 자료를 감지해 자동 다운로드(바탕화면\Studeck\수업자료\과목) + "새로 받은 자료"에 기록.
+async function downloadNewMaterials(force) {
+  const mats = (state.lms && state.lms.materials) || [];
+  const fresh = mats.filter((m) => m && m.url && !state.materialsDone[m.url]);
+  if (!fresh.length || (!state.autoDownload && !force)) return;
+  const items = fresh.map((m) => ({ url: m.url, course: cleanCourse(m.courseName) || '기타', title: m.title }));
+  let results = [];
+  try { results = (await window.api.lmsDownload(items)) || []; } catch (e) { return; }
+  const byUrl = {}; results.forEach((r) => { if (r) byUrl[r.url] = r; });
+  const got = [];
+  fresh.forEach((m) => {
+    const r = byUrl[m.url];
+    if (r && r.ok) {
+      const course = cleanCourse(m.courseName) || '기타';
+      state.materialsDone[m.url] = { course, title: r.filename || m.title, path: r.path, at: Date.now() };
+      got.push({ course, title: r.filename || m.title, at: Date.now() });
+    }
+  });
+  if (!got.length) return;
+  state.newMaterials = [...got, ...state.newMaterials].slice(0, 50);
+  persist({ materialsDone: state.materialsDone, newMaterials: state.newMaterials });
+  const f = got[0];
+  showToast(got.length === 1 ? `📁 새 자료 · ${f.course} · ${f.title}` : `📁 새 수업자료 ${got.length}개 받음`);
+  window.api.notify('새 수업자료 ' + got.length + '개', got.slice(0, 5).map((g) => `${g.course} · ${g.title}`).join('\n'));
+  updateLmsBadge();
+  if (currentTab === 'lms') renderLms();
+}
+
 async function doLmsRefresh(silent) {
   if (!silent) $('lms-status').textContent = '동기화 중…';
   const res = await window.api.lmsRefresh();
@@ -814,6 +865,7 @@ async function doLmsRefresh(silent) {
   ((state.lms && state.lms.assignments) || []).forEach((a) => { prevAssignById[a.id] = a; });
   state.lms = res.lms;
   detectLmsSubmissions(prevAssignById);
+  await downloadNewMaterials();
 
   const notices = allNotices();
   if (!prevSeen.length && notices.length) {
@@ -1180,6 +1232,12 @@ $('day-panel').addEventListener('change', (e) => {
   const tog = e.target.closest('[data-toggle]'); if (tog) toggleTodo(tog.dataset.toggle, tog.checked);
 });
 $('lms-content').addEventListener('click', (e) => {
+  const mf = e.target.closest('[data-matfolder]');
+  if (mf) { window.api.openStudeckFolder('materials', mf.dataset.matfolder); return; }
+  const af = e.target.closest('[data-asgfolder]');
+  if (af) { window.api.openStudeckFolder('assignment', af.dataset.asgfolder); return; }
+  if (e.target.closest('#clear-newmat')) { state.newMaterials = []; persist({ newMaterials: [] }); renderLms(); updateLmsBadge(); return; }
+  if (e.target.closest('#get-newmat')) { downloadNewMaterials(true); return; }
   const rc = e.target.closest('[data-readcourse]');
   if (rc) {
     const cn = rc.dataset.readcourse;
@@ -1224,6 +1282,8 @@ $('inp-lms-auto').onchange = () => { state.lmsAuto = $('inp-lms-auto').checked; 
 $('inp-morning').onchange = () => { const h = parseInt(($('inp-morning').value || '8').split(':')[0], 10); state.notifyPrefs.morningHour = isNaN(h) ? 8 : h; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-deadline').checked; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-rollover').onchange = () => { state.rolloverOverdue = $('inp-rollover').checked; persist({ rolloverOverdue: state.rolloverOverdue }); if (state.rolloverOverdue) rolloverOverdue(); rerenderTodoAreas(); };
+$('inp-autodl').onchange = () => { state.autoDownload = $('inp-autodl').checked; persist({ autoDownload: state.autoDownload }); };
+$('btn-open-studeck').onclick = () => window.api.openStudeckFolder('root');
 $('inp-autostart').onchange = async () => {
   const on = await window.api.setAutoStart($('inp-autostart').checked);
   $('inp-autostart').checked = on;
@@ -1291,6 +1351,10 @@ function miniPrompt(title) {
   state.rolloverOverdue = cfg.rolloverOverdue !== false;
   $('inp-rollover').checked = state.rolloverOverdue;
   state.lmsDone = (cfg.lmsDone && typeof cfg.lmsDone === 'object') ? cfg.lmsDone : {};
+  state.materialsDone = (cfg.materialsDone && typeof cfg.materialsDone === 'object') ? cfg.materialsDone : {};
+  state.newMaterials = Array.isArray(cfg.newMaterials) ? cfg.newMaterials : [];
+  state.autoDownload = cfg.autoDownload !== false;
+  $('inp-autodl').checked = state.autoDownload;
   try { $('inp-autostart').checked = await window.api.getAutoStart(); } catch (e) {}
   state.todoDraft = { due: todayStr(), subject: null, repeat: null };
   rolloverOverdue();  // 실행 시 지난 미완료 할 일을 오늘로 이월

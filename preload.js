@@ -18,4 +18,6 @@ contextBridge.exposeInMainWorld('api', {
   getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
   setAutoStart: (on) => ipcRenderer.invoke('set-auto-start', on),
   onSubmissionClosed: (cb) => ipcRenderer.on('lms-submission-closed', () => cb()),
+  lmsDownload: (items) => ipcRenderer.invoke('lms-download', items),
+  openStudeckFolder: (kind, course) => ipcRenderer.invoke('open-studeck-folder', { kind, course }),
 });

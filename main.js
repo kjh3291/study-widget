@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, Notification, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session } = require('electron');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
@@ -291,6 +291,73 @@ ipcMain.handle('lms-dump', async () => {
   } catch (e) {
     return { error: String(e && e.message || e) };
   }
+});
+
+// ---------- 수업 자료 다운로드 / 폴더 (바탕화면\Studeck) ----------
+const STUDECK_DIR = () => path.join(app.getPath('desktop'), 'Studeck');
+function safeName(s) {
+  return String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '기타';
+}
+function parseCdFilename(cd) {
+  if (!cd) return '';
+  let m = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(cd);
+  if (m) { try { return decodeURIComponent(m[1].replace(/"/g, '').trim()); } catch (e) { return m[1].replace(/"/g, '').trim(); } }
+  m = /filename="?([^";]+)"?/i.exec(cd);
+  return m ? m[1].trim() : '';
+}
+function uniquePath(dir, filename) {
+  if (!fs.existsSync(path.join(dir, filename))) return path.join(dir, filename);
+  const ext = path.extname(filename), base = path.basename(filename, ext);
+  let i = 2;
+  while (fs.existsSync(path.join(dir, `${base} (${i})${ext}`))) i++;
+  return path.join(dir, `${base} (${i})${ext}`);
+}
+function downloadMaterial(url, course, title) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (r) => { if (!done) { done = true; resolve(r); } };
+    try {
+      const ses = session.fromPartition(lms.PARTITION);
+      const req = net.request({ url, session: ses, redirect: 'follow' });
+      req.on('response', (res) => {
+        if (res.statusCode >= 400) { finish({ url, ok: false, status: res.statusCode }); return; }
+        const cdh = res.headers['content-disposition'];
+        let filename = parseCdFilename(Array.isArray(cdh) ? cdh[0] : cdh);
+        if (!filename) {
+          const u = decodeURIComponent((url.split('?')[0].split('/').pop()) || '');
+          filename = /\.[a-z0-9]{2,5}$/i.test(u) ? u : safeName(title) + '.pdf';
+        }
+        filename = safeName(filename);
+        const dir = path.join(STUDECK_DIR(), '수업자료', safeName(course));
+        try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+        const dest = uniquePath(dir, filename);
+        const chunks = [];
+        res.on('data', (d) => chunks.push(d));
+        res.on('end', () => {
+          try { fs.writeFileSync(dest, Buffer.concat(chunks)); finish({ url, ok: true, path: dest, filename }); }
+          catch (e) { finish({ url, ok: false, error: String(e && e.message || e) }); }
+        });
+        res.on('error', (e) => finish({ url, ok: false, error: String(e) }));
+      });
+      req.on('error', (e) => finish({ url, ok: false, error: String(e && e.message || e) }));
+      req.end();
+    } catch (e) { finish({ url, ok: false, error: String(e && e.message || e) }); }
+  });
+}
+ipcMain.handle('lms-download', async (_e, items) => {
+  const out = [];
+  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title));
+  return out;
+});
+ipcMain.handle('open-studeck-folder', (_e, { kind, course } = {}) => {
+  try {
+    let dir = STUDECK_DIR();
+    if (kind === 'materials') dir = path.join(dir, '수업자료', safeName(course));
+    else if (kind === 'assignment') dir = path.join(dir, '과제', safeName(course));
+    fs.mkdirSync(dir, { recursive: true });
+    shell.openPath(dir);
+    return { ok: true, dir };
+  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });
 
 // 주기적 자동 백업: config.json을 7일마다 backups/에 복사, 최근 5개 유지
