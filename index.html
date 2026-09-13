@@ -478,6 +478,16 @@
   .mini .tabs { display: none; }
   .mini #body > .view { display: none !important; }
   .mini #body > #view-mini { display: block !important; }
+  /* 좁은 미니 폭에서 제목(할 일 내용)이 눌려 안 보이던 문제 방지:
+     과목 칩·별표·아이콘 등 부가 요소를 숨겨 제목이 우선 보이게. */
+  .mini .todo { gap: 6px; }
+  .mini .todo-text { -webkit-line-clamp: 2; min-width: 90px; }
+  .mini .subj-chip,
+  .mini .star,
+  .mini .play,
+  .mini .addsub,
+  .mini .rep,
+  .mini .subs-badge { display: none; }
 
   /* 팝오버 */
   .popover { position: absolute; z-index: 30; background: var(--surface2); border: 1px solid var(--line2); border-radius: 12px; padding: 7px; box-shadow: var(--shadow-lift); }
