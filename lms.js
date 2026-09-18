@@ -296,6 +296,7 @@ async function refresh(prev) {
   const discovered = (cr.data || []).map((c) => ({
     id: c.id,
     name: cleanCourseName(c.name),
+    url: `${LMS_ORIGIN}/course/view.php?id=${c.id}`,  // 과목 메인 페이지(공지 옆 바로가기용)
     track: trackMap[c.id] !== undefined ? trackMap[c.id] : true,
   }));
   const courses = discovered.length ? discovered : prevCourses;

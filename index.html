@@ -416,6 +416,26 @@
   .dchip2:hover { border-color: var(--muted); color: var(--text); }
   .dchip2.sel { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 
+  /* 헤더 시계 */
+  header .term { font-variant-numeric: tabular-nums; font-weight: 600; }
+  /* 타이머(스톱워치) 표시 + idle 시작 버튼 */
+  .tm-task { color: var(--muted); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tm.paused .tm-time { color: var(--muted); }
+  .tm-start { -webkit-app-region: no-drag; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line2); background: var(--surface2); color: var(--muted); border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 700; font-family: inherit; }
+  .tm-start:hover { color: var(--accent); border-color: var(--accent); }
+  .tm-start .isvg { width: 13px; height: 13px; }
+  /* 기록: 과목별 완료 펼치기 */
+  .stat-bar-row.clickable { -webkit-app-region: no-drag; cursor: pointer; border-radius: 7px; padding: 3px 4px; margin: 0 -4px 4px; }
+  .stat-bar-row.clickable:hover { background: var(--hover); }
+  .subj-done-list { padding: 2px 4px 8px 12px; margin-bottom: 4px; }
+  .subj-done-item { display: flex; align-items: center; gap: 7px; padding: 4px 0; font-size: 11.5px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .subj-done-item .sd-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .subj-done-item .sd-date { flex: none; font-size: 10px; }
+  /* 기록: 넘긴 할 일 */
+  .study-line.skip-line { color: var(--muted); padding-top: 4px; }
+  .done-item.skip .di-text { text-decoration: none; }
+  .done-item .di-check.skip { color: var(--muted); }
+
   /* 아이콘 크기 미세조정 */
   .play .isvg, .star .isvg, .x .isvg, .acc-caret .isvg, .tm-btn .isvg { width: 13px; height: 13px; }
   .todo .x .isvg { width: 14px; height: 14px; }
@@ -477,6 +497,8 @@
   .sub .x { opacity: 0; }
   .sub:hover .x { opacity: 1; }
   .sub-input { width: 100%; margin-top: 4px; padding: 5px 8px; border: 1px dashed var(--line2); background: transparent; color: var(--text); border-radius: 7px; font-size: 12px; }
+  .sub-addbtn { -webkit-app-region: no-drag; cursor: pointer; margin-top: 4px; padding: 4px 8px; border: none; background: transparent; color: var(--muted); font-size: 12px; font-family: inherit; border-radius: 6px; }
+  .sub-addbtn:hover { color: var(--accent); background: var(--hover); }
   .edit-input { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid var(--accent); background: var(--surface); color: var(--text); border-radius: 6px; font-size: 13px; font-family: inherit; }
   /* 히트맵 */
   .heat-scroll { overflow-x: auto; padding-bottom: 4px; margin-bottom: 4px; }
@@ -513,6 +535,10 @@
   .popover .opt:hover { background: var(--surface2); }
   .popover .opt.active { color: var(--accent); font-weight: 700; }
   .popover .sep { height: 1px; background: var(--line); margin: 5px 2px; }
+  .popover.menu { min-width: 152px; }
+  .popover .opt.danger { color: var(--danger); }
+  .popover.menu .opt:hover { background: var(--accent-soft); }
+  .popover.menu .opt.danger:hover { background: var(--danger-soft); }
   .popover input[type=date] { width: 100%; margin-top: 2px; }
 
   /* 설정 */
@@ -629,6 +655,7 @@
     <input type="text" id="inp-id" placeholder="everytime.kr/@Abc12Xyz 또는 Abc12Xyz" />
     <div class="err" id="settings-err"></div>
     <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-cbnu">충북대</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
+    <div class="row" style="justify-content:space-between;"><span>헤더 시계</span><span class="seg"><button id="clk-h">시</button><button id="clk-hm">시:분</button><button id="clk-hms">시:분:초</button></span></div>
     <div class="row"><span>투명도</span><input type="range" id="inp-opacity" min="30" max="100" value="100" /></div>
     <div class="row"><input type="checkbox" id="inp-top" checked /><label for="inp-top" style="cursor:pointer;">항상 맨 위에 표시</label></div>
     <div class="row"><input type="checkbox" id="inp-autostart" /><label for="inp-autostart" style="cursor:pointer;">윈도우 시작 시 자동 실행</label></div>

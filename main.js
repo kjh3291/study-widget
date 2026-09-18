@@ -437,11 +437,26 @@ function autoBackup() {
   } catch (e) { console.error('backup fail', e); }
 }
 
-app.whenReady().then(() => {
-  app.setAppUserModelId('cbnu.study.widget');
-  autoBackup();
-  createWindow();
-});
+// 단일 인스턴스: 이미 실행 중이면 두 번째 프로세스는 즉시 종료하고
+// 기존 창을 앞으로 가져온다(자동 실행 + 수동 실행 중복 등으로 창 2개 뜨는 것 방지).
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    app.setAppUserModelId('cbnu.study.widget');
+    autoBackup();
+    createWindow();
+  });
+}
 
 app.on('window-all-closed', () => app.quit());
 app.on('activate', () => {

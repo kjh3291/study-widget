@@ -38,6 +38,10 @@ const state = {
   materialsDone: {},  // 다운로드한 수업 자료 { url: {course, title, path, at} }
   newMaterials: [],   // 최근 받은 자료(확인 전까지 유지) [{course, title, at}]
   autoDownload: true, // 새 수업 자료 자동 다운로드
+  subAddOpen: null,   // 하위 항목 입력이 열린 todo id (인메모리)
+  matCourses: {},     // 과목별 자료 자동 다운로드 대상 { [courseId]: true } (기본 전부 꺼짐)
+  statsOpenSubj: {},  // 기록 탭 과목별 완료 펼침 상태 (인메모리)
+  clockFormat: 'hms', // 헤더 시계 형식 'h' | 'hm' | 'hms'
 };
 
 const ATT_STATES = ['출석', '결석', '지각', '공결', '병결'];
@@ -122,11 +126,25 @@ function renderSummary() {
   let right = '';
   const t = state.timer;
   if (t) {
-    right = `<span class="tm ${t.mode}"><span class="tm-time">${t.mode === 'focus' ? '집중' : '휴식'} ${fmtClock(t.remaining)}</span>`
+    const task = t.taskText && t.taskText.length > 12 ? t.taskText.slice(0, 12) + '…' : (t.taskText || '집중');
+    right = `<span class="tm ${t.running ? '' : 'paused'}"><span class="tm-time">⏱ ${fmtClock(t.elapsed || 0)}</span>`
+      + `<span class="tm-task" title="${escapeHtml(t.taskText || '')}">${escapeHtml(task)}</span>`
       + `<button class="tm-btn" data-tm="pause" title="${t.running ? '일시정지' : '계속'}">${t.running ? ICO.pause : ICO.play}</button>`
       + `<button class="tm-btn" data-tm="stop" title="정지">${ICO.stop}</button></span>`;
+  } else {
+    right = `<button class="tm-start" data-tm="start" title="집중 타이머 시작">${ICO.clock}<span>집중</span></button>`;
   }
   bar.innerHTML = `<div class="sum-left">${left}</div><div class="sum-right">${right}</div>`;
+}
+
+// ---------- 헤더 시계 ----------
+function updateClock() {
+  const el = $('term'); if (!el) return;
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  el.textContent = state.clockFormat === 'h' ? `${hh}시` : state.clockFormat === 'hm' ? `${hh}:${mm}` : `${hh}:${mm}:${ss}`;
 }
 
 // ---------- 미니 모드 ----------
@@ -143,46 +161,45 @@ function renderMini() {
     + (items.length ? items.map((it) => todoRow(it, true)).join('') : '<div class="empty-note">오늘 할 일 없음 🎉</div>');
 }
 
-// ---------- 집중 타이머 (뽀모도로) ----------
-const FOCUS_MIN = 25, BREAK_MIN = 5;
+// ---------- 집중 타이머 (카운트업 스톱워치) ----------
 function fmtClock(sec) { const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, '0')}`; }
-function startFocus(taskText) {
+function startFocus(taskText, subject) {
   stopTimer(true);
-  state.timer = { taskText: taskText || '집중', mode: 'focus', remaining: FOCUS_MIN * 60, running: true, elapsed: 0, intervalId: null };
+  state.timer = { taskText: taskText || '집중', subject: subject || null, elapsed: 0, running: true, intervalId: null };
   state.timer.intervalId = setInterval(timerTick, 1000);
   showToast(`집중 시작: ${taskText ? (taskText.length > 16 ? taskText.slice(0, 16) + '…' : taskText) : ''}`, null, null, 2500);
   renderSummary();
 }
 function timerTick() {
   const t = state.timer; if (!t || !t.running) return;
-  t.remaining--;
-  if (t.mode === 'focus') t.elapsed = (t.elapsed || 0) + 1;
-  if (t.remaining <= 0) {
-    if (t.mode === 'focus') {
-      logFocus(t.taskText, FOCUS_MIN);
-      t.elapsed = 0; t.mode = 'break'; t.remaining = BREAK_MIN * 60;
-      window.api.notify('집중 완료!', `${t.taskText} · ${BREAK_MIN}분 휴식하세요`);
-    } else {
-      t.mode = 'focus'; t.remaining = FOCUS_MIN * 60; t.elapsed = 0;
-      window.api.notify('휴식 끝', '다시 집중해볼까요?');
-    }
-  }
+  t.elapsed = (t.elapsed || 0) + 1;  // 0초부터 올라감
   renderSummary();
 }
 function pauseTimer() { const t = state.timer; if (!t) return; t.running = !t.running; renderSummary(); }
 function stopTimer(silent) {
   const t = state.timer; if (!t) { if (!silent) renderSummary(); return; }
   clearInterval(t.intervalId);
-  if (t.mode === 'focus' && (t.elapsed || 0) >= 60) logFocus(t.taskText, Math.round(t.elapsed / 60));
+  if ((t.elapsed || 0) >= 60) logFocus(t.taskText, t.subject, Math.round(t.elapsed / 60));
   state.timer = null;
   if (!silent) { renderSummary(); if (currentTab === 'stats') renderStats(); }
 }
-function logFocus(task, minutes) {
+function logFocus(task, subject, minutes) {
   if (!minutes) return;
-  state.focus.sessions.push({ date: todayStr(), minutes, task: task || '' });
+  state.focus.sessions.push({ date: todayStr(), minutes, task: task || '', subject: subject || null });
   if (state.focus.sessions.length > 2000) state.focus.sessions = state.focus.sessions.slice(-1500);
   persist({ focus: state.focus });
   if (currentTab === 'stats') renderStats();
+}
+// 과목을 골라 (또는 과목 없이) 스톱워치를 시작하는 팝오버
+function openTimerStart(anchor) {
+  closePopover();
+  popEl = document.createElement('div'); popEl.className = 'popover';
+  const mk = (lbl, subj) => { const o = document.createElement('div'); o.className = 'opt'; o.textContent = lbl; o.onclick = () => { closePopover(); startFocus(subj || '집중', subj || null); }; popEl.appendChild(o); };
+  mk('과목 없이 집중', null);
+  const subs = allSubjects();
+  if (subs.length) { const sep = document.createElement('div'); sep.className = 'sep'; popEl.appendChild(sep); subs.forEach((s) => mk(s, s)); }
+  $('app').appendChild(popEl); placePopover(anchor);
+  setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
 }
 
 // ---------- 저장 ----------
@@ -239,7 +256,14 @@ function switchTab(tab) {
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   ['timetable', 'todos', 'schedule', 'lms', 'stats', 'attend'].forEach((t) => $('view-' + t).classList.toggle('hidden', t !== tab));
   if (tab === 'todos') renderTodos();
-  if (tab === 'schedule') renderCalendar();
+  if (tab === 'schedule') {
+    // 탭을 떠났다 돌아오면 항상 오늘 날짜로 복귀(이전 선택 날짜/기간 입력 초기화)
+    const n = new Date(); state.calYear = n.getFullYear(); state.calMonth = n.getMonth();
+    state.selectedDay = todayStr();
+    state.evtDraft = { endDate: null, remind: 3 };
+    state.pickEndMode = false;
+    renderCalendar();
+  }
   if (tab === 'lms') renderLms();
   if (tab === 'stats') renderStats();
   if (tab === 'attend') renderAttendance();
@@ -287,7 +311,7 @@ function renderTimetable(subjects) {
       if (t.day !== d) continue;
       const top = (toMin(t.start) - gridStart) * pxPerMin;
       const h = (toMin(t.end) - toMin(t.start)) * pxPerMin;
-      col += `<div class="block" style="top:${top}px;height:${h}px;background:${colorFor(s.name)}">
+      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 자료 폴더 열기" style="top:${top}px;height:${h}px;background:${colorFor(s.name)}">
         <div class="b-name">${escapeHtml(s.name)}</div>
         ${t.place ? `<div class="b-place">${escapeHtml(t.place)}</div>` : ''}
         ${s.professor ? `<div class="b-prof">${escapeHtml(s.professor)}</div>` : ''}
@@ -319,9 +343,12 @@ function allSubjects() {
 // 수동 할 일 + LMS 과제를 하나의 항목 리스트로
 function activeItems() {
   const items = [];
-  state.todos.forEach((t) => items.push({
-    kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: t.done, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null,
-  }));
+  state.todos.forEach((t) => {
+    if (t.skipped) return;  // '넘김' 처리한 할 일은 활성 목록에서 제외
+    items.push({
+      kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: t.done, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null,
+    });
+  });
   const asg = (state.lms && state.lms.assignments) || [];
   asg.forEach((a) => items.push({
     kind: 'lms', id: a.id, text: a.title, subject: cleanCourse(a.courseName) || '기타', due: a.due, time: a.dueTime, done: a.submitted, url: a.url, starred: state.starredLms.includes(a.id),
@@ -345,7 +372,7 @@ function rolloverOverdue() {
   const today = todayStr();
   let changed = false;
   for (const t of state.todos) {
-    if (t.done || !t.due) continue;
+    if (t.done || t.skipped || !t.due) continue;
     if (t.due < today) {
       if (!t.origDue) t.origDue = t.due;
       t.due = today;
@@ -361,10 +388,10 @@ function todoRow(it, showSubj) {
   const badge = b ? `<span class="dday ${b.cls}">${b.label}</span>` : '';
   const defer = (it.origDue && !it.done) ? `<span class="dday defer" title="원래 마감 ${escapeHtml(it.origDue)}">${-daysUntil(it.origDue)}일 밀림</span>` : '';
   const subj = showSubj && it.subject ? `<span class="subj-chip" title="${escapeHtml(it.subject)}">${escapeHtml(it.subject)}</span>` : '';
-  const play = `<span class="play" data-play="${escapeHtml(it.text)}" title="집중 시작">${ICO.play}</span>`;
+  const play = `<span class="play" data-play="${escapeHtml(it.text)}" data-play-subj="${escapeHtml(it.subject || '')}" title="집중 시작">${ICO.play}</span>`;
   if (it.kind === 'lms') {
     const lstar = `<span class="star ${it.starred ? 'on' : ''}" data-star-lms="${escapeHtml(it.id)}" title="중요 표시">${ICO.star}</span>`;
-    return `<div class="todo ${it.done ? 'done' : ''}">
+    return `<div class="todo ${it.done ? 'done' : ''}" data-id="${escapeHtml(it.id)}" data-kind="lms" data-url="${escapeHtml(it.url || '')}">
       <input type="checkbox" class="check info" disabled ${it.done ? 'checked' : ''} title="LMS 제출 상태"/>
       <span class="lms-badge">LMS</span>
       <span class="todo-text" title="${escapeHtml(it.text)}">${escapeHtml(it.text)}</span>
@@ -377,7 +404,7 @@ function todoRow(it, showSubj) {
   const subs = it.subs || [];
   const subsBadge = subs.length ? `<span class="subs-badge" data-expand="${it.id}" title="하위 항목">${subs.filter((s) => s.done).length}/${subs.length}</span>` : '';
   const addSub = `<span class="play addsub" data-addsub="${it.id}" title="하위 추가">${ICO.plus}</span>`;
-  return `<div class="todo ${it.done ? 'done' : ''}">
+  return `<div class="todo ${it.done ? 'done' : ''}" data-id="${it.id}" data-kind="todo">
     <input type="checkbox" class="check" data-toggle="${it.id}" ${it.done ? 'checked' : ''}/>
     <span class="todo-text" data-edit="${it.id}" title="더블클릭해 수정">${escapeHtml(it.text)}</span>
     ${rep}${subj}${subsBadge}${badge}${defer}${star}${addSub}${play}
@@ -387,7 +414,10 @@ function todoRow(it, showSubj) {
 function subPanel(it) {
   const subs = it.subs || [];
   const rows = subs.map((s, i) => `<div class="sub ${s.done ? 'done' : ''}"><input type="checkbox" class="check sub-check" data-subtoggle="${it.id}:${i}" ${s.done ? 'checked' : ''}/><span class="sub-text">${escapeHtml(s.text)}</span><span class="x" data-subdel="${it.id}:${i}">${ICO.x}</span></div>`).join('');
-  return `<div class="subs">${rows}<input type="text" class="sub-input" data-subadd="${it.id}" placeholder="+ 하위 항목 추가" autocomplete="off"/></div>`;
+  const adder = state.subAddOpen === it.id
+    ? `<input type="text" class="sub-input" data-subadd="${it.id}" placeholder="하위 항목 입력 후 Enter" autocomplete="off"/>`
+    : `<button class="sub-addbtn" data-subaddbtn="${it.id}">＋ 하위 항목 추가</button>`;
+  return `<div class="subs">${rows}${adder}</div>`;
 }
 function todoBlock(it, showSubj) {
   const expanded = it.kind === 'todo' && state.expandedTodos[it.id];
@@ -718,6 +748,9 @@ function renderLms() {
   // 과목별 공지 (지난버전 notices는 전체로 취급)
   const course = (lms.courseNotices || []);
   const general = (lms.generalNotices || (lms.courseNotices ? [] : (lms.notices || [])));
+  // 과목명 → 과목 메인 페이지 URL (공지 옆 바로가기용)
+  const courseUrlByName = {};
+  (lms.courses || []).forEach((c) => { const cn = cleanCourse(c.name); if (cn && c.url && !courseUrlByName[cn]) courseUrlByName[cn] = c.url; });
 
   let html = '';
 
@@ -745,6 +778,7 @@ function renderLms() {
         <span class="name" title="${escapeHtml(cn)}">${escapeHtml(cn)}</span>
         ${hasUnread ? '<span class="unread-dot"></span>' : ''}
         <span class="acc-count">${byCourse[cn].length}</span>
+        ${courseUrlByName[cn] ? `<button class="mini-read" data-gocourse="${escapeHtml(courseUrlByName[cn])}" title="과목 페이지 열기">바로가기</button>` : ''}
         ${hasUnread ? `<button class="mini-read" data-readcourse="${escapeHtml(cn)}" title="이 과목 공지 모두 읽음">읽음</button>` : ''}
         <span class="acc-caret ${open ? 'open' : ''}">${ICO.chevD}</span>
       </div>`;
@@ -763,7 +797,7 @@ function renderLms() {
   // 자료·과제 폴더 (과목별 바탕화면\Studeck 폴더 열기)
   const courseNames = (lms.courses || []).map((c) => cleanCourse(c.name)).filter((v, i, a) => v && a.indexOf(v) === i);
   if (courseNames.length) {
-    html += `<div class="lms-section-title"><span class="ico">${ICO.inbox}</span>자료 · 과제 폴더</div>`;
+    html += `<div class="lms-section-title"><span class="ico">${ICO.inbox}</span>자료 · 과제 폴더<span style="flex:1"></span><button class="mini-read" id="matset" title="자동 다운로드할 과목 선택">${ICO.edit}<span style="margin-left:3px;">자동받기</span></button></div>`;
     html += courseNames.map((cn) => `<div class="folder-row"><span class="subj-dot" style="background:${colorFor(cn)}"></span><span class="name" title="${escapeHtml(cn)}">${escapeHtml(cn)}</span><button class="fbtn" data-matfolder="${escapeHtml(cn)}">자료</button><button class="fbtn" data-asgfolder="${escapeHtml(cn)}">과제</button></div>`).join('');
   }
 
@@ -826,7 +860,9 @@ function detectLmsSubmissions(prevById) {
 // 새 수업 자료를 감지해 자동 다운로드(바탕화면\Studeck\수업자료\과목) + "새로 받은 자료"에 기록.
 async function downloadNewMaterials(force) {
   const mats = (state.lms && state.lms.materials) || [];
-  const fresh = mats.filter((m) => m && m.url && !state.materialsDone[m.url]);
+  let fresh = mats.filter((m) => m && m.url && !state.materialsDone[m.url]);
+  // 자동(비강제)일 땐 설정에서 체크한 과목만 대상. 수동 '모두 받기'(force)는 전부.
+  if (!force) fresh = fresh.filter((m) => state.matCourses[m.courseId]);
   if (!fresh.length || (!state.autoDownload && !force)) return;
   const items = fresh.map((m) => ({ url: m.url, course: cleanCourse(m.courseName) || '기타', title: m.title }));
   let results = [];
@@ -925,9 +961,33 @@ function renderStats() {
   const weekF = fmin(fsess.filter((s) => s.date >= wsStr));
   html += `<div class="study-line">${ICO.clock} 공부시간 — 오늘 <b>${hm(todayF)}</b> <span class="sum-sep">·</span> 이번 주 <b>${hm(weekF)}</b></div>`;
 
+  // 과목별 공부시간 (집중 타이머 누적)
+  const bySubjF = {};
+  fsess.forEach((s) => { const k = s.subject || '기타'; bySubjF[k] = (bySubjF[k] || 0) + (s.minutes || 0); });
+  const subjFNames = Object.keys(bySubjF).filter((k) => bySubjF[k] > 0).sort((a, b) => bySubjF[b] - bySubjF[a]);
+  if (subjFNames.length) {
+    const maxF = Math.max(...subjFNames.map((n) => bySubjF[n]));
+    html += `<div class="sec-head first">과목별 공부시간</div>`;
+    html += subjFNames.map((n) => `<div class="stat-bar-row">
+      <span class="stat-bar-name" title="${escapeHtml(n)}">${escapeHtml(n)}</span>
+      <span class="stat-bar-track"><span class="stat-bar-fill" style="width:${Math.round(bySubjF[n] / maxF * 100)}%;background:${colorFor(n)}"></span></span>
+      <span class="stat-bar-val" style="width:auto;color:var(--muted)">${hm(bySubjF[n])}</span>
+    </div>`).join('');
+  }
+
   // 이월(밀린) 할 일 현황 — 자동 이월과 맞물림
-  const deferred = state.todos.filter((t) => !t.done && t.origDue).length;
+  const deferred = state.todos.filter((t) => !t.done && !t.skipped && t.origDue).length;
   if (deferred) html += `<div class="study-line defer-line">${ICO.repeat} 이월된 할 일 <b>${deferred}</b>개 — 오늘 목록으로 옮겨져 있어요</div>`;
+
+  // 넘긴 할 일 (부드럽게 남겨둔 미완료)
+  const skippedList = state.todos.filter((t) => t.skipped).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+  if (skippedList.length) {
+    html += `<div class="sec-head first">넘긴 할 일 <span style="color:var(--muted);font-weight:600;">${skippedList.length}</span></div>`;
+    html += skippedList.slice(0, 10).map((t) => `<div class="done-item skip"><span class="di-check skip">${ICO.x}</span>
+      <span class="di-text" title="${escapeHtml(t.text)}">${escapeHtml(t.text)}</span>
+      ${t.subject ? `<span class="subj-chip">${escapeHtml(t.subject)}</span>` : ''}
+      <span class="di-undo" data-restore="${escapeHtml(t.id)}" title="되돌리기">${ICO.undo}</span></div>`).join('');
+  }
 
   // 완료 잔디(히트맵) — 최근 12주
   html += `<div class="sec-head first">완료 잔디 (최근 12주)</div>` + heatmapHtml(done);
@@ -943,12 +1003,23 @@ function renderStats() {
   done.forEach((t) => { const k = t.subject || '기타'; bySubj[k] = (bySubj[k] || 0) + 1; });
   const names = Object.keys(bySubj).sort((a, b) => bySubj[b] - bySubj[a]);
   const max = Math.max(...names.map((n) => bySubj[n]));
-  html += `<div class="sec-head first">과목별 완료</div>`;
-  html += names.map((n) => `<div class="stat-bar-row">
-    <span class="stat-bar-name" title="${escapeHtml(n)}">${escapeHtml(n)}</span>
-    <span class="stat-bar-track"><span class="stat-bar-fill" style="width:${Math.round(bySubj[n] / max * 100)}%;background:${colorFor(n)}"></span></span>
-    <span class="stat-bar-val">${bySubj[n]}</span>
-  </div>`).join('');
+  html += `<div class="sec-head first">과목별 완료 <span style="color:var(--muted);font-weight:600;">· 과목명을 눌러 펼치기</span></div>`;
+  html += names.map((n) => {
+    const open = !!state.statsOpenSubj[n];
+    let row = `<div class="stat-bar-row clickable" data-subjrow="${escapeHtml(n)}">
+      <span class="stat-bar-name" title="${escapeHtml(n)}">${escapeHtml(n)}</span>
+      <span class="stat-bar-track"><span class="stat-bar-fill" style="width:${Math.round(bySubj[n] / max * 100)}%;background:${colorFor(n)}"></span></span>
+      <span class="stat-bar-val">${bySubj[n]}</span>
+    </div>`;
+    if (open) {
+      const items = done.filter((t) => (t.subject || '기타') === n).sort((a, b) => b.doneAt - a.doneAt);
+      row += `<div class="subj-done-list">` + items.map((t) => {
+        const dd = new Date(t.doneAt);
+        return `<div class="subj-done-item">${t.kind === 'lms' ? '<span class="lms-badge">LMS</span>' : ''}<span class="sd-text" title="${escapeHtml(t.text)}">${escapeHtml(t.text)}</span><span class="sd-date">${dd.getMonth() + 1}/${dd.getDate()}</span></div>`;
+      }).join('') + `</div>`;
+    }
+    return row;
+  }).join('');
 
   // 최근 완료
   const recent = done.slice().sort((a, b) => b.doneAt - a.doneAt).slice(0, 10);
@@ -1005,15 +1076,22 @@ function subjectDays(subj) {
   if (!s) return [];
   return [...new Set((s.times || []).map((t) => t.day))].sort((a, b) => a - b);
 }
-function classDateStr(week, day) {
+// 그 주차의 첫 수업(가장 이른 요일·교시)의 시작 시각까지 반영한 Date
+function classStartDateTime(subj, week) {
   const mon = attStartMonday(); if (!mon) return null;
-  const d = new Date(mon); d.setDate(d.getDate() + (week - 1) * 7 + day);
-  return fmtD(d);
+  const s = (state.timetableFull || []).find((x) => x.name === subj);
+  if (!s || !s.times || !s.times.length) return null;
+  const ft = s.times.slice().sort((a, b) => a.day - b.day || a.start - b.start)[0];
+  const d = new Date(mon);
+  d.setDate(d.getDate() + (week - 1) * 7 + ft.day);
+  d.setHours(0, 0, 0, 0);
+  d.setMinutes(toMin(ft.start)); // 자정 기준 분 → 실제 수업 시작 시각
+  return d;
 }
 function defaultAtt(subj, week) {
-  const days = subjectDays(subj); if (!days.length) return '';
-  const cd = classDateStr(week, days[0]); if (!cd) return '';
-  return cd <= todayStr() ? '출석' : '';
+  const cs = classStartDateTime(subj, week); if (!cs) return '';
+  // 그날이 아니라 '수업 시작 시각'이 지나야 자동 출석
+  return cs.getTime() <= Date.now() ? '출석' : '';
 }
 function effectiveAtt(subj, week) {
   const ov = state.attendance.overrides[subj] || {};
@@ -1135,7 +1213,7 @@ $('btn-mini').onclick = toggleMini;
 $('btn-close').onclick = () => window.api.close();
 $('mini-list').addEventListener('change', (e) => { const t = e.target.closest('[data-toggle]'); if (t) toggleTodo(t.dataset.toggle, t.checked); });
 $('mini-list').addEventListener('click', (e) => {
-  const play = e.target.closest('[data-play]'); if (play) { startFocus(play.dataset.play); return; }
+  const play = e.target.closest('[data-play]'); if (play) { startFocus(play.dataset.play, play.dataset.playSubj || null); return; }
   const star = e.target.closest('[data-star]'); if (star) { const t = state.todos.find((x) => x.id === star.dataset.star); if (t) { t.starred = !t.starred; saveTodos(); renderMini(); } return; }
   const open = e.target.closest('[data-open]'); if (open) window.api.lmsOpen(open.dataset.open);
 });
@@ -1162,6 +1240,12 @@ $('summary').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tm]'); if (!b) return;
   if (b.dataset.tm === 'pause') pauseTimer();
   else if (b.dataset.tm === 'stop') stopTimer();
+  else if (b.dataset.tm === 'start') openTimerStart(b);
+});
+// 시간표 수업 블록 클릭 → 그 과목 자료 폴더 열기
+$('grid-wrap').addEventListener('click', (e) => {
+  const blk = e.target.closest('.block'); if (!blk || !blk.dataset.subj) return;
+  window.api.openStudeckFolder('materials', blk.dataset.subj);
 });
 
 // 위임 클릭
@@ -1174,11 +1258,13 @@ $('todo-list').addEventListener('click', (e) => {
   const starLms = e.target.closest('[data-star-lms]');
   const del = e.target.closest('[data-del]'); const open = e.target.closest('[data-open]');
   if (subdel) { const [id, i] = subdel.dataset.subdel.split(':'); const t = state.todos.find((x) => x.id === id); if (t && t.subs) { t.subs.splice(+i, 1); saveTodos(); renderTodos(); } return; }
+  const subaddbtn = e.target.closest('[data-subaddbtn]');
   if (expand) { state.expandedTodos[expand.dataset.expand] = !state.expandedTodos[expand.dataset.expand]; renderTodos(); return; }
-  if (addsub) { state.expandedTodos[addsub.dataset.addsub] = true; renderTodos(); const inp = document.querySelector(`[data-subadd="${addsub.dataset.addsub}"]`); if (inp) inp.focus(); return; }
+  if (addsub) { const id = addsub.dataset.addsub; state.expandedTodos[id] = true; state.subAddOpen = id; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); return; }
+  if (subaddbtn) { state.subAddOpen = subaddbtn.dataset.subaddbtn; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); return; }
   if (star) { const t = state.todos.find((x) => x.id === star.dataset.star); if (t) { t.starred = !t.starred; saveTodos(); renderTodos(); } return; }
   if (starLms) { const id = starLms.dataset.starLms; const i = state.starredLms.indexOf(id); if (i >= 0) state.starredLms.splice(i, 1); else state.starredLms.push(id); persist({ starredLms: state.starredLms }); renderTodos(); return; }
-  if (play) { startFocus(play.dataset.play); return; }
+  if (play) { startFocus(play.dataset.play, play.dataset.playSubj || null); return; }
   if (del) { state.todos = state.todos.filter((t) => t.id !== del.dataset.del); saveTodos(); renderTodos(); renderSummary(); return; }
   if (open) { window.api.lmsOpen(open.dataset.open); return; }
 });
@@ -1189,22 +1275,94 @@ $('todo-list').addEventListener('change', (e) => {
 });
 $('todo-list').addEventListener('keydown', (e) => {
   const add = e.target.closest('[data-subadd]');
-  if (add && e.key === 'Enter') {
+  if (!add) return;
+  if (e.key === 'Enter') {
     const v = add.value.trim(); if (!v) return;
     const t = state.todos.find((x) => x.id === add.dataset.subadd);
-    if (t) { t.subs = t.subs || []; t.subs.push({ text: v, done: false }); saveTodos(); renderTodos(); const inp = document.querySelector(`[data-subadd="${add.dataset.subadd}"]`); if (inp) inp.focus(); }
+    if (t) { t.subs = t.subs || []; t.subs.push({ text: v, done: false }); saveTodos(); state.subAddOpen = add.dataset.subadd; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); }
+  } else if (e.key === 'Escape') {
+    state.subAddOpen = null; renderTodos();
   }
 });
-$('todo-list').addEventListener('dblclick', (e) => {
-  const ed = e.target.closest('[data-edit]'); if (!ed) return;
-  const t = state.todos.find((x) => x.id === ed.dataset.edit); if (!t) return;
-  const cur = t.text;
+// 하위 항목 입력이 비어 있는 채 포커스를 잃으면 접기(입력칸이 안 떠 있게)
+$('todo-list').addEventListener('focusout', (e) => {
+  const add = e.target.closest && e.target.closest('[data-subadd]');
+  if (add && !add.value.trim()) { state.subAddOpen = null; setTimeout(() => { if (currentTab === 'todos') renderTodos(); }, 0); }
+});
+// 제목 인라인 편집 (더블클릭 / 우클릭 메뉴 '수정' 공용)
+function startEditTodo(id) {
+  const t = state.todos.find((x) => x.id === id); if (!t) return;
+  const ed = document.querySelector(`[data-edit="${id}"]`); if (!ed) return;
   const inp = document.createElement('input');
-  inp.type = 'text'; inp.className = 'edit-input'; inp.value = cur;
+  inp.type = 'text'; inp.className = 'edit-input'; inp.value = t.text;
   ed.replaceWith(inp); inp.focus(); inp.select();
-  const commit = (save) => { if (save) { const v = inp.value.trim(); if (v) { t.text = v; saveTodos(); } } renderTodos(); };
+  let committed = false;
+  const commit = (save) => { if (committed) return; committed = true; if (save) { const v = inp.value.trim(); if (v) { t.text = v; saveTodos(); } } renderTodos(); };
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') commit(true); if (ev.key === 'Escape') commit(false); });
   inp.addEventListener('blur', () => commit(true));
+}
+$('todo-list').addEventListener('dblclick', (e) => {
+  const ed = e.target.closest('[data-edit]'); if (!ed) return;
+  startEditTodo(ed.dataset.edit);
+});
+// 우클릭 컨텍스트 메뉴 (노션풍)
+function placeAtCursor(x, y) {
+  const app = $('app'), br = app.getBoundingClientRect();
+  let left = x - br.left, top = y - br.top;
+  left = Math.min(left, app.clientWidth - popEl.offsetWidth - 8);
+  top = Math.min(top, app.clientHeight - popEl.offsetHeight - 8);
+  popEl.style.left = Math.max(8, left) + 'px';
+  popEl.style.top = Math.max(8, top) + 'px';
+}
+// 밀린/오늘 할 일을 나중으로 미루기(수동 due 이동, origDue는 최초 밀림일 보존)
+function deferTodo(id, dateStr) {
+  const t = state.todos.find((v) => v.id === id); if (!t || !dateStr) return;
+  if (!t.origDue) t.origDue = t.due || todayStr();
+  t.due = dateStr; saveTodos(); rerenderTodoAreas();
+}
+function openDeferMenu(id, x, y) {
+  closePopover();
+  popEl = document.createElement('div'); popEl.className = 'popover menu';
+  const add = (label, fn) => { const o = document.createElement('div'); o.className = 'opt'; o.textContent = label; o.onclick = () => { closePopover(); fn(); }; popEl.appendChild(o); };
+  add('내일로', () => deferTodo(id, addDaysStr(todayStr(), 1)));
+  add('모레로', () => deferTodo(id, addDaysStr(todayStr(), 2)));
+  add('이번 주말로', () => deferTodo(id, comingWeekend()));
+  add('다음 주로', () => deferTodo(id, addDaysStr(todayStr(), 7)));
+  const sep = document.createElement('div'); sep.className = 'sep'; popEl.appendChild(sep);
+  const di = document.createElement('input'); di.type = 'date'; di.value = todayStr();
+  di.onchange = () => { if (di.value) { const v = di.value; closePopover(); deferTodo(id, v); } };
+  popEl.appendChild(di);
+  $('app').appendChild(popEl); placeAtCursor(x, y);
+  setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
+}
+function openTodoMenu(kind, id, x, y) {
+  closePopover();
+  popEl = document.createElement('div'); popEl.className = 'popover menu';
+  const add = (label, fn, danger) => { const o = document.createElement('div'); o.className = 'opt' + (danger ? ' danger' : ''); o.textContent = label; o.onclick = () => { closePopover(); fn(); }; popEl.appendChild(o); };
+  if (kind === 'lms') {
+    const it = activeItems().find((i) => i.id === id) || {};
+    add('집중 시작', () => startFocus(it.text, it.subject));
+    add('제출 페이지 열기', () => { if (it.url) window.api.lmsOpen(it.url); });
+    add(state.starredLms.includes(id) ? '별표 해제' : '별표', () => { const i = state.starredLms.indexOf(id); if (i >= 0) state.starredLms.splice(i, 1); else state.starredLms.push(id); persist({ starredLms: state.starredLms }); renderTodos(); });
+  } else {
+    const t = state.todos.find((v) => v.id === id); if (!t) return;
+    add('집중 시작', () => startFocus(t.text, t.subject || null));
+    add('하위 항목 추가', () => { state.expandedTodos[id] = true; state.subAddOpen = id; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); });
+    add('미루기…', () => openDeferMenu(id, x, y));
+    add(t.skipped ? '넘김 해제' : '넘김으로 표시', () => { t.skipped = !t.skipped; if (t.skipped) { t.doneAt = Date.now(); } saveTodos(); rerenderTodoAreas(); });
+    add(t.starred ? '별표 해제' : '별표', () => { t.starred = !t.starred; saveTodos(); renderTodos(); });
+    add('수정', () => startEditTodo(id));
+    add(t.done ? '완료 취소' : '완료로 표시', () => toggleTodo(id, !t.done));
+    add('삭제', () => { state.todos = state.todos.filter((v) => v.id !== id); saveTodos(); renderTodos(); renderSummary(); }, true);
+  }
+  $('app').appendChild(popEl);
+  placeAtCursor(x, y);
+  setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
+}
+$('todo-list').addEventListener('contextmenu', (e) => {
+  const row = e.target.closest('.todo'); if (!row) return;
+  e.preventDefault();
+  openTodoMenu(row.dataset.kind, row.dataset.id, e.clientX, e.clientY);
 });
 $('calendar').addEventListener('click', (e) => {
   const cell = e.target.closest('[data-day]'); if (!cell) return;
@@ -1231,7 +1389,30 @@ $('day-panel').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.t
 $('day-panel').addEventListener('change', (e) => {
   const tog = e.target.closest('[data-toggle]'); if (tog) toggleTodo(tog.dataset.toggle, tog.checked);
 });
+// 자동 다운로드 대상 과목 선택 팝오버 (기본 전부 꺼짐 → 체크한 과목만)
+function openMatCoursesPopover(anchor) {
+  closePopover();
+  popEl = document.createElement('div'); popEl.className = 'popover';
+  popEl.style.maxHeight = '60vh'; popEl.style.overflowY = 'auto'; popEl.style.minWidth = '180px';
+  const courses = ((state.lms && state.lms.courses) || []).filter((c) => c.track !== false);
+  if (!courses.length) { const em = document.createElement('div'); em.className = 'opt'; em.style.color = 'var(--muted)'; em.textContent = '추적 중인 강좌가 없어요'; popEl.appendChild(em); }
+  courses.forEach((c) => {
+    const o = document.createElement('label'); o.className = 'opt'; o.style.display = 'flex'; o.style.gap = '8px'; o.style.alignItems = 'center';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!state.matCourses[c.id];
+    cb.onchange = () => { if (cb.checked) state.matCourses[c.id] = true; else delete state.matCourses[c.id]; persist({ matCourses: state.matCourses }); };
+    const sp = document.createElement('span'); sp.textContent = cleanCourse(c.name); sp.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    o.appendChild(cb); o.appendChild(sp); popEl.appendChild(o);
+  });
+  const sep = document.createElement('div'); sep.className = 'sep'; popEl.appendChild(sep);
+  const hint = document.createElement('div'); hint.className = 'opt'; hint.style.cssText = 'cursor:default;color:var(--muted);font-size:11px;white-space:normal;'; hint.textContent = '체크한 과목만 새 자료를 자동으로 받아요.';
+  popEl.appendChild(hint);
+  $('app').appendChild(popEl); placePopover(anchor);
+  setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
+}
 $('lms-content').addEventListener('click', (e) => {
+  const go = e.target.closest('[data-gocourse]');
+  if (go) { window.api.lmsOpen(go.dataset.gocourse); return; }
+  if (e.target.closest('#matset')) { openMatCoursesPopover(e.target.closest('#matset')); return; }
   const mf = e.target.closest('[data-matfolder]');
   if (mf) { window.api.openStudeckFolder('materials', mf.dataset.matfolder); return; }
   const af = e.target.closest('[data-asgfolder]');
@@ -1252,6 +1433,10 @@ $('lms-content').addEventListener('click', (e) => {
   const open = e.target.closest('[data-open]'); if (open) window.api.lmsOpen(open.dataset.open);
 });
 $('stats-content').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-subjrow]');
+  if (row) { const n = row.dataset.subjrow; state.statsOpenSubj[n] = !state.statsOpenSubj[n]; renderStats(); return; }
+  const restore = e.target.closest('[data-restore]');
+  if (restore) { const t = state.todos.find((x) => x.id === restore.dataset.restore); if (t) { t.skipped = false; t.doneAt = null; rolloverOverdue(); saveTodos(); renderStats(); rerenderTodoAreas(); } return; }
   const u = e.target.closest('[data-undo]'); if (!u) return;
   const t = state.todos.find((x) => x.id === u.dataset.undo);
   if (t) { t.done = false; t.doneAt = null; rolloverOverdue(); saveTodos(); renderStats(); renderSummary(); }
@@ -1295,6 +1480,14 @@ function applyTheme() {
   ['dark', 'light', 'cbnu', 'baekjoon', 'gray'].forEach((t) => { const b = $('theme-' + t); if (b) b.classList.toggle('sel', state.theme === t); });
 }
 function setTheme(t) { state.theme = t; persist({ theme: t }); applyTheme(); }
+function applyClockFormat() {
+  ['h', 'hm', 'hms'].forEach((f) => { const b = $('clk-' + f); if (b) b.classList.toggle('sel', state.clockFormat === f); });
+  updateClock();
+}
+function setClockFormat(f) { state.clockFormat = f; persist({ clockFormat: f }); applyClockFormat(); }
+$('clk-h').onclick = () => setClockFormat('h');
+$('clk-hm').onclick = () => setClockFormat('hm');
+$('clk-hms').onclick = () => setClockFormat('hms');
 $('theme-dark').onclick = () => setTheme('dark');
 $('theme-light').onclick = () => setTheme('light');
 $('theme-cbnu').onclick = () => setTheme('cbnu');
@@ -1357,10 +1550,15 @@ function miniPrompt(title) {
   state.newMaterials = Array.isArray(cfg.newMaterials) ? cfg.newMaterials : [];
   state.autoDownload = cfg.autoDownload !== false;
   $('inp-autodl').checked = state.autoDownload;
+  state.matCourses = (cfg.matCourses && typeof cfg.matCourses === 'object') ? cfg.matCourses : {};
+  state.clockFormat = ['h', 'hm', 'hms'].includes(cfg.clockFormat) ? cfg.clockFormat : 'hms';
+  applyClockFormat();
   try { $('inp-autostart').checked = await window.api.getAutoStart(); } catch (e) {}
   state.todoDraft = { due: todayStr(), subject: null, repeat: null };
   rolloverOverdue();  // 실행 시 지난 미완료 할 일을 오늘로 이월
   renderSummary();
+  updateClock();
+  setInterval(updateClock, 1000);  // 헤더 시계(초 단위)
   updateLmsBadge();
 
   if (cfg.identifier) { state.identifier = cfg.identifier; loadTimetable(cfg.identifier); }
