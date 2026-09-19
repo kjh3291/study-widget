@@ -394,7 +394,7 @@ async function downloadMaterial(url, course, title) {
   }
   filename = safeName(filename);
   if (/\.(php|acl|do|jsp|htm|html)$/i.test(filename)) filename = safeName(title) + (extFromCT(ct) || '.pdf');
-  const dir = path.join(STUDECK_DIR(), '수업자료', safeName(course));
+  const dir = path.join(STUDECK_DIR(), safeName(course), '수업자료');
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
   const dest = uniquePath(dir, filename);
   try { fs.writeFileSync(dest, body); return { url, ok: true, path: dest, filename }; }
@@ -405,16 +405,44 @@ ipcMain.handle('lms-download', async (_e, items) => {
   for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title));
   return out;
 });
+const CAT_DIR = { materials: '수업자료', aux: '보조자료', assignment: '과제' };
 ipcMain.handle('open-studeck-folder', (_e, { kind, course } = {}) => {
   try {
     let dir = STUDECK_DIR();
-    if (kind === 'materials') dir = path.join(dir, '수업자료', safeName(course));
-    else if (kind === 'assignment') dir = path.join(dir, '과제', safeName(course));
+    if (kind === 'subject') dir = path.join(dir, safeName(course));
+    else if (CAT_DIR[kind]) dir = path.join(dir, safeName(course), CAT_DIR[kind]);
     fs.mkdirSync(dir, { recursive: true });
     shell.openPath(dir);
     return { ok: true, dir };
   } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });
+
+// 예전 '분류 먼저'(수업자료/과목) 구조를 '과목 먼저'(과목/수업자료)로 1회 이동
+function migrateFolders() {
+  try {
+    const base = STUDECK_DIR();
+    if (!fs.existsSync(base)) return;
+    const marker = path.join(base, '.studeck-migrated');
+    if (fs.existsSync(marker)) return;
+    const cats = ['수업자료', '보조자료', '과제'];
+    for (const cat of cats) {
+      const catDir = path.join(base, cat);
+      if (!fs.existsSync(catDir) || !fs.statSync(catDir).isDirectory()) continue;
+      for (const course of fs.readdirSync(catDir)) {
+        const from = path.join(catDir, course);
+        try { if (!fs.statSync(from).isDirectory()) continue; } catch (e) { continue; }
+        const to = path.join(base, safeName(course), cat);
+        try {
+          fs.mkdirSync(path.dirname(to), { recursive: true });
+          if (!fs.existsSync(to)) fs.renameSync(from, to);
+          else { for (const f of fs.readdirSync(from)) { try { fs.renameSync(path.join(from, f), path.join(to, f)); } catch (e) {} } }
+        } catch (e) { /* 개별 실패 무시 */ }
+      }
+      try { if (!fs.readdirSync(catDir).length) fs.rmdirSync(catDir); } catch (e) {}
+    }
+    try { fs.writeFileSync(marker, new Date().toISOString(), 'utf8'); } catch (e) {}
+  } catch (e) { console.error('migrateFolders fail', e); }
+}
 
 // 주기적 자동 백업: config.json을 7일마다 backups/에 복사, 최근 5개 유지
 function autoBackup() {
@@ -454,6 +482,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     app.setAppUserModelId('cbnu.study.widget');
     autoBackup();
+    migrateFolders();
     createWindow();
   });
 }

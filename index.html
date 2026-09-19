@@ -541,6 +541,28 @@
   .popover.menu .opt.danger:hover { background: var(--danger-soft); }
   .popover input[type=date] { width: 100%; margin-top: 2px; }
 
+  /* 집중 전용 전체화면 */
+  #focus-view { position: absolute; inset: 0; z-index: 30; background: var(--bg); display: flex; flex-direction: column; }
+  #focus-view .fv-top { -webkit-app-region: drag; padding: 12px 14px; }
+  #focus-view .fv-back { -webkit-app-region: no-drag; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; color: var(--muted); font-size: 13px; font-family: inherit; padding: 4px 6px; border-radius: 8px; }
+  #focus-view .fv-back:hover { color: var(--text); background: var(--surface2); }
+  #focus-view .fv-back .isvg { width: 16px; height: 16px; }
+  #focus-view .fv-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+  #focus-view .fv-subj { font-size: 13px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 5px 15px; border-radius: 999px; }
+  #focus-view .fv-ring { position: relative; width: 210px; height: 210px; display: flex; align-items: center; justify-content: center; }
+  #focus-view .fv-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #focus-view .fv-time-wrap { display: flex; flex-direction: column; align-items: center; }
+  #focus-view .fv-time { font-size: 46px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); line-height: 1.05; }
+  #focus-view .fv-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  #focus-view .fv-task { font-size: 14px; color: var(--muted); max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+  #focus-view .fv-controls { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 0 0 22px; }
+  #focus-view .fv-btn { -webkit-app-region: no-drag; cursor: pointer; width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--line2); background: var(--surface2); color: var(--text); display: flex; align-items: center; justify-content: center; }
+  #focus-view .fv-btn:hover { border-color: var(--muted); }
+  #focus-view .fv-btn .isvg { width: 22px; height: 22px; }
+  #focus-view .fv-btn.danger { background: var(--danger-soft); border-color: var(--danger-soft); color: var(--danger); }
+  #focus-view .fv-foot { text-align: center; font-size: 11.5px; color: var(--muted); padding: 0 0 18px; }
+  #focus-view .fv-foot b { color: var(--text); font-weight: 700; }
+
   /* 설정 */
   #settings { position: absolute; inset: 0; z-index: 20; background: var(--bg); padding: 18px; display: flex; flex-direction: column; gap: 13px; overflow: auto; }
   #settings h2 { font-size: 15px; }
@@ -647,6 +669,8 @@
     </div>
   </div>
 
+  <div id="focus-view" class="hidden"></div>
+
   <div id="toast"></div>
 
   <div id="settings" class="hidden">
@@ -656,6 +680,7 @@
     <div class="err" id="settings-err"></div>
     <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-cbnu">충북대</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
     <div class="row" style="justify-content:space-between;"><span>헤더 시계</span><span class="seg"><button id="clk-h">시</button><button id="clk-hm">시:분</button><button id="clk-hms">시:분:초</button></span></div>
+    <div class="row" style="justify-content:space-between;"><span>하루 집중 목표(시간)</span><input type="number" id="inp-focus-goal" min="0.5" max="16" step="0.5" value="2" style="width:80px;" /></div>
     <div class="row"><span>투명도</span><input type="range" id="inp-opacity" min="30" max="100" value="100" /></div>
     <div class="row"><input type="checkbox" id="inp-top" checked /><label for="inp-top" style="cursor:pointer;">항상 맨 위에 표시</label></div>
     <div class="row"><input type="checkbox" id="inp-autostart" /><label for="inp-autostart" style="cursor:pointer;">윈도우 시작 시 자동 실행</label></div>

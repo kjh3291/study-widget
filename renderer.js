@@ -42,6 +42,7 @@ const state = {
   matCourses: {},     // 과목별 자료 자동 다운로드 대상 { [courseId]: true } (기본 전부 꺼짐)
   statsOpenSubj: {},  // 기록 탭 과목별 완료 펼침 상태 (인메모리)
   clockFormat: 'hms', // 헤더 시계 형식 'h' | 'hm' | 'hms'
+  focusGoalMin: 120,  // 하루 집중 목표(분) — 집중 화면 링 게이지 기준
 };
 
 const ATT_STATES = ['출석', '결석', '지각', '공결', '병결'];
@@ -167,12 +168,14 @@ function startFocus(taskText, subject) {
   stopTimer(true);
   state.timer = { taskText: taskText || '집중', subject: subject || null, elapsed: 0, running: true, intervalId: null };
   state.timer.intervalId = setInterval(timerTick, 1000);
-  showToast(`집중 시작: ${taskText ? (taskText.length > 16 ? taskText.slice(0, 16) + '…' : taskText) : ''}`, null, null, 2500);
+  enterFocus();  // 전용 전체화면으로 진입
   renderSummary();
 }
 function timerTick() {
   const t = state.timer; if (!t || !t.running) return;
   t.elapsed = (t.elapsed || 0) + 1;  // 0초부터 올라감
+  const fv = $('focus-view');
+  if (fv && !fv.classList.contains('hidden')) renderFocus();
   renderSummary();
 }
 function pauseTimer() { const t = state.timer; if (!t) return; t.running = !t.running; renderSummary(); }
@@ -181,7 +184,59 @@ function stopTimer(silent) {
   clearInterval(t.intervalId);
   if ((t.elapsed || 0) >= 60) logFocus(t.taskText, t.subject, Math.round(t.elapsed / 60));
   state.timer = null;
+  exitFocus();
   if (!silent) { renderSummary(); if (currentTab === 'stats') renderStats(); }
+}
+
+// ---------- 집중 전용 전체화면 (B 링 · 오늘 누적) ----------
+function fmtHMS(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}
+// 오늘 그 과목(작업)에 쌓은 총 공부시간(초) = 오늘 세션 합 + 진행 중 elapsed
+function todayFocusSec(subject) {
+  const today = todayStr();
+  const key = subject || null;
+  let sec = ((state.focus && state.focus.sessions) || [])
+    .filter((s) => s.date === today && (s.subject || null) === key)
+    .reduce((a, s) => a + (s.minutes || 0) * 60, 0);
+  const t = state.timer;
+  if (t && (t.subject || null) === key) sec += (t.elapsed || 0);
+  return sec;
+}
+function enterFocus() { const fv = $('focus-view'); if (fv) { fv.classList.remove('hidden'); renderFocus(); } }
+function exitFocus() { const fv = $('focus-view'); if (fv) fv.classList.add('hidden'); }
+function renderFocus() {
+  const fv = $('focus-view'); if (!fv) return;
+  const t = state.timer; if (!t) { fv.classList.add('hidden'); return; }
+  const subj = t.subject || null;
+  const cum = todayFocusSec(subj);
+  const goalSec = Math.max(1, (state.focusGoalMin || 120) * 60);
+  const frac = Math.max(0, Math.min(1, cum / goalSec));
+  const R = 86, C = 2 * Math.PI * R, off = C * (1 - frac);
+  const goalMin = state.focusGoalMin || 120;
+  const goalLabel = goalMin % 60 === 0 ? `${goalMin / 60}시간` : `${goalMin}분`;
+  const cumMin = Math.round(cum / 60);
+  fv.innerHTML = `
+    <div class="fv-top"><button class="fv-back" id="fv-back">${ICO.chevL}<span>나가기</span></button></div>
+    <div class="fv-center">
+      <span class="fv-subj">${escapeHtml(subj || '집중')}</span>
+      <div class="fv-ring">
+        <svg viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--line2)" stroke-width="8"/>
+          <circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round"
+            stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 100 100)"/>
+        </svg>
+        <div class="fv-time-wrap"><div class="fv-time">${fmtHMS(cum)}</div><span class="fv-sub">오늘 누적</span></div>
+      </div>
+      <span class="fv-task" title="${escapeHtml(t.taskText || '')}">${escapeHtml(t.taskText || '')}</span>
+    </div>
+    <div class="fv-controls">
+      <button class="fv-btn" id="fv-pause" title="${t.running ? '일시정지' : '계속'}">${t.running ? ICO.pause : ICO.play}</button>
+      <button class="fv-btn danger" id="fv-stop" title="정지">${ICO.stop}</button>
+    </div>
+    <div class="fv-foot">오늘 이 과목 <b>${cumMin >= 60 ? `${Math.floor(cumMin / 60)}시간 ${cumMin % 60}분` : `${cumMin}분`}</b> <span class="sum-sep">·</span> 목표 ${goalLabel}</div>`;
 }
 function logFocus(task, subject, minutes) {
   if (!minutes) return;
@@ -798,7 +853,7 @@ function renderLms() {
   const courseNames = (lms.courses || []).map((c) => cleanCourse(c.name)).filter((v, i, a) => v && a.indexOf(v) === i);
   if (courseNames.length) {
     html += `<div class="lms-section-title"><span class="ico">${ICO.inbox}</span>자료 · 과제 폴더<span style="flex:1"></span><button class="mini-read" id="matset" title="자동 다운로드할 과목 선택">${ICO.edit}<span style="margin-left:3px;">자동받기</span></button></div>`;
-    html += courseNames.map((cn) => `<div class="folder-row"><span class="subj-dot" style="background:${colorFor(cn)}"></span><span class="name" title="${escapeHtml(cn)}">${escapeHtml(cn)}</span><button class="fbtn" data-matfolder="${escapeHtml(cn)}">자료</button><button class="fbtn" data-asgfolder="${escapeHtml(cn)}">과제</button></div>`).join('');
+    html += courseNames.map((cn) => `<div class="folder-row"><span class="subj-dot" style="background:${colorFor(cn)}"></span><span class="name" title="${escapeHtml(cn)}">${escapeHtml(cn)}</span><button class="fbtn" data-matfolder="${escapeHtml(cn)}">자료</button><button class="fbtn" data-auxfolder="${escapeHtml(cn)}">보조</button><button class="fbtn" data-asgfolder="${escapeHtml(cn)}">과제</button></div>`).join('');
   }
 
   box.innerHTML = html;
@@ -1242,6 +1297,12 @@ $('summary').addEventListener('click', (e) => {
   else if (b.dataset.tm === 'stop') stopTimer();
   else if (b.dataset.tm === 'start') openTimerStart(b);
 });
+// 집중 전용화면 컨트롤
+$('focus-view').addEventListener('click', (e) => {
+  if (e.target.closest('#fv-back')) { exitFocus(); renderSummary(); return; }   // 전체화면만 닫고 타이머는 계속
+  if (e.target.closest('#fv-pause')) { pauseTimer(); renderFocus(); return; }
+  if (e.target.closest('#fv-stop')) { stopTimer(); return; }                    // 종료+기록(자동 exitFocus)
+});
 // 시간표 수업 블록 클릭 → 그 과목 자료 폴더 열기
 $('grid-wrap').addEventListener('click', (e) => {
   const blk = e.target.closest('.block'); if (!blk || !blk.dataset.subj) return;
@@ -1281,13 +1342,19 @@ $('todo-list').addEventListener('keydown', (e) => {
     const t = state.todos.find((x) => x.id === add.dataset.subadd);
     if (t) { t.subs = t.subs || []; t.subs.push({ text: v, done: false }); saveTodos(); state.subAddOpen = add.dataset.subadd; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); }
   } else if (e.key === 'Escape') {
-    state.subAddOpen = null; renderTodos();
+    collapseSubAdd(add.dataset.subadd); renderTodos();
   }
 });
-// 하위 항목 입력이 비어 있는 채 포커스를 잃으면 접기(입력칸이 안 떠 있게)
+// 하위 항목 추가 취소: 입력을 비운 채 접을 때, 하위 항목이 하나도 없으면 패널까지 완전히 접는다
+function collapseSubAdd(id) {
+  state.subAddOpen = null;
+  const t = state.todos.find((x) => x.id === id);
+  if (t && !(t.subs && t.subs.length)) state.expandedTodos[id] = false;
+}
+// 하위 항목 입력이 비어 있는 채 포커스를 잃으면 접기(입력칸·빈 패널이 안 남게)
 $('todo-list').addEventListener('focusout', (e) => {
   const add = e.target.closest && e.target.closest('[data-subadd]');
-  if (add && !add.value.trim()) { state.subAddOpen = null; setTimeout(() => { if (currentTab === 'todos') renderTodos(); }, 0); }
+  if (add && !add.value.trim()) { collapseSubAdd(add.dataset.subadd); setTimeout(() => { if (currentTab === 'todos') renderTodos(); }, 0); }
 });
 // 제목 인라인 편집 (더블클릭 / 우클릭 메뉴 '수정' 공용)
 function startEditTodo(id) {
@@ -1415,6 +1482,8 @@ $('lms-content').addEventListener('click', (e) => {
   if (e.target.closest('#matset')) { openMatCoursesPopover(e.target.closest('#matset')); return; }
   const mf = e.target.closest('[data-matfolder]');
   if (mf) { window.api.openStudeckFolder('materials', mf.dataset.matfolder); return; }
+  const xf = e.target.closest('[data-auxfolder]');
+  if (xf) { window.api.openStudeckFolder('aux', xf.dataset.auxfolder); return; }
   const af = e.target.closest('[data-asgfolder]');
   if (af) { window.api.openStudeckFolder('assignment', af.dataset.asgfolder); return; }
   if (e.target.closest('#clear-newmat')) { state.newMaterials = []; persist({ newMaterials: [] }); renderLms(); updateLmsBadge(); return; }
@@ -1468,6 +1537,12 @@ $('inp-morning').onchange = () => { const h = parseInt(($('inp-morning').value |
 $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-deadline').checked; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-rollover').onchange = () => { state.rolloverOverdue = $('inp-rollover').checked; persist({ rolloverOverdue: state.rolloverOverdue }); if (state.rolloverOverdue) rolloverOverdue(); rerenderTodoAreas(); };
 $('inp-autodl').onchange = () => { state.autoDownload = $('inp-autodl').checked; persist({ autoDownload: state.autoDownload }); };
+if ($('inp-focus-goal')) $('inp-focus-goal').onchange = () => {
+  const h = parseFloat($('inp-focus-goal').value);
+  state.focusGoalMin = (!isNaN(h) && h > 0) ? Math.round(h * 60) : 120;
+  persist({ focusGoalMin: state.focusGoalMin });
+  const fv = $('focus-view'); if (fv && !fv.classList.contains('hidden')) renderFocus();
+};
 $('btn-open-studeck').onclick = () => window.api.openStudeckFolder('root');
 $('inp-autostart').onchange = async () => {
   const on = await window.api.setAutoStart($('inp-autostart').checked);
@@ -1553,6 +1628,8 @@ function miniPrompt(title) {
   state.matCourses = (cfg.matCourses && typeof cfg.matCourses === 'object') ? cfg.matCourses : {};
   state.clockFormat = ['h', 'hm', 'hms'].includes(cfg.clockFormat) ? cfg.clockFormat : 'hms';
   applyClockFormat();
+  state.focusGoalMin = (typeof cfg.focusGoalMin === 'number' && cfg.focusGoalMin > 0) ? cfg.focusGoalMin : 120;
+  if ($('inp-focus-goal')) $('inp-focus-goal').value = String(Math.round(state.focusGoalMin / 60 * 10) / 10);
   try { $('inp-autostart').checked = await window.api.getAutoStart(); } catch (e) {}
   state.todoDraft = { due: todayStr(), subject: null, repeat: null };
   rolloverOverdue();  // 실행 시 지난 미완료 할 일을 오늘로 이월
