@@ -420,6 +420,8 @@ async function dumpDebug(prev) {
     const fileLink = r && r.meta && r.meta.links && r.meta.links
       .map((x) => x.h).find((h) => /\/mod\/(ubfile|resource)\/view\.php\?id=\d+/.test(h || ''));
     if (fileLink) await save(label + '-file', fileLink);
+    // ubfile 파일 목록 페이지(리다이렉트 안 함) — 실제 다운로드 링크 확인용
+    await save(label + '-ubfile-index', `${LMS_ORIGIN}/mod/ubfile/index.php?id=${c.id}`);
     // 온라인 출석부(진도) — AJAX 로드 대기 후 캡처(+표 텍스트)
     await save(label + '-online', `${LMS_ORIGIN}/local/ubonattend/index.php?id=${c.id}`, 4000);
     i++;

@@ -351,7 +351,7 @@ function extractFileUrl(html, base) {
     || pick((u) => /\.(pdf|hwpx?|pptx?|docx?|xlsx?|zip|txt|csv|mp3)(\?|$)/i.test(u));
 }
 // 수동 리다이렉트 추적 GET (최종 URL/헤더/본문 확보)
-function httpGet(url, ses, maxRedirect) {
+function httpGet(url, ses, maxRedirect, referer) {
   maxRedirect = maxRedirect == null ? 5 : maxRedirect;
   return new Promise((resolve) => {
     let done = false; const finish = (r) => { if (!done) { done = true; resolve(r); } };
@@ -359,6 +359,7 @@ function httpGet(url, ses, maxRedirect) {
       let req;
       try { req = net.request({ url: u, session: ses, redirect: 'manual' }); }
       catch (e) { finish({ ok: false, error: String(e && e.message || e) }); return; }
+      if (referer) { try { req.setHeader('Referer', referer); } catch (e) {} }
       req.on('response', (res) => {
         const sc = res.statusCode;
         const loc = hdr(res.headers, 'location');
@@ -385,12 +386,18 @@ async function downloadMaterial(url, course, title) {
   let ct = hdr(r.headers, 'content-type');
   let cd = hdr(r.headers, 'content-disposition');
   let body = r.body, fromUrl = r.finalUrl;
-  // 뷰어 HTML이면 실제 파일 링크를 찾아 한 번 더 받는다
+  // 뷰어 HTML이면 실제 파일 링크를 찾아 한 번 더 받는다 (referer=뷰어페이지)
   if (/text\/html/i.test(ct) && !/attachment/i.test(cd)) {
+    const isHtml = (rr) => /text\/html/i.test(hdr(rr && rr.headers, 'content-type'));
     const fileUrl = extractFileUrl(body.toString('utf8'), r.finalUrl);
-    if (!fileUrl) return { url, ok: false, error: 'no-file-link' };
-    const r2 = await httpGet(fileUrl, ses);
-    if (!r2 || !r2.ok) return { url, ok: false, status: r2 && r2.statusCode, error: 'file-fetch-fail' };
+    let r2 = fileUrl ? await httpGet(fileUrl, ses, 5, url) : null;
+    // ubfile: view.php가 강좌로 되돌려보내거나 링크를 못 찾으면 download 파라미터로 재시도
+    if ((!r2 || !r2.ok || isHtml(r2)) && /\/mod\/ubfile\/view\.php/i.test(url)) {
+      const dl = url + (url.includes('?') ? '&' : '?') + 'download=1';
+      const rd = await httpGet(dl, ses, 5, url);
+      if (rd && rd.ok && !isHtml(rd)) r2 = rd;
+    }
+    if (!r2 || !r2.ok) return { url, ok: false, error: fileUrl ? 'file-fetch-fail' : 'no-file-link' };
     ct = hdr(r2.headers, 'content-type'); cd = hdr(r2.headers, 'content-disposition');
     body = r2.body; fromUrl = r2.finalUrl;
     if (/text\/html/i.test(ct)) return { url, ok: false, error: 'not-a-file' };

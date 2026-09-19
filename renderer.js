@@ -850,7 +850,9 @@ function renderLms() {
   }
 
   // 자료·과제 폴더 (과목별 바탕화면\Studeck 폴더 열기)
-  const courseNames = (lms.courses || []).map((c) => cleanCourse(c.name)).filter((v, i, a) => v && a.indexOf(v) === i);
+  // 자동받기에서 제외(false)한 과목은 폴더 목록에도 표시하지 않음
+  const courseNames = (lms.courses || []).filter((c) => c.track !== false && state.matCourses[c.id] !== false)
+    .map((c) => cleanCourse(c.name)).filter((v, i, a) => v && a.indexOf(v) === i);
   if (courseNames.length) {
     html += `<div class="lms-section-title"><span class="ico">${ICO.inbox}</span>자료 · 과제 폴더<span style="flex:1"></span><button class="mini-read" id="matset" title="자동 다운로드할 과목 선택">${ICO.edit}<span style="margin-left:3px;">자동받기</span></button></div>`;
     html += courseNames.map((cn) => `<div class="folder-row"><span class="subj-dot" style="background:${colorFor(cn)}"></span><span class="name" title="${escapeHtml(cn)}">${escapeHtml(cn)}</span><button class="fbtn" data-matfolder="${escapeHtml(cn)}">자료</button><button class="fbtn" data-auxfolder="${escapeHtml(cn)}">보조</button><button class="fbtn" data-asgfolder="${escapeHtml(cn)}">과제</button></div>`).join('');
