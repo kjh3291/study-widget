@@ -39,7 +39,7 @@ const state = {
   newMaterials: [],   // 최근 받은 자료(확인 전까지 유지) [{course, title, at}]
   autoDownload: true, // 새 수업 자료 자동 다운로드
   subAddOpen: null,   // 하위 항목 입력이 열린 todo id (인메모리)
-  matCourses: {},     // 과목별 자료 자동 다운로드 대상 { [courseId]: true } (기본 전부 꺼짐)
+  matCourses: {},     // 과목별 자료 자동 다운로드 { [courseId]: false } = 제외 (기본 전부 켜짐)
   statsOpenSubj: {},  // 기록 탭 과목별 완료 펼침 상태 (인메모리)
   clockFormat: 'hms', // 헤더 시계 형식 'h' | 'hm' | 'hms'
   focusGoalMin: 120,  // 하루 집중 목표(분) — 집중 화면 링 게이지 기준
@@ -916,8 +916,8 @@ function detectLmsSubmissions(prevById) {
 async function downloadNewMaterials(force) {
   const mats = (state.lms && state.lms.materials) || [];
   let fresh = mats.filter((m) => m && m.url && !state.materialsDone[m.url]);
-  // 자동(비강제)일 땐 설정에서 체크한 과목만 대상. 수동 '모두 받기'(force)는 전부.
-  if (!force) fresh = fresh.filter((m) => state.matCourses[m.courseId]);
+  // 자동(비강제)일 땐 기본 전부 받되, 체크 해제한 과목(=false)만 제외. 수동 '모두 받기'(force)는 전부.
+  if (!force) fresh = fresh.filter((m) => state.matCourses[m.courseId] !== false);
   if (!fresh.length || (!state.autoDownload && !force)) return;
   const items = fresh.map((m) => ({ url: m.url, course: cleanCourse(m.courseName) || '기타', title: m.title }));
   let results = [];
@@ -1465,13 +1465,13 @@ function openMatCoursesPopover(anchor) {
   if (!courses.length) { const em = document.createElement('div'); em.className = 'opt'; em.style.color = 'var(--muted)'; em.textContent = '추적 중인 강좌가 없어요'; popEl.appendChild(em); }
   courses.forEach((c) => {
     const o = document.createElement('label'); o.className = 'opt'; o.style.display = 'flex'; o.style.gap = '8px'; o.style.alignItems = 'center';
-    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!state.matCourses[c.id];
-    cb.onchange = () => { if (cb.checked) state.matCourses[c.id] = true; else delete state.matCourses[c.id]; persist({ matCourses: state.matCourses }); };
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = state.matCourses[c.id] !== false;
+    cb.onchange = () => { if (cb.checked) delete state.matCourses[c.id]; else state.matCourses[c.id] = false; persist({ matCourses: state.matCourses }); };
     const sp = document.createElement('span'); sp.textContent = cleanCourse(c.name); sp.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     o.appendChild(cb); o.appendChild(sp); popEl.appendChild(o);
   });
   const sep = document.createElement('div'); sep.className = 'sep'; popEl.appendChild(sep);
-  const hint = document.createElement('div'); hint.className = 'opt'; hint.style.cssText = 'cursor:default;color:var(--muted);font-size:11px;white-space:normal;'; hint.textContent = '체크한 과목만 새 자료를 자동으로 받아요.';
+  const hint = document.createElement('div'); hint.className = 'opt'; hint.style.cssText = 'cursor:default;color:var(--muted);font-size:11px;white-space:normal;'; hint.textContent = '기본은 전부 자동으로 받아요. 안 받을 과목만 체크를 해제하세요.';
   popEl.appendChild(hint);
   $('app').appendChild(popEl); placePopover(anchor);
   setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
