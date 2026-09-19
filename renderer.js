@@ -930,7 +930,9 @@ async function syncDownloads(list, doneMap, kind, force) {
   cand.forEach((m) => {
     const rec = doneMap[m.url];
     const course = cleanCourse(m.courseName) || '기타';
-    if (!rec) items.push({ url: m.url, course, title: m.title, kind, mode: 'new' });
+    // 과제인데 기록 경로가 '과제' 폴더가 아니면(옛 버그로 수업자료에 저장됨) 신규로 재수집
+    const wrongFolder = rec && rec.path && kind === 'assign' && !/[\\/]과제[\\/]/.test(rec.path);
+    if (!rec || wrongFolder) items.push({ url: m.url, course, title: m.title, kind, mode: 'new' });
     else if (force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig });
   });
   if (!items.length) return { gotNew: [], changed: [] };
@@ -1486,7 +1488,11 @@ $('day-panel').addEventListener('change', (e) => {
 function openMatCoursesPopover(anchor) {
   closePopover();
   popEl = document.createElement('div'); popEl.className = 'popover';
-  popEl.style.maxHeight = '60vh'; popEl.style.overflowY = 'auto'; popEl.style.minWidth = '180px';
+  popEl.style.maxHeight = '70vh'; popEl.style.overflowY = 'auto'; popEl.style.minWidth = '200px';
+  const head = document.createElement('div');
+  head.style.cssText = 'font-size:11px;font-weight:800;color:var(--muted);padding:4px 8px 6px;border-bottom:1px solid var(--line);margin-bottom:4px;';
+  head.textContent = '자동 다운로드할 과목';
+  popEl.appendChild(head);
   const courses = ((state.lms && state.lms.courses) || []).filter((c) => c.track !== false);
   if (!courses.length) { const em = document.createElement('div'); em.className = 'opt'; em.style.color = 'var(--muted)'; em.textContent = '추적 중인 강좌가 없어요'; popEl.appendChild(em); }
   courses.forEach((c) => {
