@@ -402,7 +402,7 @@ function activeItems() {
   state.todos.forEach((t) => {
     if (t.skipped) return;  // '넘김' 처리한 할 일은 활성 목록에서 제외
     items.push({
-      kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: t.done, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null,
+      kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: t.done, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null, deferCount: t.deferCount || 0,
     });
   });
   const asg = (state.lms && state.lms.assignments) || [];
@@ -442,7 +442,11 @@ function rolloverOverdue() {
 function todoRow(it, showSubj) {
   const b = ddayBadge(it.due, it.done, it.time);
   const badge = b ? `<span class="dday ${b.cls}">${b.label}</span>` : '';
-  const defer = (it.origDue && !it.done) ? `<span class="dday defer" title="원래 마감 ${escapeHtml(it.origDue)}">${-daysUntil(it.origDue)}일 밀림</span>` : '';
+  let defer = '';
+  if (!it.done) {
+    if (it.deferCount) defer = `<span class="dday nudge" title="내가 미룬 횟수">${it.deferCount}번 넘김</span>`;
+    else if (it.origDue) defer = `<span class="dday defer" title="원래 마감 ${escapeHtml(it.origDue)}">${-daysUntil(it.origDue)}일 밀림</span>`;
+  }
   const subj = showSubj && it.subject ? `<span class="subj-chip" title="${escapeHtml(it.subject)}">${escapeHtml(it.subject)}</span>` : '';
   const play = `<span class="play" data-play="${escapeHtml(it.text)}" data-play-subj="${escapeHtml(it.subject || '')}" title="집중 시작">${ICO.play}</span>`;
   if (it.kind === 'lms') {
@@ -488,7 +492,7 @@ function renderTodos() {
 
   // 검색 모드: 활성+완료 전체를 플랫 필터
   if (q) {
-    const all = activeItems().concat(state.todos.filter((t) => t.done).map((t) => ({ kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: true, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null })));
+    const all = activeItems().concat(state.todos.filter((t) => t.done).map((t) => ({ kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: true, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null, deferCount: t.deferCount || 0 })));
     const hit = all.filter((i) => (i.text || '').toLowerCase().includes(q) || (i.subject || '').toLowerCase().includes(q));
     $('todo-list').innerHTML = hit.length
       ? `<div class="cat-head"><span class="ico">${ICO.search}</span>검색 결과<span class="cat-count">${hit.length}</span></div>` + hit.sort(sortByDue).map((it) => todoBlock(it, true)).join('')
@@ -603,10 +607,16 @@ function closePopover() { if (popEl) { popEl.remove(); popEl = null; } document.
 function onDocDown(e) { if (popEl && !popEl.contains(e.target) && !e.target.closest('.chip')) closePopover(); }
 function placePopover(anchor) {
   const app = $('app'), ar = anchor.getBoundingClientRect(), br = app.getBoundingClientRect();
+  // 창 높이를 넘지 않게 최대 높이 제한 + 스크롤 (작은 창에서 아래가 잘리지 않게)
+  popEl.style.maxHeight = (app.clientHeight - 16) + 'px';
+  popEl.style.overflowY = 'auto';
   let left = ar.left - br.left;
   left = Math.min(left, app.clientWidth - popEl.offsetWidth - 8);
   popEl.style.left = Math.max(8, left) + 'px';
-  popEl.style.top = (ar.bottom - br.top + 4) + 'px';
+  let top = ar.bottom - br.top + 4;
+  const h = popEl.offsetHeight;
+  if (top + h > app.clientHeight - 8) top = Math.max(8, app.clientHeight - 8 - h); // 아래로 넘치면 위로 끌어올림
+  popEl.style.top = top + 'px';
 }
 function openDatePopover(anchor) {
   closePopover();
@@ -1300,6 +1310,14 @@ $('mini-list').addEventListener('click', (e) => {
   const star = e.target.closest('[data-star]'); if (star) { const t = state.todos.find((x) => x.id === star.dataset.star); if (t) { t.starred = !t.starred; saveTodos(); renderMini(); } return; }
   const open = e.target.closest('[data-open]'); if (open) window.api.lmsOpen(open.dataset.open);
 });
+// 미니 모드에서도 우클릭 메뉴/더블클릭 편집 동작하게
+$('mini-list').addEventListener('contextmenu', (e) => {
+  const row = e.target.closest('.todo'); if (!row) return;
+  e.preventDefault(); openTodoMenu(row.dataset.kind, row.dataset.id, e.clientX, e.clientY);
+});
+$('mini-list').addEventListener('dblclick', (e) => {
+  const ed = e.target.closest('[data-edit]'); if (ed) startEditTodo(ed.dataset.edit);
+});
 
 $('td-add').onclick = addTodo;
 $('td-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTodo(); });
@@ -1403,6 +1421,8 @@ $('todo-list').addEventListener('dblclick', (e) => {
 // 우클릭 컨텍스트 메뉴 (노션풍)
 function placeAtCursor(x, y) {
   const app = $('app'), br = app.getBoundingClientRect();
+  popEl.style.maxHeight = (app.clientHeight - 16) + 'px';
+  popEl.style.overflowY = 'auto';
   let left = x - br.left, top = y - br.top;
   left = Math.min(left, app.clientWidth - popEl.offsetWidth - 8);
   top = Math.min(top, app.clientHeight - popEl.offsetHeight - 8);
@@ -1412,7 +1432,8 @@ function placeAtCursor(x, y) {
 // 밀린/오늘 할 일을 나중으로 미루기(수동 due 이동, origDue는 최초 밀림일 보존)
 function deferTodo(id, dateStr) {
   const t = state.todos.find((v) => v.id === id); if (!t || !dateStr) return;
-  if (!t.origDue) t.origDue = t.due || todayStr();
+  t.deferCount = (t.deferCount || 0) + 1; // 수동 미루기 = '넘김' 횟수
+  delete t.origDue;                        // '밀림'(자동 기한초과)과 구분
   t.due = dateStr; saveTodos(); rerenderTodoAreas();
 }
 function openDeferMenu(id, x, y) {
