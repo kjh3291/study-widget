@@ -429,4 +429,38 @@ async function dumpDebug(prev) {
   return { dir, saved };
 }
 
-module.exports = { openLoginWindow, openInSession, refresh, checkSession, dumpDebug, PARTITION };
+// 로그인 세션(persist:lms)의 실제 브라우저 다운로드로 파일 받기.
+// ubfile 처럼 view.php가 '첨부 다운로드'로만 파일을 주는 경우(net.request로는 강좌로 튕김) 사용.
+function downloadToDir(url, destDir) {
+  return new Promise((resolve) => {
+    const fs = require('fs');
+    const path = require('path');
+    const ses = lmsSession();
+    let settled = false, downloading = false, win = null;
+    const finish = (r) => {
+      if (settled) return; settled = true;
+      try { ses.removeListener('will-download', onWill); } catch (e) {}
+      try { if (win && !win.isDestroyed()) win.destroy(); } catch (e) {}
+      resolve(r);
+    };
+    const onWill = (event, item) => {
+      downloading = true;
+      try {
+        fs.mkdirSync(destDir, { recursive: true });
+        let name = (item.getFilename() || 'file').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim() || 'file';
+        const ext = path.extname(name), base = name.slice(0, name.length - ext.length);
+        let dest = path.join(destDir, name), i = 2;
+        while (fs.existsSync(dest)) { dest = path.join(destDir, `${base} (${i})${ext}`); i++; }
+        item.setSavePath(dest);
+        item.once('done', (e, state) => finish({ ok: state === 'completed', path: dest, filename: path.basename(dest) }));
+      } catch (e) { finish({ ok: false, error: String(e && e.message || e) }); }
+    };
+    ses.on('will-download', onWill);
+    win = new BrowserWindow({ show: false, webPreferences: { partition: PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    win.webContents.on('did-finish-load', () => setTimeout(() => { if (!downloading) finish({ ok: false, error: 'no-download' }); }, 2500));
+    win.loadURL(url).catch(() => {});
+    setTimeout(() => { if (!downloading) finish({ ok: false, error: 'timeout' }); }, 30000);
+  });
+}
+
+module.exports = { openLoginWindow, openInSession, refresh, checkSession, dumpDebug, downloadToDir, PARTITION };

@@ -381,26 +381,28 @@ function httpGet(url, ses, maxRedirect, referer) {
 }
 async function downloadMaterial(url, course, title) {
   const ses = session.fromPartition(lms.PARTITION);
+  const dir = path.join(STUDECK_DIR(), safeName(course), '수업자료');
+  // ubfile 등 '첨부 다운로드'형은 net.request로 안 되므로 실제 브라우저 세션 다운로드로 받는다
+  const viaBrowser = async () => {
+    try {
+      const b = await lms.downloadToDir(url, dir);
+      return (b && b.ok) ? { url, ok: true, path: b.path, filename: b.filename } : { url, ok: false, error: (b && b.error) || 'browser-fail' };
+    } catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
+  };
   let r = await httpGet(url, ses);
-  if (!r || !r.ok) return { url, ok: false, status: r && r.statusCode, error: r && r.error };
+  if (!r || !r.ok) return await viaBrowser();
   let ct = hdr(r.headers, 'content-type');
   let cd = hdr(r.headers, 'content-disposition');
   let body = r.body, fromUrl = r.finalUrl;
-  // 뷰어 HTML이면 실제 파일 링크를 찾아 한 번 더 받는다 (referer=뷰어페이지)
+  // 뷰어 HTML이면 실제 파일 링크를 찾아 한 번 더 받고, 실패하면 브라우저 다운로드로 폴백
   if (/text\/html/i.test(ct) && !/attachment/i.test(cd)) {
     const isHtml = (rr) => /text\/html/i.test(hdr(rr && rr.headers, 'content-type'));
     const fileUrl = extractFileUrl(body.toString('utf8'), r.finalUrl);
-    let r2 = fileUrl ? await httpGet(fileUrl, ses, 5, url) : null;
-    // ubfile: view.php가 강좌로 되돌려보내거나 링크를 못 찾으면 download 파라미터로 재시도
-    if ((!r2 || !r2.ok || isHtml(r2)) && /\/mod\/ubfile\/view\.php/i.test(url)) {
-      const dl = url + (url.includes('?') ? '&' : '?') + 'download=1';
-      const rd = await httpGet(dl, ses, 5, url);
-      if (rd && rd.ok && !isHtml(rd)) r2 = rd;
-    }
-    if (!r2 || !r2.ok) return { url, ok: false, error: fileUrl ? 'file-fetch-fail' : 'no-file-link' };
+    const r2 = fileUrl ? await httpGet(fileUrl, ses, 5, url) : null;
+    if (!r2 || !r2.ok || isHtml(r2)) return await viaBrowser();
     ct = hdr(r2.headers, 'content-type'); cd = hdr(r2.headers, 'content-disposition');
     body = r2.body; fromUrl = r2.finalUrl;
-    if (/text\/html/i.test(ct)) return { url, ok: false, error: 'not-a-file' };
+    if (/text\/html/i.test(ct)) return await viaBrowser();
   }
   // 파일명 결정 (content-disposition → 최종 URL → 제목+확장자). .php로는 절대 저장 안 함.
   let filename = parseCdFilename(cd);
@@ -410,7 +412,6 @@ async function downloadMaterial(url, course, title) {
   }
   filename = safeName(filename);
   if (/\.(php|acl|do|jsp|htm|html)$/i.test(filename)) filename = safeName(title) + (extFromCT(ct) || '.pdf');
-  const dir = path.join(STUDECK_DIR(), safeName(course), '수업자료');
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
   const dest = uniquePath(dir, filename);
   try { fs.writeFileSync(dest, body); return { url, ok: true, path: dest, filename }; }
