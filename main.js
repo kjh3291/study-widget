@@ -333,13 +333,22 @@ const EXT_BY_CT = {
   'image/png': '.png', 'image/jpeg': '.jpg', 'text/plain': '.txt',
 };
 function extFromCT(ct) { const key = String(ct || '').split(';')[0].trim().toLowerCase(); return EXT_BY_CT[key] || ''; }
-// Moodle/coursemos 뷰어 HTML에서 실제 파일(pluginfile) 링크 추출
+// Moodle/coursemos 뷰어 HTML에서 실제 파일 링크 추출.
+// pluginfile(첨부) 우선, ubfile/일반 download.php, 파일 확장자 직링크 순.
+// 테마 로고·파비콘 등 화면 자산(pluginfile로도 서빙됨)은 제외.
 function extractFileUrl(html, base) {
-  const m = /(?:href|src|data)\s*=\s*["']([^"']*pluginfile\.php\/[^"']+)["']/i.exec(html || '');
-  if (!m) return '';
-  let u = m[1].replace(/&amp;/g, '&');
-  try { u = new URL(u, base).href; } catch (e) {}
-  return u;
+  html = html || '';
+  const urls = [];
+  const re = /(?:href|src|data)\s*=\s*["']([^"']+)["']/gi;
+  let m; while ((m = re.exec(html))) urls.push(m[1].replace(/&amp;/g, '&'));
+  const abs = (u) => { try { return new URL(u, base).href; } catch (e) { return u; } };
+  const bad = (u) => /\/theme[_/]|\/favicon|\/logo|\/pix\/|image\.php/i.test(u);
+  const pick = (test) => { const u = urls.find((x) => test(x) && !bad(x)); return u ? abs(u) : ''; };
+  return pick((u) => /pluginfile\.php\/\d+\/mod_/i.test(u))          // 진짜 첨부(mod_ubfile/mod_resource 등)
+    || pick((u) => /pluginfile\.php\//i.test(u))                     // 기타 pluginfile
+    || pick((u) => /\/mod\/ubfile\/download\.php/i.test(u))
+    || pick((u) => /download\.php\?/i.test(u))
+    || pick((u) => /\.(pdf|hwpx?|pptx?|docx?|xlsx?|zip|txt|csv|mp3)(\?|$)/i.test(u));
 }
 // 수동 리다이렉트 추적 GET (최종 URL/헤더/본문 확보)
 function httpGet(url, ses, maxRedirect) {

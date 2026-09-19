@@ -416,6 +416,10 @@ async function dumpDebug(prev) {
   for (const c of academic) {
     const label = `${String(i * 10).padStart(2, '0')}-course-${c.id}`;
     const r = await save(label, `${LMS_ORIGIN}/course/view.php?id=${c.id}`);
+    // 수업 자료(ubfile/resource) 뷰어 페이지 1개 캡처 — 실제 파일 링크 구조 확인용
+    const fileLink = r && r.meta && r.meta.links && r.meta.links
+      .map((x) => x.h).find((h) => /\/mod\/(ubfile|resource)\/view\.php\?id=\d+/.test(h || ''));
+    if (fileLink) await save(label + '-file', fileLink);
     // 온라인 출석부(진도) — AJAX 로드 대기 후 캡처(+표 텍스트)
     await save(label + '-online', `${LMS_ORIGIN}/local/ubonattend/index.php?id=${c.id}`, 4000);
     i++;
