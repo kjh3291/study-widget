@@ -421,6 +421,11 @@ async function dumpDebug(prev) {
   const dir = path.join(app.getPath('userData'), 'lms-debug');
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
 
+  // 덤프 중에는 어떤 파일도 실제로 다운로드되지 않게 취소(신용관리 등 자료 페이지가 다운로드를 유발하는 것 방지)
+  const dumpSes = lmsSession();
+  const cancelDL = (e, item) => { try { item.cancel(); } catch (_) {} };
+  dumpSes.on('will-download', cancelDL);
+
   const EXTRACT = `(function(){var out=[];document.querySelectorAll('a[href]').forEach(function(a){var h=a.href||'';if(/\\/mod\\/|\\/report\\/|\\/local\\/|board|attend|ubcompletion|notice|공지/i.test(h+' '+(a.textContent||'')))out.push({t:(a.textContent||'').replace(/\\s+/g,' ').trim().slice(0,40),h:h});});return {title:document.title,url:location.href,links:out.slice(0,150)};})()`;
   const saved = [];
   const save = async (label, url, waitMs) => {
@@ -446,11 +451,8 @@ async function dumpDebug(prev) {
   let i = 1;
   for (const c of academic) {
     const label = `${String(i * 10).padStart(2, '0')}-course-${c.id}`;
-    const r = await save(label, `${LMS_ORIGIN}/course/view.php?id=${c.id}`);
-    // 수업 자료(ubfile/resource) 뷰어 페이지 1개 캡처 — 실제 파일 링크 구조 확인용
-    const fileLink = r && r.meta && r.meta.links && r.meta.links
-      .map((x) => x.h).find((h) => /\/mod\/(ubfile|resource)\/view\.php\?id=\d+/.test(h || ''));
-    if (fileLink) await save(label + '-file', fileLink);
+    await save(label, `${LMS_ORIGIN}/course/view.php?id=${c.id}`);
+    // (ubfile 뷰어 페이지 캡처는 실제 파일 다운로드를 유발하므로 제거)
     // ubfile 파일 목록 페이지(리다이렉트 안 함) — 실제 다운로드 링크 확인용
     await save(label + '-ubfile-index', `${LMS_ORIGIN}/mod/ubfile/index.php?id=${c.id}`);
     // 과제 목록 + 제출 페이지 1개 — 제출 첨부 링크 구조 확인용
@@ -462,6 +464,7 @@ async function dumpDebug(prev) {
     await save(label + '-online', `${LMS_ORIGIN}/local/ubonattend/index.php?id=${c.id}`, 4000);
     i++;
   }
+  try { dumpSes.removeListener('will-download', cancelDL); } catch (e) {}
   return { dir, saved };
 }
 
