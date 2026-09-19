@@ -429,12 +429,13 @@ async function dumpDebug(prev) {
   return { dir, saved };
 }
 
-// 로그인 세션(persist:lms)의 실제 브라우저 다운로드로 파일 받기.
+// 로그인 세션(persist:lms)의 실제 브라우저 다운로드로 파일을 '임시 경로'에 받기.
 // ubfile 처럼 view.php가 '첨부 다운로드'로만 파일을 주는 경우(net.request로는 강좌로 튕김) 사용.
-function downloadToDir(url, destDir) {
+// 호출측(main)이 임시파일을 읽어 해시 비교 후 최종 위치에 저장/덮어쓰기 결정.
+function downloadToTemp(url) {
   return new Promise((resolve) => {
-    const fs = require('fs');
     const path = require('path');
+    const os = require('os');
     const ses = lmsSession();
     let settled = false, downloading = false, win = null;
     const finish = (r) => {
@@ -446,13 +447,10 @@ function downloadToDir(url, destDir) {
     const onWill = (event, item) => {
       downloading = true;
       try {
-        fs.mkdirSync(destDir, { recursive: true });
-        let name = (item.getFilename() || 'file').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim() || 'file';
-        const ext = path.extname(name), base = name.slice(0, name.length - ext.length);
-        let dest = path.join(destDir, name), i = 2;
-        while (fs.existsSync(dest)) { dest = path.join(destDir, `${base} (${i})${ext}`); i++; }
-        item.setSavePath(dest);
-        item.once('done', (e, state) => finish({ ok: state === 'completed', path: dest, filename: path.basename(dest) }));
+        const name = (item.getFilename() || 'file').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim() || 'file';
+        const tmp = path.join(os.tmpdir(), `studeck-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${name}`);
+        item.setSavePath(tmp);
+        item.once('done', (e, state) => finish({ ok: state === 'completed', path: tmp, filename: name }));
       } catch (e) { finish({ ok: false, error: String(e && e.message || e) }); }
     };
     ses.on('will-download', onWill);
@@ -463,4 +461,4 @@ function downloadToDir(url, destDir) {
   });
 }
 
-module.exports = { openLoginWindow, openInSession, refresh, checkSession, dumpDebug, downloadToDir, PARTITION };
+module.exports = { openLoginWindow, openInSession, refresh, checkSession, dumpDebug, downloadToTemp, PARTITION };

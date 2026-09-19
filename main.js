@@ -379,47 +379,60 @@ function httpGet(url, ses, maxRedirect, referer) {
     go(url, maxRedirect);
   });
 }
-async function downloadMaterial(url, course, title) {
+const sha1 = (buf) => require('crypto').createHash('sha1').update(buf).digest('hex');
+// url 자료의 바이트를 얻는다: net.request 우선, 실패 시 브라우저 세션 다운로드(임시파일) 폴백.
+async function fetchMaterialBytes(url, title) {
   const ses = session.fromPartition(lms.PARTITION);
+  let body = null, ct = '', cd = '', fromUrl = url;
+  const r = await httpGet(url, ses);
+  if (r && r.ok) {
+    ct = hdr(r.headers, 'content-type'); cd = hdr(r.headers, 'content-disposition'); body = r.body; fromUrl = r.finalUrl;
+    if (/text\/html/i.test(ct) && !/attachment/i.test(cd)) {
+      const isHtml = (rr) => /text\/html/i.test(hdr(rr && rr.headers, 'content-type'));
+      const fileUrl = extractFileUrl(body.toString('utf8'), r.finalUrl);
+      const r2 = fileUrl ? await httpGet(fileUrl, ses, 5, url) : null;
+      if (!r2 || !r2.ok || isHtml(r2)) body = null;
+      else { ct = hdr(r2.headers, 'content-type'); cd = hdr(r2.headers, 'content-disposition'); body = r2.body; fromUrl = r2.finalUrl; if (/text\/html/i.test(ct)) body = null; }
+    }
+  }
+  if (body) {
+    let filename = parseCdFilename(cd);
+    if (!filename) { const u = decodeURIComponent((fromUrl.split('?')[0].split('/').pop()) || ''); filename = (/\.[a-z0-9]{2,5}$/i.test(u) && !/\.(php|acl|do|jsp)$/i.test(u)) ? u : (safeName(title) + (extFromCT(ct) || '.pdf')); }
+    filename = safeName(filename);
+    if (/\.(php|acl|do|jsp|htm|html)$/i.test(filename)) filename = safeName(title) + (extFromCT(ct) || '.pdf');
+    return { body, filename };
+  }
+  // 브라우저 세션 다운로드 폴백(ubfile 등)
+  try {
+    const b = await lms.downloadToTemp(url);
+    if (b && b.ok) { const buf = fs.readFileSync(b.path); try { fs.unlinkSync(b.path); } catch (e) {} return { body: buf, filename: safeName(b.filename || (safeName(title) + '.pdf')) }; }
+  } catch (e) {}
+  return null;
+}
+// mode: 'new'(신규) | 'recheck'(변경 감지). recheck는 dest(기존 경로)·prevSig 전달.
+async function downloadMaterial(url, course, title, opts) {
+  opts = opts || {};
+  const got = await fetchMaterialBytes(url, title);
+  if (!got || !got.body) return { url, ok: false, error: 'download-fail' };
+  const sig = sha1(got.body);
+  // 재확인: 내용 같으면 그대로 두고(중복 방지), 다르면 같은 파일 덮어쓰기(교수 수정본 반영)
+  if (opts.mode === 'recheck' && opts.dest) {
+    if (opts.prevSig && opts.prevSig === sig && fs.existsSync(opts.dest)) return { url, ok: true, path: opts.dest, filename: path.basename(opts.dest), sig, changed: false };
+    try { fs.mkdirSync(path.dirname(opts.dest), { recursive: true }); fs.writeFileSync(opts.dest, got.body); return { url, ok: true, path: opts.dest, filename: path.basename(opts.dest), sig, changed: !!opts.prevSig }; }
+    catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
+  }
+  // 신규: 과목별 수업자료 폴더에 저장(다른 파일과 이름 충돌 시에만 (2))
   const dir = path.join(STUDECK_DIR(), safeName(course), '수업자료');
-  // ubfile 등 '첨부 다운로드'형은 net.request로 안 되므로 실제 브라우저 세션 다운로드로 받는다
-  const viaBrowser = async () => {
-    try {
-      const b = await lms.downloadToDir(url, dir);
-      return (b && b.ok) ? { url, ok: true, path: b.path, filename: b.filename } : { url, ok: false, error: (b && b.error) || 'browser-fail' };
-    } catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
-  };
-  let r = await httpGet(url, ses);
-  if (!r || !r.ok) return await viaBrowser();
-  let ct = hdr(r.headers, 'content-type');
-  let cd = hdr(r.headers, 'content-disposition');
-  let body = r.body, fromUrl = r.finalUrl;
-  // 뷰어 HTML이면 실제 파일 링크를 찾아 한 번 더 받고, 실패하면 브라우저 다운로드로 폴백
-  if (/text\/html/i.test(ct) && !/attachment/i.test(cd)) {
-    const isHtml = (rr) => /text\/html/i.test(hdr(rr && rr.headers, 'content-type'));
-    const fileUrl = extractFileUrl(body.toString('utf8'), r.finalUrl);
-    const r2 = fileUrl ? await httpGet(fileUrl, ses, 5, url) : null;
-    if (!r2 || !r2.ok || isHtml(r2)) return await viaBrowser();
-    ct = hdr(r2.headers, 'content-type'); cd = hdr(r2.headers, 'content-disposition');
-    body = r2.body; fromUrl = r2.finalUrl;
-    if (/text\/html/i.test(ct)) return await viaBrowser();
-  }
-  // 파일명 결정 (content-disposition → 최종 URL → 제목+확장자). .php로는 절대 저장 안 함.
-  let filename = parseCdFilename(cd);
-  if (!filename) {
-    const u = decodeURIComponent((fromUrl.split('?')[0].split('/').pop()) || '');
-    filename = (/\.[a-z0-9]{2,5}$/i.test(u) && !/\.(php|acl|do|jsp)$/i.test(u)) ? u : (safeName(title) + (extFromCT(ct) || '.pdf'));
-  }
-  filename = safeName(filename);
-  if (/\.(php|acl|do|jsp|htm|html)$/i.test(filename)) filename = safeName(title) + (extFromCT(ct) || '.pdf');
-  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
-  const dest = uniquePath(dir, filename);
-  try { fs.writeFileSync(dest, body); return { url, ok: true, path: dest, filename }; }
-  catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const dest = uniquePath(dir, got.filename);
+    fs.writeFileSync(dest, got.body);
+    return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false };
+  } catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
 }
 ipcMain.handle('lms-download', async (_e, items) => {
   const out = [];
-  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title));
+  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title, { mode: it.mode, dest: it.dest, prevSig: it.sig }));
   return out;
 });
 const CAT_DIR = { materials: '수업자료', aux: '보조자료', assignment: '과제' };

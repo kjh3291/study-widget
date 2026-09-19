@@ -812,7 +812,7 @@ function renderLms() {
   // 새로 받은 수업 자료 패널 (확인 전까지 유지)
   if (state.newMaterials && state.newMaterials.length) {
     html += `<div class="newmat"><div class="newmat-head"><span class="ico">${ICO.inbox}</span><b>새로 받은 자료</b><span class="acc-count">${state.newMaterials.length}</span><button class="mini-read" id="clear-newmat" title="목록 지우기">확인</button></div>`;
-    html += state.newMaterials.slice(0, 20).map((m) => `<div class="newmat-row"><span class="subj-dot" style="background:${colorFor(m.course)}"></span><span class="nm-course" title="${escapeHtml(m.course)}">${escapeHtml(m.course)}</span><span class="nm-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</span><button class="fbtn" data-matfolder="${escapeHtml(m.course)}">폴더</button></div>`).join('');
+    html += state.newMaterials.slice(0, 20).map((m) => `<div class="newmat-row"><span class="subj-dot" style="background:${colorFor(m.course)}"></span><span class="nm-course" title="${escapeHtml(m.course)}">${escapeHtml(m.course)}</span>${m.changed ? '<span class="lms-badge" style="background:var(--danger-soft);color:var(--danger);">수정</span>' : ''}<span class="nm-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</span><button class="fbtn" data-matfolder="${escapeHtml(m.course)}">폴더</button></div>`).join('');
     html += `</div>`;
   }
   // 자동 다운로드 OFF일 때 안 받은 자료 안내
@@ -917,29 +917,41 @@ function detectLmsSubmissions(prevById) {
 // 새 수업 자료를 감지해 자동 다운로드(바탕화면\Studeck\수업자료\과목) + "새로 받은 자료"에 기록.
 async function downloadNewMaterials(force) {
   const mats = (state.lms && state.lms.materials) || [];
-  let fresh = mats.filter((m) => m && m.url && !state.materialsDone[m.url]);
-  // 자동(비강제)일 땐 기본 전부 받되, 체크 해제한 과목(=false)만 제외. 수동 '모두 받기'(force)는 전부.
-  if (!force) fresh = fresh.filter((m) => state.matCourses[m.courseId] !== false);
-  if (!fresh.length || (!state.autoDownload && !force)) return;
-  const items = fresh.map((m) => ({ url: m.url, course: cleanCourse(m.courseName) || '기타', title: m.title }));
+  if (!state.autoDownload && !force) return;
+  const DAY = 24 * 60 * 60 * 1000, now = Date.now();
+  let cand = mats.filter((m) => m && m.url);
+  if (!force) cand = cand.filter((m) => state.matCourses[m.courseId] !== false); // 제외 과목만 빼고 전부
+  // 신규(기록 없음) + 재확인(하루 지난 것): 재확인은 내용 바뀌면 교체
+  const items = [];
+  cand.forEach((m) => {
+    const rec = state.materialsDone[m.url];
+    const course = cleanCourse(m.courseName) || '기타';
+    if (!rec) items.push({ url: m.url, course, title: m.title, mode: 'new' });
+    else if (force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, mode: 'recheck', dest: rec.path, sig: rec.sig });
+  });
+  if (!items.length) return;
+  const byUrl = {}; items.forEach((it) => (byUrl[it.url] = it));
   let results = [];
   try { results = (await window.api.lmsDownload(items)) || []; } catch (e) { return; }
-  const byUrl = {}; results.forEach((r) => { if (r) byUrl[r.url] = r; });
-  const got = [];
-  fresh.forEach((m) => {
-    const r = byUrl[m.url];
-    if (r && r.ok) {
-      const course = cleanCourse(m.courseName) || '기타';
-      state.materialsDone[m.url] = { course, title: r.filename || m.title, path: r.path, at: Date.now() };
-      got.push({ course, title: r.filename || m.title, at: Date.now() });
-    }
+  const gotNew = [], changed = [];
+  results.forEach((r) => {
+    if (!r || !r.ok) return;
+    const it = byUrl[r.url]; if (!it) return;
+    const prev = state.materialsDone[r.url];
+    state.materialsDone[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now };
+    if (!prev) gotNew.push({ course: it.course, title: r.filename || it.title, at: now });
+    else if (r.changed) changed.push({ course: it.course, title: r.filename || it.title, at: now });
   });
-  if (!got.length) return;
-  state.newMaterials = [...got, ...state.newMaterials].slice(0, 50);
+  if (!gotNew.length && !changed.length) { persist({ materialsDone: state.materialsDone }); return; }
+  const tagged = [...changed.map((g) => ({ ...g, changed: true })), ...gotNew];
+  state.newMaterials = [...tagged, ...state.newMaterials].slice(0, 50);
   persist({ materialsDone: state.materialsDone, newMaterials: state.newMaterials });
-  const f = got[0];
-  showToast(got.length === 1 ? `📁 새 자료 · ${f.course} · ${f.title}` : `📁 새 수업자료 ${got.length}개 받음`);
-  window.api.notify('새 수업자료 ' + got.length + '개', got.slice(0, 5).map((g) => `${g.course} · ${g.title}`).join('\n'));
+  const n = gotNew.length + changed.length;
+  const parts = [];
+  if (gotNew.length) parts.push(`새 자료 ${gotNew.length}개`);
+  if (changed.length) parts.push(`수정된 자료 ${changed.length}개`);
+  showToast(`📁 ${parts.join(' · ')}`);
+  window.api.notify('수업자료 ' + n + '개 업데이트', tagged.slice(0, 5).map((g) => `${g.changed ? '[수정] ' : ''}${g.course} · ${g.title}`).join('\n'));
   updateLmsBadge();
   if (currentTab === 'lms') renderLms();
 }
