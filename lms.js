@@ -362,15 +362,16 @@ async function refresh(prev) {
   }));
   if (needLogin) return { needLogin: true };
 
-  // 제출 완료한 과제의 첨부파일 수집(제출한 것만) — 과목별 '과제' 폴더로 저장하기 위함
+  // 과제 제출 첨부 수집: '제출완료' 판정에 의존하지 않고 모든 과제의 제출 페이지를 열어
+  // 내가 올린 첨부가 있으면(=제출한 것) 수집한다 → 과목별 '과제' 폴더로 저장.
   const assignFiles = [];
-  const submitted = assignments.filter((a) => a.submitted && a.url);
-  if (submitted.length) {
-    const aw = getPool(Math.min(3, submitted.length));
+  const withUrl = assignments.filter((a) => a.url);
+  if (withUrl.length) {
+    const aw = getPool(Math.min(3, withUrl.length));
     let k = 0;
     await Promise.all(aw.map(async (w) => {
-      while (k < submitted.length) {
-        const a = submitted[k++];
+      while (k < withUrl.length) {
+        const a = withUrl[k++];
         const fr = await scrapeWith(w.webContents, a.url, FN_ASSIGN_FILES);
         (fr && fr.data || []).forEach((f) => {
           if (f && f.url) assignFiles.push({ id: f.url, courseId: a.courseId, courseName: a.courseName, assignTitle: a.title, title: f.title || a.title, url: f.url });
@@ -467,6 +468,10 @@ async function dumpDebug(prev) {
     await save(label + '-online', `${LMS_ORIGIN}/local/ubonattend/index.php?id=${c.id}`, 4000);
     i++;
   }
+  // 실제 제출 페이지 1개 캡처(내 과제 URL에서) — 제출 첨부 링크 구조 확정용
+  const prevAsg = (prev && prev.assignments) || [];
+  const anAsg = prevAsg.find((a) => a && a.url && a.submitted) || prevAsg.find((a) => a && a.url);
+  if (anAsg) await save('90-assign-view', anAsg.url);
   try { dumpSes.removeListener('will-download', cancelDL); } catch (e) {}
   return { dir, saved };
 }
