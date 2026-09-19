@@ -289,7 +289,7 @@ const FN_ASSIGN_FILES = `
   var out=[], seen={};
   document.querySelectorAll('a[href*="pluginfile.php"]').forEach(function(a){
     var h=a.href||'';
-    if(!/assignsubmission_file|submission_files|mod_assign/i.test(h)) return;
+    if(!/assignsubmission_file|submission_files/i.test(h)) return;
     if(/theme|\\/pix\\/|favicon|logo/i.test(h)) return;
     if(seen[h]) return; seen[h]=1;
     out.push({ title:(a.textContent||'').replace(/\\s+/g,' ').trim(), url:h });

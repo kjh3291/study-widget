@@ -1647,6 +1647,8 @@ function miniPrompt(title) {
   state.lmsDone = (cfg.lmsDone && typeof cfg.lmsDone === 'object') ? cfg.lmsDone : {};
   state.materialsDone = (cfg.materialsDone && typeof cfg.materialsDone === 'object') ? cfg.materialsDone : {};
   state.assignDone = (cfg.assignDone && typeof cfg.assignDone === 'object') ? cfg.assignDone : {};
+  // v1.1.10: 과제 파일이 잘못된 폴더(수업자료)로 저장되던 기록 1회 초기화 → 다음 새로고침에 '과제' 폴더로 재수집
+  if (!cfg.assignFix1) { state.assignDone = {}; persist({ assignDone: {}, assignFix1: true }); }
   // v1.0.11: 예전 잘못 받은 기록(view.php HTML) 1회 초기화 → 다음 새로고침에 올바른 파일로 재다운로드
   if (!cfg.materialsFix2) { state.materialsDone = {}; persist({ materialsDone: {}, materialsFix2: true }); }
   state.newMaterials = Array.isArray(cfg.newMaterials) ? cfg.newMaterials : [];

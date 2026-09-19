@@ -434,7 +434,7 @@ async function downloadMaterial(url, course, title, opts) {
 }
 ipcMain.handle('lms-download', async (_e, items) => {
   const out = [];
-  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title, { mode: it.mode, dest: it.dest, prevSig: it.sig }));
+  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title, { mode: it.mode, dest: it.dest, prevSig: it.sig, kind: it.kind }));
   return out;
 });
 const CAT_DIR = { materials: '수업자료', aux: '보조자료', assignment: '과제' };
