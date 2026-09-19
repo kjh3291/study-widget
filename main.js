@@ -421,13 +421,15 @@ async function downloadMaterial(url, course, title, opts) {
     try { fs.mkdirSync(path.dirname(opts.dest), { recursive: true }); fs.writeFileSync(opts.dest, got.body); return { url, ok: true, path: opts.dest, filename: path.basename(opts.dest), sig, changed: !!opts.prevSig }; }
     catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
   }
-  // 신규: 과목별 수업자료 폴더에 저장(다른 파일과 이름 충돌 시에만 (2))
-  const dir = path.join(STUDECK_DIR(), safeName(course), '수업자료');
+  // 신규: 과목별 폴더(수업자료/과제)에 저장. 같은 이름 파일이 이미 있으면 다운로드/저장 안 함(중복 방지),
+  // 삭제돼서 없으면 저장(재다운로드). '(2)' 사본을 만들지 않는다.
+  const dir = path.join(STUDECK_DIR(), safeName(course), opts.kind === 'assign' ? '과제' : '수업자료');
   try {
     fs.mkdirSync(dir, { recursive: true });
-    const dest = uniquePath(dir, got.filename);
+    const dest = path.join(dir, got.filename);
+    if (fs.existsSync(dest)) return { url, ok: true, path: dest, filename: got.filename, sig, changed: false, existed: true };
     fs.writeFileSync(dest, got.body);
-    return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false };
+    return { url, ok: true, path: dest, filename: got.filename, sig, changed: false };
   } catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
 }
 ipcMain.handle('lms-download', async (_e, items) => {

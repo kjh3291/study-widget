@@ -281,6 +281,19 @@ function parseKTime(s) {
   return `${String(+m[1]).padStart(2, '0')}:${m[2]}`;
 }
 
+// 과제 제출 페이지(mod/assign/view.php)에서 '내가 제출한 첨부파일' 링크 수집
+const FN_ASSIGN_FILES = `
+  var out=[], seen={};
+  document.querySelectorAll('a[href*="pluginfile.php"]').forEach(function(a){
+    var h=a.href||'';
+    if(!/assignsubmission_file|submission_files|mod_assign/i.test(h)) return;
+    if(/theme|\\/pix\\/|favicon|logo/i.test(h)) return;
+    if(seen[h]) return; seen[h]=1;
+    out.push({ title:(a.textContent||'').replace(/\\s+/g,' ').trim(), url:h });
+  });
+  return out;
+`;
+
 // ---------- 전체 새로고침 ----------
 // prev: 기존 config.lms (track 플래그/이전 공지 비교용). 반환: 새 lms 객체 or {needLogin:true}
 async function refresh(prev) {
@@ -346,6 +359,23 @@ async function refresh(prev) {
   }));
   if (needLogin) return { needLogin: true };
 
+  // 제출 완료한 과제의 첨부파일 수집(제출한 것만) — 과목별 '과제' 폴더로 저장하기 위함
+  const assignFiles = [];
+  const submitted = assignments.filter((a) => a.submitted && a.url);
+  if (submitted.length) {
+    const aw = getPool(Math.min(3, submitted.length));
+    let k = 0;
+    await Promise.all(aw.map(async (w) => {
+      while (k < submitted.length) {
+        const a = submitted[k++];
+        const fr = await scrapeWith(w.webContents, a.url, FN_ASSIGN_FILES);
+        (fr && fr.data || []).forEach((f) => {
+          if (f && f.url) assignFiles.push({ id: f.url, courseId: a.courseId, courseName: a.courseName, assignTitle: a.title, title: f.title || a.title, url: f.url });
+        });
+      }
+    }));
+  }
+
   // 전체(시스템) 공지: 사이트 공통 게시판(id=17)
   const generalNotices = [];
   const gSeen = new Map();
@@ -360,6 +390,7 @@ async function refresh(prev) {
     courseNotices,
     generalNotices,
     materials,
+    assignFiles,
     lastSync: Date.now(),
     sessionValid: true,
   };
@@ -422,6 +453,11 @@ async function dumpDebug(prev) {
     if (fileLink) await save(label + '-file', fileLink);
     // ubfile 파일 목록 페이지(리다이렉트 안 함) — 실제 다운로드 링크 확인용
     await save(label + '-ubfile-index', `${LMS_ORIGIN}/mod/ubfile/index.php?id=${c.id}`);
+    // 과제 목록 + 제출 페이지 1개 — 제출 첨부 링크 구조 확인용
+    const ar = await save(label + '-assign-index', `${LMS_ORIGIN}/mod/assign/index.php?id=${c.id}`);
+    const assignLink = ar && ar.meta && ar.meta.links && ar.meta.links
+      .map((x) => x.h).find((h) => /\/mod\/assign\/view\.php\?id=\d+/.test(h || ''));
+    if (assignLink) await save(label + '-assign-view', assignLink);
     // 온라인 출석부(진도) — AJAX 로드 대기 후 캡처(+표 텍스트)
     await save(label + '-online', `${LMS_ORIGIN}/local/ubonattend/index.php?id=${c.id}`, 4000);
     i++;

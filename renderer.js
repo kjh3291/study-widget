@@ -35,7 +35,8 @@ const state = {
   mini: false,        // 미니 모드
   rolloverOverdue: true,  // 지난 미완료 할 일을 오늘로 자동 이월
   lmsDone: {},        // 제출 완료된 LMS 과제 기록 { id: {title, courseName, doneAt} }
-  materialsDone: {},  // 다운로드한 수업 자료 { url: {course, title, path, at} }
+  materialsDone: {},  // 다운로드한 수업 자료 { url: {course, title, path, at, sig, checkedAt} }
+  assignDone: {},     // 다운로드한 제출 과제 파일 { url: {...} }
   newMaterials: [],   // 최근 받은 자료(확인 전까지 유지) [{course, title, at}]
   autoDownload: true, // 새 수업 자료 자동 다운로드
   subAddOpen: null,   // 하위 항목 입력이 열린 todo id (인메모리)
@@ -812,7 +813,11 @@ function renderLms() {
   // 새로 받은 수업 자료 패널 (확인 전까지 유지)
   if (state.newMaterials && state.newMaterials.length) {
     html += `<div class="newmat"><div class="newmat-head"><span class="ico">${ICO.inbox}</span><b>새로 받은 자료</b><span class="acc-count">${state.newMaterials.length}</span><button class="mini-read" id="clear-newmat" title="목록 지우기">확인</button></div>`;
-    html += state.newMaterials.slice(0, 20).map((m) => `<div class="newmat-row"><span class="subj-dot" style="background:${colorFor(m.course)}"></span><span class="nm-course" title="${escapeHtml(m.course)}">${escapeHtml(m.course)}</span>${m.changed ? '<span class="lms-badge" style="background:var(--danger-soft);color:var(--danger);">수정</span>' : ''}<span class="nm-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</span><button class="fbtn" data-matfolder="${escapeHtml(m.course)}">폴더</button></div>`).join('');
+    html += state.newMaterials.slice(0, 20).map((m) => {
+      const isAsg = m.kind === 'assign';
+      const tag = m.changed ? '<span class="lms-badge" style="background:var(--danger-soft);color:var(--danger);">수정</span>' : (isAsg ? '<span class="lms-badge">과제</span>' : '');
+      return `<div class="newmat-row"><span class="subj-dot" style="background:${colorFor(m.course)}"></span><span class="nm-course" title="${escapeHtml(m.course)}">${escapeHtml(m.course)}</span>${tag}<span class="nm-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</span><button class="fbtn" data-${isAsg ? 'asgfolder' : 'matfolder'}="${escapeHtml(m.course)}">폴더</button></div>`;
+    }).join('');
     html += `</div>`;
   }
   // 자동 다운로드 OFF일 때 안 받은 자료 안내
@@ -915,43 +920,50 @@ function detectLmsSubmissions(prevById) {
 }
 
 // 새 수업 자료를 감지해 자동 다운로드(바탕화면\Studeck\수업자료\과목) + "새로 받은 자료"에 기록.
-async function downloadNewMaterials(force) {
-  const mats = (state.lms && state.lms.materials) || [];
-  if (!state.autoDownload && !force) return;
+// 공용 동기화: list의 파일들을 doneMap 기준으로 신규 다운로드 + 하루1회 변경확인.
+// 파일명 중복은 main에서 방지(existed), 변경분은 같은 위치 덮어쓰기(changed).
+async function syncDownloads(list, doneMap, kind, force) {
   const DAY = 24 * 60 * 60 * 1000, now = Date.now();
-  let cand = mats.filter((m) => m && m.url);
+  let cand = (list || []).filter((m) => m && m.url);
   if (!force) cand = cand.filter((m) => state.matCourses[m.courseId] !== false); // 제외 과목만 빼고 전부
-  // 신규(기록 없음) + 재확인(하루 지난 것): 재확인은 내용 바뀌면 교체
   const items = [];
   cand.forEach((m) => {
-    const rec = state.materialsDone[m.url];
+    const rec = doneMap[m.url];
     const course = cleanCourse(m.courseName) || '기타';
-    if (!rec) items.push({ url: m.url, course, title: m.title, mode: 'new' });
-    else if (force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, mode: 'recheck', dest: rec.path, sig: rec.sig });
+    if (!rec) items.push({ url: m.url, course, title: m.title, kind, mode: 'new' });
+    else if (force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig });
   });
-  if (!items.length) return;
+  if (!items.length) return { gotNew: [], changed: [] };
   const byUrl = {}; items.forEach((it) => (byUrl[it.url] = it));
   let results = [];
-  try { results = (await window.api.lmsDownload(items)) || []; } catch (e) { return; }
+  try { results = (await window.api.lmsDownload(items)) || []; } catch (e) { return { gotNew: [], changed: [] }; }
   const gotNew = [], changed = [];
   results.forEach((r) => {
     if (!r || !r.ok) return;
     const it = byUrl[r.url]; if (!it) return;
-    const prev = state.materialsDone[r.url];
-    state.materialsDone[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now };
-    if (!prev) gotNew.push({ course: it.course, title: r.filename || it.title, at: now });
-    else if (r.changed) changed.push({ course: it.course, title: r.filename || it.title, at: now });
+    const prev = doneMap[r.url];
+    doneMap[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now };
+    if (!prev) { if (!r.existed) gotNew.push({ course: it.course, title: r.filename || it.title, at: now, kind }); }
+    else if (r.changed) changed.push({ course: it.course, title: r.filename || it.title, at: now, kind, changed: true });
   });
-  if (!gotNew.length && !changed.length) { persist({ materialsDone: state.materialsDone }); return; }
-  const tagged = [...changed.map((g) => ({ ...g, changed: true })), ...gotNew];
+  return { gotNew, changed };
+}
+async function downloadNewMaterials(force) {
+  if (!state.autoDownload && !force) return;
+  const mat = await syncDownloads((state.lms && state.lms.materials) || [], state.materialsDone, 'material', force);
+  const asg = await syncDownloads((state.lms && state.lms.assignFiles) || [], state.assignDone, 'assign', force);
+  const gotNew = [...mat.gotNew, ...asg.gotNew], changed = [...mat.changed, ...asg.changed];
+  if (!gotNew.length && !changed.length) { persist({ materialsDone: state.materialsDone, assignDone: state.assignDone }); return; }
+  const tagged = [...changed, ...gotNew];
   state.newMaterials = [...tagged, ...state.newMaterials].slice(0, 50);
-  persist({ materialsDone: state.materialsDone, newMaterials: state.newMaterials });
-  const n = gotNew.length + changed.length;
+  persist({ materialsDone: state.materialsDone, assignDone: state.assignDone, newMaterials: state.newMaterials });
   const parts = [];
-  if (gotNew.length) parts.push(`새 자료 ${gotNew.length}개`);
-  if (changed.length) parts.push(`수정된 자료 ${changed.length}개`);
+  const newMat = gotNew.filter((g) => g.kind !== 'assign').length, newAsg = gotNew.filter((g) => g.kind === 'assign').length;
+  if (newMat) parts.push(`새 자료 ${newMat}개`);
+  if (newAsg) parts.push(`새 과제 ${newAsg}개`);
+  if (changed.length) parts.push(`수정 ${changed.length}개`);
   showToast(`📁 ${parts.join(' · ')}`);
-  window.api.notify('수업자료 ' + n + '개 업데이트', tagged.slice(0, 5).map((g) => `${g.changed ? '[수정] ' : ''}${g.course} · ${g.title}`).join('\n'));
+  window.api.notify('LMS 파일 ' + tagged.length + '개 업데이트', tagged.slice(0, 5).map((g) => `${g.changed ? '[수정] ' : g.kind === 'assign' ? '[과제] ' : ''}${g.course} · ${g.title}`).join('\n'));
   updateLmsBadge();
   if (currentTab === 'lms') renderLms();
 }
@@ -1634,6 +1646,7 @@ function miniPrompt(title) {
   $('inp-rollover').checked = state.rolloverOverdue;
   state.lmsDone = (cfg.lmsDone && typeof cfg.lmsDone === 'object') ? cfg.lmsDone : {};
   state.materialsDone = (cfg.materialsDone && typeof cfg.materialsDone === 'object') ? cfg.materialsDone : {};
+  state.assignDone = (cfg.assignDone && typeof cfg.assignDone === 'object') ? cfg.assignDone : {};
   // v1.0.11: 예전 잘못 받은 기록(view.php HTML) 1회 초기화 → 다음 새로고침에 올바른 파일로 재다운로드
   if (!cfg.materialsFix2) { state.materialsDone = {}; persist({ materialsDone: {}, materialsFix2: true }); }
   state.newMaterials = Array.isArray(cfg.newMaterials) ? cfg.newMaterials : [];
