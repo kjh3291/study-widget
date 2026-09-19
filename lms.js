@@ -178,7 +178,10 @@ const FN_COURSES = `
     if (!m) return;
     var id = m[1];
     var name = (a.textContent || '').replace(/\\s+/g,' ').trim();
-    if (name && name.length > 1 && !map[id]) map[id] = name;
+    // 강좌 카드가 이미지-only인 경우 이름이 img alt / title 에만 있음 → 그것도 읽는다
+    if (!name || name.length < 2) { var img = a.querySelector('img[alt]'); if (img) name = (img.getAttribute('alt') || '').replace(/\\s+/g,' ').trim(); }
+    if (!name || name.length < 2) { name = (a.getAttribute('title') || '').replace(/\\s+/g,' ').trim(); }
+    if (name && name.length > 1) { if (!map[id] || map[id].length < name.length) map[id] = name; }
   });
   return Object.keys(map).map(function(id){ return { id: id, name: map[id] }; });
 `;
