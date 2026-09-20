@@ -287,16 +287,27 @@ function ddayBadge(dateStr, done, timeStr) {
   const days = daysUntil(dateStr);
   if (done) return { label: '완료', cls: 'done' };
   if (days === null) return null;
-  if (days > 0) return { label: `D-${days}`, cls: days <= 3 ? 'soon' : '' };
   if (days < 0) return { label: `지남 ${-days}일`, cls: 'over' };
+  // 실제 마감 시각 기준으로 24시간 미만이면 '시간/분 남음'(날짜상 내일이어도)
   const due = dueDateTime(dateStr, timeStr);
-  const ms = due ? due - Date.now() : 0;
-  if (ms <= 0) return { label: '마감 지남', cls: 'over' };
-  const mins = Math.floor(ms / 60000);
-  if (mins < 60) return { label: `${mins}분 남음`, cls: 'today' };
-  const hrs = Math.floor(mins / 60), rem = mins % 60;
-  return { label: rem ? `${hrs}시간 ${rem}분 남음` : `${hrs}시간 남음`, cls: 'today' };
+  const ms = due ? due - Date.now() : null;
+  if (ms !== null) {
+    if (ms <= 0) return { label: '마감 지남', cls: 'over' };
+    const mins = Math.floor(ms / 60000);
+    if (mins < 60) return { label: `${mins}분 남음`, cls: 'today' };
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) { const rem = mins % 60; return { label: rem ? `${hrs}시간 ${rem}분 남음` : `${hrs}시간 남음`, cls: 'today' }; }
+  }
+  return { label: `D-${days}`, cls: days <= 3 ? 'soon' : '' };
 }
+// 한국 공휴일 (고정 + 음력/대체 2025~2027)
+const FIXED_HOLIDAYS = { '01-01': '신정', '03-01': '삼일절', '05-05': '어린이날', '06-06': '현충일', '08-15': '광복절', '10-03': '개천절', '10-09': '한글날', '12-25': '크리스마스' };
+const LUNAR_HOLIDAYS = {
+  '2025-01-28': '설날', '2025-01-29': '설날', '2025-01-30': '설날', '2025-05-05': '부처님오신날', '2025-05-06': '대체공휴일', '2025-10-06': '추석', '2025-10-07': '추석', '2025-10-08': '추석',
+  '2026-02-16': '설날', '2026-02-17': '설날', '2026-02-18': '설날', '2026-05-24': '부처님오신날', '2026-05-25': '대체공휴일', '2026-09-24': '추석', '2026-09-25': '추석', '2026-09-26': '추석',
+  '2027-02-06': '설날', '2027-02-07': '설날', '2027-02-08': '설날', '2027-02-09': '설날', '2027-05-13': '부처님오신날', '2027-09-14': '추석', '2027-09-15': '추석', '2027-09-16': '추석',
+};
+function holidayName(ds) { return LUNAR_HOLIDAYS[ds] || FIXED_HOLIDAYS[ds.slice(5)] || null; }
 function dueLabel(dateStr) {
   const d = daysUntil(dateStr);
   if (d === 0) return '오늘';
@@ -702,8 +713,10 @@ function renderCalendar() {
     const inMonth = cur.getMonth() === m;
     const dow = cur.getDay();
     const evs = state.events.filter((ev) => ds >= ev.start && ds <= (ev.end || ev.start));
-    let cell = `<div class="cal-cell ${inMonth ? '' : 'other'} ${ds === today ? 'today' : ''} ${ds === state.selectedDay ? 'selected' : ''} ${dow === 0 ? 'sun' : dow === 6 ? 'sat' : ''}" data-day="${ds}">`;
+    const hol = holidayName(ds);
+    let cell = `<div class="cal-cell ${inMonth ? '' : 'other'} ${ds === today ? 'today' : ''} ${ds === state.selectedDay ? 'selected' : ''} ${hol ? 'holiday' : (dow === 0 ? 'sun' : dow === 6 ? 'sat' : '')}" data-day="${ds}">`;
     cell += `<div class="cal-daynum">${cur.getDate()}</div>`;
+    if (hol) cell += `<div class="cal-hol" title="${escapeHtml(hol)}">${escapeHtml(hol)}</div>`;
     evs.slice(0, 2).forEach((ev) => {
       cell += `<div class="cal-ev" style="background:${colorFor(ev.title)}" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>`;
     });
