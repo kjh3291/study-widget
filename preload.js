@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld('api', {
   onSubmissionClosed: (cb) => ipcRenderer.on('lms-submission-closed', () => cb()),
   lmsDownload: (items) => ipcRenderer.invoke('lms-download', items),
   openStudeckFolder: (kind, course) => ipcRenderer.invoke('open-studeck-folder', { kind, course }),
+  gitConnect: (repo, token) => ipcRenderer.invoke('git-connect', { repo, token }),
+  gitSync: () => ipcRenderer.invoke('git-sync'),
+  gitSyncStatus: () => ipcRenderer.invoke('git-sync-status'),
+  gitDisconnect: () => ipcRenderer.invoke('git-disconnect'),
 });

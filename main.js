@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session }
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const lms = require('./lms');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
@@ -475,6 +476,55 @@ function migrateFolders() {
     try { fs.writeFileSync(marker, new Date().toISOString(), 'utf8'); } catch (e) {}
   } catch (e) { console.error('migrateFolders fail', e); }
 }
+
+// ---------- GitHub 동기화 (파일: 수업자료/보조자료/과제) ----------
+function git(args, cwd) {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd, windowsHide: true, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
+      resolve({ ok: !err, out: (stdout || '').toString(), err: (stderr || '').toString() });
+    });
+  });
+}
+const gitRemote = (repo, token) => `https://${token}@github.com/${repo}.git`;
+const redact = (s, token) => (token ? String(s || '').split(token).join('***') : String(s || ''));
+async function ensureRepo(dir, repo, token) {
+  fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(path.join(dir, '.git'))) {
+    await git(['init'], dir);
+    await git(['symbolic-ref', 'HEAD', 'refs/heads/main'], dir);
+  }
+  await git(['config', 'user.email', 'studeck@local'], dir);
+  await git(['config', 'user.name', 'Studeck'], dir);
+  try { fs.writeFileSync(path.join(dir, '.gitignore'), '.studeck-migrated\n.studeck/backups/\n', 'utf8'); } catch (e) {}
+  await git(['remote', 'remove', 'origin'], dir);
+  await git(['remote', 'add', 'origin', gitRemote(repo, token)], dir);
+}
+async function gitSync(dir, repo, token, first) {
+  await ensureRepo(dir, repo, token);
+  await git(['add', '-A'], dir);
+  await git(['commit', '-m', 'studeck sync ' + new Date().toISOString().slice(0, 19)], dir); // nothing-to-commit이면 무시
+  const pullArgs = ['pull', 'origin', 'main', '--no-edit'];
+  if (first) pullArgs.push('--allow-unrelated-histories');
+  const pull = await git(pullArgs, dir);
+  const push = await git(['push', '-u', 'origin', 'main'], dir);
+  const ok = push.ok || /up-to-date/i.test(push.err + push.out);
+  return { ok, pull: redact(pull.err || pull.out, token).slice(-500), push: redact(push.err || push.out, token).slice(-500) };
+}
+ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
+  if (!repo || !token) return { ok: false, error: 'repo/token 필요' };
+  const c = loadConfig(); c.sync = { repo, token, enabled: true }; saveConfig(c);
+  try { return await gitSync(STUDECK_DIR(), repo, token, true); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+ipcMain.handle('git-sync', async () => {
+  const s = (loadConfig().sync) || {};
+  if (!s.enabled || !s.repo || !s.token) return { ok: false, error: 'not-configured' };
+  try { return await gitSync(STUDECK_DIR(), s.repo, s.token, false); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+ipcMain.handle('git-sync-status', () => {
+  const s = (loadConfig().sync) || {};
+  return { enabled: !!s.enabled, repo: s.repo || '', hasToken: !!s.token, gitDir: fs.existsSync(path.join(STUDECK_DIR(), '.git')) };
+});
+ipcMain.handle('git-disconnect', () => { const c = loadConfig(); c.sync = { enabled: false, repo: (c.sync && c.sync.repo) || '', token: '' }; saveConfig(c); return { ok: true }; });
 
 // 주기적 자동 백업: config.json을 7일마다 backups/에 복사, 최근 5개 유지
 function autoBackup() {

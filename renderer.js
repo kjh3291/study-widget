@@ -991,6 +991,7 @@ async function downloadNewMaterials(force) {
   window.api.notify('LMS 파일 ' + tagged.length + '개 업데이트', tagged.slice(0, 5).map((g) => `${g.changed ? '[수정] ' : g.kind === 'assign' ? '[과제] ' : ''}${g.course} · ${g.title}`).join('\n'));
   updateLmsBadge();
   if (currentTab === 'lms') renderLms();
+  scheduleGitSync();  // 새 파일 받았으면 GitHub 동기화 예약
 }
 
 async function doLmsRefresh(silent) {
@@ -1586,7 +1587,7 @@ $('att-start').addEventListener('change', () => {
 });
 
 // ---------- 설정 ----------
-function openSettings() { $('inp-id').value = state.identifier || ''; $('settings-err').textContent = ''; $('settings').classList.remove('hidden'); }
+function openSettings() { $('inp-id').value = state.identifier || ''; $('settings-err').textContent = ''; $('settings').classList.remove('hidden'); refreshGitStatus(); }
 $('btn-cancel').onclick = () => { $('settings-err').textContent = ''; $('settings').classList.add('hidden'); };
 $('btn-save').onclick = async () => {
   const raw = $('inp-id').value.trim();
@@ -1610,6 +1611,35 @@ if ($('inp-focus-goal')) $('inp-focus-goal').onchange = () => {
   const fv = $('focus-view'); if (fv && !fv.classList.contains('hidden')) renderFocus();
 };
 $('btn-open-studeck').onclick = () => window.api.openStudeckFolder('root');
+// GitHub 동기화
+async function refreshGitStatus() {
+  try {
+    const s = await window.api.gitSyncStatus();
+    if (s && s.repo && $('inp-git-repo') && !$('inp-git-repo').value) $('inp-git-repo').value = s.repo;
+    if ($('git-sync-msg')) $('git-sync-msg').textContent = (s && s.enabled) ? `연결됨: ${s.repo}` : '연결 안 됨';
+  } catch (e) {}
+}
+if ($('btn-git-connect')) $('btn-git-connect').onclick = async () => {
+  const repo = $('inp-git-repo').value.trim(), token = $('inp-git-token').value.trim();
+  if (!repo || !token) { $('git-sync-msg').textContent = '저장소(owner/이름)와 토큰을 입력하세요.'; return; }
+  $('git-sync-msg').textContent = '연결·동기화 중…';
+  const r = await window.api.gitConnect(repo, token);
+  $('git-sync-msg').textContent = r && r.ok ? '✅ 연결·동기화 완료' : ('오류: ' + ((r && (r.error || r.push)) || '실패'));
+  $('inp-git-token').value = '';
+};
+if ($('btn-git-sync')) $('btn-git-sync').onclick = async () => {
+  $('git-sync-msg').textContent = '동기화 중…';
+  const r = await window.api.gitSync();
+  $('git-sync-msg').textContent = r && r.ok ? '✅ 동기화 완료' : ('오류: ' + ((r && (r.error || r.push)) || '실패'));
+};
+// 파일 변경 후 자동 동기화(디바운스) — 연결돼 있을 때만
+let _gitSyncT = null;
+function scheduleGitSync() {
+  clearTimeout(_gitSyncT);
+  _gitSyncT = setTimeout(async () => {
+    try { const s = await window.api.gitSyncStatus(); if (s && s.enabled) window.api.gitSync(); } catch (e) {}
+  }, 8000);
+}
 $('inp-autostart').onchange = async () => {
   const on = await window.api.setAutoStart($('inp-autostart').checked);
   $('inp-autostart').checked = on;
@@ -1713,6 +1743,8 @@ function miniPrompt(title) {
   if (state.lms && state.lms.courses && state.lms.courses.length) {
     window.api.lmsStatus().then((s) => { if (s && s.valid) doLmsRefresh(true); });
   }
+  // 시작 시 GitHub에서 최신 자료 받아오기(+로컬 변경 올리기)
+  window.api.gitSyncStatus().then((s) => { if (s && s.enabled) window.api.gitSync(); }).catch(() => {});
 
   // 과제 제출 창을 닫으면 자동 새로고침 → 제출한 과제가 '완료'로 전환
   window.api.onSubmissionClosed(() => {
