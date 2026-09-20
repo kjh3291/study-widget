@@ -526,6 +526,14 @@ ipcMain.handle('git-sync-status', () => {
 });
 ipcMain.handle('git-disconnect', () => { const c = loadConfig(); c.sync = { enabled: false, repo: (c.sync && c.sync.repo) || '', token: '' }; saveConfig(c); return { ok: true }; });
 
+// 개인 데이터(할 일·일정·기록·타이머 등)를 동기화 트리(.studeck/config.json)로 읽고/쓰기
+const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json');
+ipcMain.handle('sync-read', () => { try { return JSON.parse(fs.readFileSync(SYNC_DATA_PATH(), 'utf8')); } catch (e) { return null; } });
+ipcMain.handle('sync-write', (_e, data) => {
+  try { const p = SYNC_DATA_PATH(); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(data || {}, null, 2), 'utf8'); return { ok: true }; }
+  catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+
 // 주기적 자동 백업: config.json을 7일마다 backups/에 복사, 최근 5개 유지
 function autoBackup() {
   try {

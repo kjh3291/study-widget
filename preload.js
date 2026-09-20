@@ -24,4 +24,6 @@ contextBridge.exposeInMainWorld('api', {
   gitSync: () => ipcRenderer.invoke('git-sync'),
   gitSyncStatus: () => ipcRenderer.invoke('git-sync-status'),
   gitDisconnect: () => ipcRenderer.invoke('git-disconnect'),
+  syncRead: () => ipcRenderer.invoke('sync-read'),
+  syncWrite: (data) => ipcRenderer.invoke('sync-write', data),
 });

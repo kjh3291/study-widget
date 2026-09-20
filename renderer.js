@@ -259,7 +259,47 @@ function openTimerStart(anchor) {
 }
 
 // ---------- 저장 ----------
-function persist(patch) { window.api.saveConfig(patch); }
+function persist(patch) { window.api.saveConfig(patch); mirrorSynced(); }
+
+// ---------- 개인 데이터 동기화(할 일·일정·기록·타이머·출석 등) ----------
+// 경로 없는 데이터만(기기별 설정·토큰·materialsDone 경로는 제외 → 크로스 OS 안전)
+const SYNC_KEYS = ['todos', 'events', 'focus', 'attendance', 'readIds', 'starredLms', 'lmsDone', 'subjects', 'identifier', 'newMaterials', 'notifyState'];
+let _localSyncedAt = 0, _mirrorT = null;
+function syncedSnapshot() {
+  const o = { _syncedAt: Date.now() };
+  SYNC_KEYS.forEach((k) => { o[k] = state[k]; });
+  return o;
+}
+function mirrorSynced() {
+  if (!state.syncEnabled) return;
+  clearTimeout(_mirrorT);
+  _mirrorT = setTimeout(async () => {
+    try {
+      const snap = syncedSnapshot(); _localSyncedAt = snap._syncedAt;
+      await window.api.syncWrite(snap);
+      window.api.saveConfig({ syncedAt: _localSyncedAt }); // 로컬 기준시각 기록(재귀 방지: persist 아닌 saveConfig 직접)
+      scheduleGitSync();
+    } catch (e) {}
+  }, 1500);
+}
+// 시작/포커스 시: 원격이 더 최신이면 개인 데이터 채택(순차 사용이면 항상 안전)
+async function initSync() {
+  try {
+    const st = await window.api.gitSyncStatus(); state.syncEnabled = !!(st && st.enabled);
+    if (!state.syncEnabled) return;
+    await window.api.gitSync();                 // 최신 pull
+    const remote = await window.api.syncRead();
+    if (remote && remote._syncedAt && remote._syncedAt > (_localSyncedAt || 0)) {
+      const patch = {};
+      SYNC_KEYS.forEach((k) => { if (remote[k] !== undefined) { state[k] = remote[k]; patch[k] = remote[k]; } });
+      _localSyncedAt = remote._syncedAt; patch.syncedAt = _localSyncedAt;
+      window.api.saveConfig(patch);
+      rolloverOverdue(); renderSummary(); rerenderTodoAreas();
+      if (currentTab === 'attend') renderAttendance();
+      if ($('inp-id')) $('inp-id').value = state.identifier || '';
+    }
+  } catch (e) {}
+}
 function saveTodos() { persist({ todos: state.todos }); }
 function saveEvents() { persist({ events: state.events }); }
 function saveSubjects() { persist({ subjects: state.subjects }); }
@@ -1625,6 +1665,7 @@ if ($('btn-git-connect')) $('btn-git-connect').onclick = async () => {
   if (!repo || !token) { $('git-sync-msg').textContent = '저장소(owner/이름)와 토큰을 입력하세요.'; return; }
   $('git-sync-msg').textContent = '연결·동기화 중…';
   const r = await window.api.gitConnect(repo, token);
+  if (r && r.ok) { state.syncEnabled = true; mirrorSynced(); }
   $('git-sync-msg').textContent = r && r.ok ? '✅ 연결·동기화 완료' : ('오류: ' + ((r && (r.error || r.push)) || '실패'));
   $('inp-git-token').value = '';
 };
@@ -1744,8 +1785,9 @@ function miniPrompt(title) {
   if (state.lms && state.lms.courses && state.lms.courses.length) {
     window.api.lmsStatus().then((s) => { if (s && s.valid) doLmsRefresh(true); });
   }
-  // 시작 시 GitHub에서 최신 자료 받아오기(+로컬 변경 올리기)
-  window.api.gitSyncStatus().then((s) => { if (s && s.enabled) window.api.gitSync(); }).catch(() => {});
+  // 시작 시 GitHub에서 최신 자료·개인데이터 받아오기(+로컬 변경 올리기)
+  _localSyncedAt = cfg.syncedAt || 0;
+  initSync();
 
   // 과제 제출 창을 닫으면 자동 새로고침 → 제출한 과제가 '완료'로 전환
   window.api.onSubmissionClosed(() => {
