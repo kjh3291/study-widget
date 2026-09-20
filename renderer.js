@@ -455,7 +455,7 @@ function todoRow(it, showSubj) {
   const badge = b ? `<span class="dday ${b.cls}">${b.label}</span>` : '';
   let defer = '';
   if (!it.done) {
-    if (it.deferCount) defer = `<span class="dday nudge" title="내가 미룬 횟수">${it.deferCount}번 넘김</span>`;
+    if (it.deferCount) defer = `<span class="dday nudge" title="내가 뒤로 미룬 횟수">${it.deferCount}번 미룸</span>`;
     else if (it.origDue) defer = `<span class="dday defer" title="원래 마감 ${escapeHtml(it.origDue)}">${-daysUntil(it.origDue)}일 밀림</span>`;
   }
   const subj = showSubj && it.subject ? `<span class="subj-chip" title="${escapeHtml(it.subject)}">${escapeHtml(it.subject)}</span>` : '';
@@ -1446,8 +1446,9 @@ function placeAtCursor(x, y) {
 // 밀린/오늘 할 일을 나중으로 미루기(수동 due 이동, origDue는 최초 밀림일 보존)
 function deferTodo(id, dateStr) {
   const t = state.todos.find((v) => v.id === id); if (!t || !dateStr) return;
-  t.deferCount = (t.deferCount || 0) + 1; // 수동 미루기 = '넘김' 횟수
-  delete t.origDue;                        // '밀림'(자동 기한초과)과 구분
+  // 현재 마감보다 '더 뒤로' 옮길 때만 미룸 횟수 증가(앞으로 당기면 유지)
+  if (t.due && dateStr > t.due) t.deferCount = (t.deferCount || 0) + 1;
+  delete t.origDue; // '밀림'(자동 기한초과)과 구분
   t.due = dateStr; saveTodos(); rerenderTodoAreas();
 }
 function openDeferMenu(id, x, y) {
