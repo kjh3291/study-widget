@@ -479,13 +479,22 @@ function migrateFolders() {
 
 // ---------- GitHub 동기화 (파일: 수업자료/보조자료/과제) ----------
 function git(args, cwd) {
+  // credential.helper='' → Windows Git Credential Manager를 꺼서 로그인 팝업 방지(토큰은 원격 URL에 있음).
+  // GIT_TERMINAL_PROMPT/GCM 환경변수 → 어떤 대화형 자격증명 프롬프트도 뜨지 않게.
+  const full = ['-c', 'credential.helper=', ...args];
+  const env = Object.assign({}, process.env, {
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+    GIT_ASKPASS: '',
+    SSH_ASKPASS: '',
+  });
   return new Promise((resolve) => {
-    execFile('git', args, { cwd, windowsHide: true, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile('git', full, { cwd, windowsHide: true, env, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
       resolve({ ok: !err, out: (stdout || '').toString(), err: (stderr || '').toString() });
     });
   });
 }
-const gitRemote = (repo, token) => `https://${token}@github.com/${repo}.git`;
+const gitRemote = (repo, token) => `https://x-access-token:${token}@github.com/${repo}.git`;
 const redact = (s, token) => (token ? String(s || '').split(token).join('***') : String(s || ''));
 async function ensureRepo(dir, repo, token) {
   fs.mkdirSync(dir, { recursive: true });
