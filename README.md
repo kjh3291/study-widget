@@ -29,6 +29,13 @@
 
 > ⚠️ 개인 제작 앱이라 서명이 없어, 처음 실행 시 Windows SmartScreen이 뜰 수 있어요 → **추가 정보 → 실행**을 누르면 됩니다.
 
+**맥(macOS)**: `StudyWidget-x.y.z-mac-arm64.dmg`(애플 실리콘) 또는 `-x64.dmg`(인텔)를 받으세요. CI에서 ad-hoc 서명을 붙여 실행은 되지만, 애플 공증(notarization)이 없어 처음 열 때 Gatekeeper 경고가 뜹니다. 다음 중 하나로 여세요:
+> - **우클릭 → 열기** → 경고 창에서 다시 **열기**, 또는
+> - 앱을 `응용 프로그램`에 옮긴 뒤 터미널에서 격리 속성 제거:
+>   ```bash
+>   xattr -cr "/Applications/스터디 위젯.app"
+>   ```
+
 ### 방법 B — 소스로 실행 (개발자용)
 1. [Node.js](https://nodejs.org) 설치 (LTS 권장)
 2. 저장소를 받은 뒤 폴더에서:
