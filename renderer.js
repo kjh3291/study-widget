@@ -160,8 +160,12 @@ function renderMini() {
   const today = todayStr();
   const items = activeItems().filter((i) => !i.done && (i.due === today || i.starred || (daysUntil(i.due) !== null && daysUntil(i.due) <= 0))).sort(sortByDue);
   $('mini-list').innerHTML = `<div class="cat-head cat-today"><span class="ico">${ICO.sun}</span>오늘 할 일<span class="cat-count">${items.length}</span></div>`
-    + (items.length ? items.map((it) => todoRow(it, true)).join('') : '<div class="empty-note">오늘 할 일 없음 🎉</div>');
+    + (items.length ? items.map((it) => todoBlock(it, true)).join('') : '<div class="empty-note">오늘 할 일 없음 🎉</div>');
 }
+// 현재 보이는 할 일 목록(미니/전체)을 다시 그린다
+function renderList() { if (state.mini) renderMini(); else renderTodos(); }
+// 방금 렌더된 하위 항목 입력칸에 포커스(보이는 목록 기준)
+function focusSubAdd() { const box = state.mini ? $('mini-list') : $('todo-list'); const inp = box && box.querySelector('[data-subadd]'); if (inp) inp.focus(); }
 
 // ---------- 집중 타이머 (카운트업 스톱워치) ----------
 function fmtClock(sec) { const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, '0')}`; }
@@ -1358,12 +1362,7 @@ $('btn-setup').onclick = openSettings;
 $('btn-min').onclick = () => window.api.minimize();
 $('btn-mini').onclick = toggleMini;
 $('btn-close').onclick = () => window.api.close();
-$('mini-list').addEventListener('change', (e) => { const t = e.target.closest('[data-toggle]'); if (t) toggleTodo(t.dataset.toggle, t.checked); });
-$('mini-list').addEventListener('click', (e) => {
-  const play = e.target.closest('[data-play]'); if (play) { startFocus(play.dataset.play, play.dataset.playSubj || null); return; }
-  const star = e.target.closest('[data-star]'); if (star) { const t = state.todos.find((x) => x.id === star.dataset.star); if (t) { t.starred = !t.starred; saveTodos(); renderMini(); } return; }
-  const open = e.target.closest('[data-open]'); if (open) window.api.lmsOpen(open.dataset.open);
-});
+// (미니 목록의 click/change/keydown은 아래 공유 핸들러 onTodoListClick 등이 처리)
 // 미니 모드에서도 우클릭 메뉴/더블클릭 편집 동작하게
 $('mini-list').addEventListener('contextmenu', (e) => {
   const row = e.target.closest('.todo'); if (!row) return;
@@ -1409,8 +1408,8 @@ $('grid-wrap').addEventListener('click', (e) => {
   window.api.openStudeckFolder('materials', blk.dataset.subj);
 });
 
-// 위임 클릭
-$('todo-list').addEventListener('click', (e) => {
+// 위임 클릭 (일반 목록 + 미니 목록 공용)
+function onTodoListClick(e) {
   const expand = e.target.closest('[data-expand]');
   const addsub = e.target.closest('[data-addsub]');
   const subdel = e.target.closest('[data-subdel]');
@@ -1418,32 +1417,37 @@ $('todo-list').addEventListener('click', (e) => {
   const star = e.target.closest('[data-star]');
   const starLms = e.target.closest('[data-star-lms]');
   const del = e.target.closest('[data-del]'); const open = e.target.closest('[data-open]');
-  if (subdel) { const [id, i] = subdel.dataset.subdel.split(':'); const t = state.todos.find((x) => x.id === id); if (t && t.subs) { t.subs.splice(+i, 1); saveTodos(); renderTodos(); } return; }
+  if (subdel) { const [id, i] = subdel.dataset.subdel.split(':'); const t = state.todos.find((x) => x.id === id); if (t && t.subs) { t.subs.splice(+i, 1); saveTodos(); renderList(); } return; }
   const subaddbtn = e.target.closest('[data-subaddbtn]');
-  if (expand) { state.expandedTodos[expand.dataset.expand] = !state.expandedTodos[expand.dataset.expand]; renderTodos(); return; }
-  if (addsub) { const id = addsub.dataset.addsub; state.expandedTodos[id] = true; state.subAddOpen = id; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); return; }
-  if (subaddbtn) { state.subAddOpen = subaddbtn.dataset.subaddbtn; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); return; }
-  if (star) { const t = state.todos.find((x) => x.id === star.dataset.star); if (t) { t.starred = !t.starred; saveTodos(); renderTodos(); } return; }
-  if (starLms) { const id = starLms.dataset.starLms; const i = state.starredLms.indexOf(id); if (i >= 0) state.starredLms.splice(i, 1); else state.starredLms.push(id); persist({ starredLms: state.starredLms }); renderTodos(); return; }
+  if (expand) { state.expandedTodos[expand.dataset.expand] = !state.expandedTodos[expand.dataset.expand]; renderList(); return; }
+  if (addsub) { const id = addsub.dataset.addsub; state.expandedTodos[id] = true; state.subAddOpen = id; renderList(); focusSubAdd(); return; }
+  if (subaddbtn) { state.subAddOpen = subaddbtn.dataset.subaddbtn; renderList(); focusSubAdd(); return; }
+  if (star) { const t = state.todos.find((x) => x.id === star.dataset.star); if (t) { t.starred = !t.starred; saveTodos(); renderList(); } return; }
+  if (starLms) { const id = starLms.dataset.starLms; const i = state.starredLms.indexOf(id); if (i >= 0) state.starredLms.splice(i, 1); else state.starredLms.push(id); persist({ starredLms: state.starredLms }); renderList(); return; }
   if (play) { startFocus(play.dataset.play, play.dataset.playSubj || null); return; }
-  if (del) { state.todos = state.todos.filter((t) => t.id !== del.dataset.del); saveTodos(); renderTodos(); renderSummary(); return; }
+  if (del) { state.todos = state.todos.filter((t) => t.id !== del.dataset.del); saveTodos(); renderList(); renderSummary(); return; }
   if (open) { window.api.lmsOpen(open.dataset.open); return; }
-});
-$('todo-list').addEventListener('change', (e) => {
+}
+function onTodoListChange(e) {
   const sub = e.target.closest('[data-subtoggle]');
-  if (sub) { const [id, i] = sub.dataset.subtoggle.split(':'); const t = state.todos.find((x) => x.id === id); if (t && t.subs && t.subs[+i]) { t.subs[+i].done = sub.checked; saveTodos(); renderTodos(); } return; }
+  if (sub) { const [id, i] = sub.dataset.subtoggle.split(':'); const t = state.todos.find((x) => x.id === id); if (t && t.subs && t.subs[+i]) { t.subs[+i].done = sub.checked; saveTodos(); renderList(); } return; }
   const tog = e.target.closest('[data-toggle]'); if (tog) toggleTodo(tog.dataset.toggle, tog.checked);
-});
-$('todo-list').addEventListener('keydown', (e) => {
+}
+function onTodoListKeydown(e) {
   const add = e.target.closest('[data-subadd]');
   if (!add) return;
   if (e.key === 'Enter') {
     const v = add.value.trim(); if (!v) return;
     const t = state.todos.find((x) => x.id === add.dataset.subadd);
-    if (t) { t.subs = t.subs || []; t.subs.push({ text: v, done: false }); saveTodos(); state.subAddOpen = add.dataset.subadd; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); }
+    if (t) { t.subs = t.subs || []; t.subs.push({ text: v, done: false }); saveTodos(); state.subAddOpen = add.dataset.subadd; renderList(); focusSubAdd(); }
   } else if (e.key === 'Escape') {
-    collapseSubAdd(add.dataset.subadd); renderTodos();
+    collapseSubAdd(add.dataset.subadd); renderList();
   }
+}
+['todo-list', 'mini-list'].forEach((id) => {
+  $(id).addEventListener('click', onTodoListClick);
+  $(id).addEventListener('change', onTodoListChange);
+  $(id).addEventListener('keydown', onTodoListKeydown);
 });
 // 하위 항목 추가 취소: 입력을 비운 채 접을 때, 하위 항목이 하나도 없으면 패널까지 완전히 접는다
 function collapseSubAdd(id) {
@@ -1452,10 +1456,10 @@ function collapseSubAdd(id) {
   if (t && !(t.subs && t.subs.length)) state.expandedTodos[id] = false;
 }
 // 하위 항목 입력이 비어 있는 채 포커스를 잃으면 접기(입력칸·빈 패널이 안 남게)
-$('todo-list').addEventListener('focusout', (e) => {
+['todo-list', 'mini-list'].forEach((id) => $(id).addEventListener('focusout', (e) => {
   const add = e.target.closest && e.target.closest('[data-subadd]');
-  if (add && !add.value.trim()) { collapseSubAdd(add.dataset.subadd); setTimeout(() => { if (currentTab === 'todos') renderTodos(); }, 0); }
-});
+  if (add && !add.value.trim()) { collapseSubAdd(add.dataset.subadd); setTimeout(() => renderList(), 0); }
+}));
 // 제목 인라인 편집 (더블클릭 / 우클릭 메뉴 '수정' 공용)
 function startEditTodo(id) {
   const t = state.todos.find((x) => x.id === id); if (!t) return;
