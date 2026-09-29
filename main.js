@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session, dialog } = require('electron');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const lms = require('./lms');
 const { sharedSnapshot } = require('./sync-fields');
+const { preserveMaterial, archiveGitChanges } = require('./material-history');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -178,6 +179,13 @@ ipcMain.handle('save-config', (_e, data) => {
   Object.assign(c, data);
   saveConfig(c);
   return c;
+});
+
+ipcMain.handle('import-syllabus', async () => {
+  const choice = await dialog.showOpenDialog(win, { title: '강의계획서 PDF 선택', properties: ['openFile'], filters: [{ name: '강의계획서 PDF', extensions: ['pdf'] }] });
+  if (choice.canceled || !choice.filePaths.length) return { canceled: true };
+  try { return { ok: true, ...await require('./syllabus-pdf').readSyllabus(choice.filePaths[0]) }; }
+  catch { return { ok: false, error: 'PDF를 읽지 못했습니다. 암호가 없고 20MB 이하인 PDF로 다시 시도해 주세요.' }; }
 });
 
 ipcMain.handle('fetch-timetable', async (_e, identifier) => {
@@ -432,6 +440,7 @@ async function downloadMaterial(url, course, title, opts) {
       fs.mkdirSync(backup, { recursive: true });
       fs.copyFileSync(dest, path.join(backup, oldSig + '-' + path.basename(dest)));
     }
+    if (existed && opts.kind !== 'assign') preserveMaterial(STUDECK_DIR(), path.relative(STUDECK_DIR(), dest), fs.readFileSync(dest));
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, got.body);
     return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: existed };
@@ -518,6 +527,7 @@ function gitSync(dir, repo, token) {
     const conflicts = await git(['diff', '--name-only', '--diff-filter=U'], dir);
     if (!conflicts.ok) return fail(conflicts);
     if (conflicts.out.trim()) return { ok: false, error: '파일 충돌을 먼저 해결해야 합니다. 자동 업로드를 중단했습니다.' };
+    await archiveGitChanges(dir);
     const add = await git(['add', '-A'], dir);
     if (!add.ok) return fail(add);
     const diff = await git(['diff', '--cached', '--quiet'], dir);
@@ -529,7 +539,16 @@ function gitSync(dir, repo, token) {
     if (!remote.ok) return fail(remote);
     if (remote.out.trim()) {
       // Explicit merge policy is required by modern Git for independently initialized devices.
-      const pull = await git(['pull', '--no-rebase', '--allow-unrelated-histories', 'origin', 'main', '--no-edit'], dir);
+      const fetched = await git(['fetch', 'origin', 'main'], dir);
+      if (!fetched.ok) return fail(fetched);
+      await archiveGitChanges(dir, true);
+      const stagedHistory = await git(['add', '-A'], dir);
+      if (!stagedHistory.ok) return fail(stagedHistory);
+      if (!(await git(['diff', '--cached', '--quiet'], dir)).ok) {
+        const historyCommit = await git(['commit', '-m', 'Preserve previous materials'], dir);
+        if (!historyCommit.ok) return fail(historyCommit);
+      }
+      const pull = await git(['merge', '--allow-unrelated-histories', 'FETCH_HEAD', '--no-edit'], dir);
       if (!pull.ok) {
         const unmerged = await git(['diff', '--name-only', '--diff-filter=U'], dir);
         if (unmerged.out.trim() !== '.gitignore') return fail(pull);

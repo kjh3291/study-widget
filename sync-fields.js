@@ -1,7 +1,7 @@
 // Shared allowlist: never copy authentication, absolute paths, or window placement.
 const sharedFields = [
   'todos', 'events', 'focus', 'attendance', 'readIds', 'starredLms', 'lmsDone',
-  'subjects', 'identifier', 'timetableFull', 'newMaterials', 'notifyState',
+  'subjects', 'identifier', 'timetableFull', 'timetableSource', 'newMaterials', 'notifyState',
   'theme', 'clockFormat', 'focusGoalMin', 'notifyPrefs', 'rolloverOverdue',
   'lmsAuto', 'autoDownload', 'matCourses', 'opacity', 'alwaysOnTop',
 ];

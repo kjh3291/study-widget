@@ -19,7 +19,8 @@ vm.runInContext(source.slice(source.indexOf('function safeName('), source.indexO
 assert.equal(names.safeName('팀.pdf'.normalize('NFD')), '팀.pdf');
 let body = Buffer.from('first submission');
 const hash = b => crypto.createHash('sha1').update(b).digest('hex');
-const context = { fs, path, STUDECK_DIR: () => root, safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
+const { preserveMaterial } = require('../material-history');
+const context = { preserveMaterial, fs, path, STUDECK_DIR: () => root, safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('), source.indexOf("ipcMain.handle('lms-download'")), context);
 (async () => {
@@ -33,6 +34,15 @@ vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('),
   assert.equal(fs.readFileSync(path.join(root, '.studeck/backups/submissions/Course', hash(old) + '-assignment.pdf'), 'utf8'), old.toString());
   const same = await context.downloadMaterial('url2', 'Course', '', { kind: 'assign', mode: 'recheck', dest: revised.path, prevSig: 'stale' });
   assert.equal(same.changed, false);
+  const material = await context.downloadMaterial('material', 'Course', '', { mode: 'new' });
+  const previousMaterial = Buffer.from(body);
+  body = Buffer.from('updated lecture material');
+  const updatedMaterial = await context.downloadMaterial('material', 'Course', '', { mode: 'recheck', dest: material.path });
+  assert.equal(updatedMaterial.changed, true);
+  const historyDir = path.join(path.dirname(material.path), '이전 자료');
+  assert.equal(fs.readdirSync(historyDir).length, 1);
+  assert.deepEqual(fs.readFileSync(path.join(historyDir, fs.readdirSync(historyDir)[0])), previousMaterial);
+  assert.deepEqual(fs.readFileSync(material.path), body);
   let checked = 0;
   const downloadContext = { state: { matCourses: {} }, Date, cleanCourse: s => s, window: { api: { lmsDownload: async items => { checked = items.length; return []; } } } };
   vm.createContext(downloadContext);

@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   loadConfig: () => ipcRenderer.invoke('load-config'),
   saveConfig: (data) => ipcRenderer.invoke('save-config', data),
+  importSyllabus: () => ipcRenderer.invoke('import-syllabus'),
   fetchTimetable: (identifier) => ipcRenderer.invoke('fetch-timetable', identifier),
   setOpacity: (v) => ipcRenderer.send('set-opacity', v),
   setAlwaysOnTop: (f) => ipcRenderer.send('set-always-on-top', f),

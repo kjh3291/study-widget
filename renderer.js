@@ -7,6 +7,7 @@ const $ = (id) => document.getElementById(id);
 // ---------- 상태 ----------
 const state = {
   identifier: '',
+  timetableSource: 'everytime',
   subjects: [],           // 사용자가 직접 추가한 과목
   timetableSubjects: [],  // 에브리타임 자동 연동 과목명
   todos: [],              // { id, text, subject|null, due, dueTime?, done, doneAt, createdAt }
@@ -301,8 +302,8 @@ function applySharedState(remote) {
   window.api.setOpacity(state.opacity / 100);
   window.api.setAlwaysOnTop(state.alwaysOnTop);
   if (state.timetableFull.length) renderTimetable(state.timetableFull);
-  else if (!state.identifier) showTimetableState('empty');
-  if (state.identifier && state.identifier !== oldIdentifier) loadTimetable(state.identifier);
+  else showTimetableState('empty');
+  if (state.timetableSource !== 'syllabus' && state.identifier && state.identifier !== oldIdentifier) loadTimetable(state.identifier);
   renderSummary(); rerenderTodoAreas(); updateLmsBadge();
   if (currentTab === 'schedule') renderCalendar();
   if (currentTab === 'stats') renderStats();
@@ -464,9 +465,12 @@ function renderTimetable(subjects) {
 }
 
 async function loadTimetable(identifier) {
+  if (state.timetableSource === 'syllabus') { renderTimetable(state.timetableFull); return; }
+  const previous = state.timetableFull;
   if (!identifier) { showTimetableState('empty'); return; }
   setStatus('시간표를 불러오는 중…');
   const res = await window.api.fetchTimetable(identifier);
+  if (state.timetableSource === 'syllabus' || state.timetableFull !== previous || state.identifier !== identifier) return;
   if (res.ok) renderTimetable(res.subjects);
   else setStatus('⚠️ ' + res.error);
 }
@@ -1671,7 +1675,7 @@ $('btn-save').onclick = async () => {
   if (!raw) { $('settings-err').textContent = '공유 링크 또는 식별자를 입력하세요.'; return; }
   $('settings-err').textContent = '';
   const res = await window.api.fetchTimetable(raw);
-  if (res.ok) { state.identifier = raw; persist({ identifier: raw }); renderTimetable(res.subjects); $('settings').classList.add('hidden'); switchTab('timetable'); }
+  if (res.ok) { state.identifier = raw; state.timetableSource = 'everytime'; state.timetableFull = res.subjects; persist({ identifier: raw, timetableSource: 'everytime', timetableFull: res.subjects }); renderTimetable(res.subjects); $('settings').classList.add('hidden'); switchTab('timetable'); }
   else $('settings-err').textContent = res.error;
 };
 $('inp-opacity').oninput = () => { state.opacity = Number($('inp-opacity').value); window.api.setOpacity(state.opacity / 100); persist({ opacity: state.opacity }); };
@@ -1748,6 +1752,70 @@ $('btn-lms-dump').onclick = async () => {
   $('lms-dump-msg').textContent = r && r.dir ? `저장됨: ${r.dir}` : ('오류: ' + (r && r.error || '실패'));
 };
 
+// A draft remains local to the preview until the user explicitly applies it.
+function previewSyllabus(result) {
+  const ov = document.createElement('div');
+  ov.id = 'syllabus-preview';
+  ov.style.cssText = 'position:absolute;inset:0;z-index:30;background:var(--bg);padding:18px;overflow:auto;display:flex;flex-direction:column;gap:10px;font-size:12px;';
+  ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '강의계획서 미리보기');
+  ov.innerHTML = `<h2 style="font-size:15px">강의계획서 미리보기</h2>
+    <div>${escapeHtml(result.filename)}</div><div style="color:var(--muted)">${escapeHtml(result.warning)}</div>
+    <label>과목명 <input id="sy-name" type="text" style="width:100%" /></label>
+    <label>교수 (선택) <input id="sy-prof" type="text" style="width:100%" /></label>
+    <div id="sy-times"></div><button id="sy-add" class="btn mini">수업 시간 추가</button>
+    <label>반영 방법 <select id="sy-target" style="width:100%"><option value="">새 과목으로 추가</option></select></label>
+    <div style="color:var(--muted);line-height:1.6">선택한 과목만 추가·교체합니다. 반영 후에는 에브리타임 자동 새로고침을 멈추고 이 시간표를 기기 간 공유합니다. 에브리타임으로 돌아가려면 설정에서 공유 링크를 다시 불러오세요.</div>
+    <div id="sy-error" style="color:#ff7b7b" role="alert"></div>
+    <div style="display:flex;gap:8px"><button id="sy-cancel" class="btn" style="flex:1">취소</button><button id="sy-apply" class="btn primary" style="flex:1">확인 후 시간표 반영</button></div>`;
+  $('app').appendChild(ov);
+  const q = id => ov.querySelector('#' + id);
+  q('sy-name').value = result.draft.name; q('sy-prof').value = result.draft.professor;
+  const baseline = JSON.stringify(state.timetableFull);
+  state.timetableFull.forEach((s, i) => {
+    const option = document.createElement('option'); option.value = String(i); option.textContent = s.name + ' 교체'; q('sy-target').appendChild(option);
+  });
+  const matching = state.timetableFull.map((s, i) => s.name === result.draft.name ? i : -1).filter(i => i >= 0);
+  if (matching.length === 1) q('sy-target').value = String(matching[0]);
+  const addTime = (time = { day: '', start: '', end: '', place: '' }) => {
+    const row = document.createElement('div'); row.className = 'sy-time';
+    row.style.cssText = 'border:1px solid var(--line);padding:10px;border-radius:8px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;';
+    row.innerHTML = `<label>요일 <select class="sy-day"><option value="">선택</option>${DAY_NAMES.map((d, i) => `<option value="${i}">${d}</option>`).join('')}</select></label>
+      <label>시작 <input class="sy-start" type="time" step="300" /></label><label>종료 <input class="sy-end" type="time" step="300" /></label>
+      <label>강의실 <input class="sy-place" type="text" /></label><button class="btn mini sy-remove">삭제</button>`;
+    for (const key of ['day', 'start', 'end', 'place']) row.querySelector('.sy-' + key).value = time[key];
+    row.querySelector('.sy-remove').onclick = () => row.remove();
+    q('sy-times').appendChild(row);
+  };
+  result.draft.times.forEach(addTime); q('sy-add').onclick = () => addTime();
+  const close = () => { ov.remove(); $('btn-syllabus').focus(); };
+  q('sy-cancel').onclick = close;
+  ov.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.isComposing) close(); });
+  q('sy-apply').onclick = () => {
+    try {
+      if (JSON.stringify(state.timetableFull) !== baseline) throw new Error('다른 기기 또는 새로고침으로 시간표가 바뀌었습니다. 취소 후 PDF를 다시 열어 주세요.');
+      const draft = { name: q('sy-name').value, professor: q('sy-prof').value, times: [...ov.querySelectorAll('.sy-time')].map(row => Object.fromEntries(['day', 'start', 'end', 'place'].map(key => [key, row.querySelector('.sy-' + key).value]))) };
+      const subject = syllabusSubject(draft);
+      const subjects = mergeSyllabus(state.timetableFull, subject, q('sy-target').value);
+      state.timetableSource = 'syllabus'; state.timetableFull = subjects;
+      persist({ timetableSource: 'syllabus', timetableFull: subjects });
+      renderTimetable(subjects); close();
+      $('syllabus-msg').textContent = '강의계획서 시간표를 반영했습니다. 에브리타임 자동 새로고침은 꺼져 있습니다.';
+    } catch (error) { q('sy-error').textContent = error.message; }
+  };
+  q('sy-name').focus();
+}
+$('btn-syllabus').onclick = async () => {
+  $('btn-syllabus').disabled = true; $('syllabus-msg').textContent = 'PDF를 선택하면 내용을 읽어 미리 보여드립니다…';
+  try {
+    const result = await window.api.importSyllabus();
+    $('syllabus-msg').textContent = '';
+    if (result.canceled) return;
+    if (!result.ok) throw new Error(result.error);
+    previewSyllabus(result);
+  } catch (error) { $('syllabus-msg').textContent = error.message; }
+  finally { $('btn-syllabus').disabled = false; }
+};
+
 // ---------- 미니 프롬프트 ----------
 function miniPrompt(title) {
   return new Promise((resolve) => {
@@ -1817,9 +1885,11 @@ function miniPrompt(title) {
   setInterval(updateClock, 1000);  // 헤더 시계(초 단위)
   updateLmsBadge();
 
+  state.timetableSource = cfg.timetableSource === 'syllabus' ? 'syllabus' : 'everytime';
+  state.identifier = cfg.identifier || '';
   if (Array.isArray(cfg.timetableFull) && cfg.timetableFull.length) renderTimetable(cfg.timetableFull);
-  if (cfg.identifier) { state.identifier = cfg.identifier; loadTimetable(cfg.identifier); }
-  else showTimetableState('empty');
+  if (state.timetableSource !== 'syllabus' && cfg.identifier) loadTimetable(cfg.identifier);
+  else if (!state.timetableFull.length) showTimetableState('empty');
 
   if (state.lms && state.lms.courses && state.lms.courses.length) {
     window.api.lmsStatus().then((s) => { if (s && s.valid) doLmsRefresh(true); });
