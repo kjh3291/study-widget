@@ -24,6 +24,7 @@ vm.runInContext(source.slice(start, end), context);
   command(other, 'init', '-b', 'main');
   command(other, 'config', 'user.name', 'Test'); command(other, 'config', 'user.email', 'test@local');
   fs.writeFileSync(path.join(other, 'supplement.txt'), 'from Windows');
+  fs.writeFileSync(path.join(other, '.gitignore'), '.studeck-migrated\n.studeck/backups/\n');
   command(other, 'add', '.'); command(other, 'commit', '-m', 'remote data');
   command(other, 'remote', 'add', 'origin', remote); command(other, 'push', '-u', 'origin', 'main');
   fs.writeFileSync(path.join(local, 'local.txt'), 'from Mac');

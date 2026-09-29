@@ -29,7 +29,10 @@ jobs:
       - run: npm ci
 
       - name: Verify file sync
-        run: node scripts/test-git-sync.js
+        run: |
+          node scripts/test-git-sync.js
+          node scripts/test-shared-settings.js
+          node scripts/test-input-downloads.js
 
       - name: Build (no publish)
         run: npx electron-builder --publish never
