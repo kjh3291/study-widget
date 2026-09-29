@@ -480,8 +480,8 @@ function migrateFolders() {
 // ---------- GitHub 동기화 (파일: 수업자료/보조자료/과제) ----------
 function git(args, cwd) {
   return new Promise((resolve) => {
-    execFile('git', args, { cwd, windowsHide: true, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
-      resolve({ ok: !err, out: (stdout || '').toString(), err: (stderr || '').toString() });
+    execFile('git', args, { cwd, windowsHide: true, timeout: 120000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
+      resolve({ ok: !err, out: (stdout || '').toString(), err: (stderr || (err && err.message) || '').toString() });
     });
   });
 }
@@ -489,26 +489,51 @@ const gitRemote = (repo, token) => `https://${token}@github.com/${repo}.git`;
 const redact = (s, token) => (token ? String(s || '').split(token).join('***') : String(s || ''));
 async function ensureRepo(dir, repo, token) {
   fs.mkdirSync(dir, { recursive: true });
+  const checked = async (args) => {
+    const r = await git(args, dir);
+    if (!r.ok) throw new Error(redact(r.err || r.out || 'Git 실행 실패', token));
+  };
   if (!fs.existsSync(path.join(dir, '.git'))) {
-    await git(['init'], dir);
-    await git(['symbolic-ref', 'HEAD', 'refs/heads/main'], dir);
+    await checked(['init']);
+    await checked(['symbolic-ref', 'HEAD', 'refs/heads/main']);
   }
-  await git(['config', 'user.email', 'studeck@local'], dir);
-  await git(['config', 'user.name', 'Studeck'], dir);
-  try { fs.writeFileSync(path.join(dir, '.gitignore'), '.studeck-migrated\n.studeck/backups/\n', 'utf8'); } catch (e) {}
-  await git(['remote', 'remove', 'origin'], dir);
-  await git(['remote', 'add', 'origin', gitRemote(repo, token)], dir);
+  await checked(['config', 'user.email', 'studeck@local']);
+  await checked(['config', 'user.name', 'Studeck']);
+  const ignorePath = path.join(dir, '.gitignore');
+  const old = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, 'utf8') : '';
+  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store'].filter(x => !old.split(/\r?\n/).includes(x));
+  if (missing.length) fs.appendFileSync(ignorePath, (old && !old.endsWith('\n') ? '\n' : '') + missing.join('\n') + '\n');
+  const remote = await git(['remote', 'get-url', 'origin'], dir);
+  await checked(['remote', remote.ok ? 'set-url' : 'add', 'origin', gitRemote(repo, token)]);
 }
-async function gitSync(dir, repo, token, first) {
-  await ensureRepo(dir, repo, token);
-  await git(['add', '-A'], dir);
-  await git(['commit', '-m', 'studeck sync ' + new Date().toISOString().slice(0, 19)], dir); // nothing-to-commit이면 무시
-  const pullArgs = ['pull', 'origin', 'main', '--no-edit'];
-  if (first) pullArgs.push('--allow-unrelated-histories');
-  const pull = await git(pullArgs, dir);
-  const push = await git(['push', '-u', 'origin', 'main'], dir);
-  const ok = push.ok || /up-to-date/i.test(push.err + push.out);
-  return { ok, pull: redact(pull.err || pull.out, token).slice(-500), push: redact(push.err || push.out, token).slice(-500) };
+let syncQueue = Promise.resolve();
+function gitSync(dir, repo, token) {
+  const run = async () => {
+    await ensureRepo(dir, repo, token);
+    const fail = r => ({ ok: false, error: redact(r.err || r.out || 'Git 실행 실패', token).slice(-1000) });
+    const conflicts = await git(['diff', '--name-only', '--diff-filter=U'], dir);
+    if (!conflicts.ok) return fail(conflicts);
+    if (conflicts.out.trim()) return { ok: false, error: '파일 충돌을 먼저 해결해야 합니다. 자동 업로드를 중단했습니다.' };
+    const add = await git(['add', '-A'], dir);
+    if (!add.ok) return fail(add);
+    const diff = await git(['diff', '--cached', '--quiet'], dir);
+    if (!diff.ok) {
+      const commit = await git(['commit', '-m', 'studeck sync ' + new Date().toISOString().slice(0, 19)], dir);
+      if (!commit.ok) return fail(commit);
+    }
+    const remote = await git(['ls-remote', '--heads', 'origin', 'main'], dir);
+    if (!remote.ok) return fail(remote);
+    if (remote.out.trim()) {
+      // Explicit merge policy is required by modern Git for independently initialized devices.
+      const pull = await git(['pull', '--no-rebase', '--allow-unrelated-histories', 'origin', 'main', '--no-edit'], dir);
+      if (!pull.ok) return fail(pull); // Never upload when download/merge failed.
+    }
+    const push = await git(['push', '-u', 'origin', 'main'], dir);
+    return push.ok ? { ok: true } : fail(push);
+  };
+  const result = syncQueue.then(run);
+  syncQueue = result.catch(() => {});
+  return result;
 }
 ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
   if (!repo || !token) return { ok: false, error: 'repo/token 필요' };
@@ -562,6 +587,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
+    if (!win || win.isDestroyed()) createWindow();
     if (win) {
       if (win.isMinimized()) win.restore();
       win.show();
@@ -576,6 +602,13 @@ if (!gotLock) {
     createWindow();
   });
 }
+
+// Hidden LMS pages must not cancel quit via beforeunload and leave a windowless app.
+app.on('before-quit', () => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isVisible()) window.destroy();
+  }
+});
 
 app.on('window-all-closed', () => app.quit());
 app.on('activate', () => {

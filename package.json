@@ -17,12 +17,11 @@
   },
   "build": {
     "appId": "com.cbnu.studywidget",
-    "productName": "스터디 위젯",
+    "productName": "StudyWidget",
     "artifactName": "StudyWidget-${version}-Setup.${ext}",
     "directories": {
       "output": "dist"
     },
-    "afterPack": "scripts/afterPack.js",
     "files": [
       "main.js",
       "preload.js",
@@ -54,7 +53,7 @@
     "mac": {
       "icon": "icon.png",
       "category": "public.app-category.education",
-      "identity": null,
+      "identity": "-",
       "artifactName": "StudyWidget-${version}-mac-${arch}.${ext}",
       "target": [
         {

@@ -287,7 +287,8 @@ async function initSync() {
   try {
     const st = await window.api.gitSyncStatus(); state.syncEnabled = !!(st && st.enabled);
     if (!state.syncEnabled) return;
-    await window.api.gitSync();                 // 최신 pull
+    const result = await window.api.gitSync();
+    if (!result || !result.ok) return; // 내려받기에 실패한 로컬 파일을 원격 최신본으로 취급하지 않는다.
     const remote = await window.api.syncRead();
     if (remote && remote._syncedAt && remote._syncedAt > (_localSyncedAt || 0)) {
       const patch = {};
@@ -1657,7 +1658,7 @@ async function refreshGitStatus() {
   try {
     const s = await window.api.gitSyncStatus();
     if (s && s.repo && $('inp-git-repo') && !$('inp-git-repo').value) $('inp-git-repo').value = s.repo;
-    if ($('git-sync-msg')) $('git-sync-msg').textContent = (s && s.enabled) ? `연결됨: ${s.repo}` : '연결 안 됨';
+    if ($('git-sync-msg')) $('git-sync-msg').textContent = (s && s.enabled) ? `연결 설정됨: ${s.repo} (동기화 완료 여부는 지금 동기화로 확인)` : '연결 안 됨';
   } catch (e) {}
 }
 if ($('btn-git-connect')) $('btn-git-connect').onclick = async () => {
