@@ -182,10 +182,16 @@ ipcMain.handle('save-config', (_e, data) => {
 });
 
 ipcMain.handle('import-syllabus', async () => {
-  const choice = await dialog.showOpenDialog(win, { title: '강의계획서 PDF 선택', properties: ['openFile'], filters: [{ name: '강의계획서 PDF', extensions: ['pdf'] }] });
-  if (choice.canceled || !choice.filePaths.length) return { canceled: true };
-  try { return { ok: true, ...await require('./syllabus-pdf').readSyllabus(choice.filePaths[0]) }; }
-  catch { return { ok: false, error: 'PDF를 읽지 못했습니다. 암호가 없고 20MB 이하인 PDF로 다시 시도해 주세요.' }; }
+  const parent = win;
+  const wasOnTop = parent && parent.isAlwaysOnTop();
+  try {
+    // The screen-saver window level can cover macOS native file panels.
+    if (wasOnTop) parent.setAlwaysOnTop(false);
+    const choice = await dialog.showOpenDialog(parent, { title: '강의계획서 PDF 선택', properties: ['openFile'], filters: [{ name: '강의계획서 PDF', extensions: ['pdf'] }] });
+    if (choice.canceled || !choice.filePaths.length) return { canceled: true };
+    return { ok: true, ...await require('./syllabus-pdf').readSyllabus(choice.filePaths[0]) };
+  } catch { return { ok: false, error: 'PDF를 읽지 못했습니다. 암호가 없고 20MB 이하인 PDF로 다시 시도해 주세요.' }; }
+  finally { if (wasOnTop && parent && !parent.isDestroyed()) parent.setAlwaysOnTop(true, 'screen-saver'); }
 });
 
 ipcMain.handle('fetch-timetable', async (_e, identifier) => {
@@ -492,13 +498,22 @@ function migrateFolders() {
 
 // ---------- GitHub 동기화 (파일: 수업자료/보조자료/과제) ----------
 function git(args, cwd) {
+  // credential.helper='' → Windows Git Credential Manager를 꺼서 로그인 팝업 방지(토큰은 원격 URL에 있음).
+  // GIT_TERMINAL_PROMPT/GCM 환경변수 → 어떤 대화형 자격증명 프롬프트도 뜨지 않게.
+  const full = ['-c', 'credential.helper=', ...args];
+  const env = Object.assign({}, process.env, {
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+    GIT_ASKPASS: '',
+    SSH_ASKPASS: '',
+  });
   return new Promise((resolve) => {
-    execFile('git', args, { cwd, windowsHide: true, timeout: 120000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile('git', full, { cwd, windowsHide: true, timeout: 120000, env, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
       resolve({ ok: !err, out: (stdout || '').toString(), err: (stderr || (err && err.message) || '').toString() });
     });
   });
 }
-const gitRemote = (repo, token) => `https://${token}@github.com/${repo}.git`;
+const gitRemote = (repo, token) => `https://x-access-token:${token}@github.com/${repo}.git`;
 const redact = (s, token) => (token ? String(s || '').split(token).join('***') : String(s || ''));
 async function ensureRepo(dir, repo, token) {
   fs.mkdirSync(dir, { recursive: true });

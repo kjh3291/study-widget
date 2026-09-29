@@ -35,6 +35,9 @@ jobs:
           node scripts/test-input-downloads.js
           node scripts/test-syllabus.js
 
+      - name: Verify preview interactions
+        run: npx electron scripts/test-syllabus-ui.cjs
+
       - name: Build (no publish)
         run: npx electron-builder --publish never
         env:

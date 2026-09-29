@@ -13,8 +13,10 @@ const end = source.indexOf("ipcMain.handle('git-connect'", start);
 const { archiveGitChanges } = require('../material-history');
 const context = { archiveGitChanges, fs, path, process, console, execFile: (bin, args, opts, cb) => {
   // Redirect only the remote URL to the isolated bare repository.
+  const prefix = args[0] === '-c' ? args.slice(0, 2) : [];
+  args = args.slice(prefix.length);
   if (args[0] === 'remote' && ['add', 'set-url'].includes(args[1])) args = [...args.slice(0, 3), path.join(root, 'remote.git')];
-  execFile(bin, args, opts, cb);
+  execFile(bin, [...prefix, ...args], opts, cb);
 }};
 vm.createContext(context);
 vm.runInContext(source.slice(start, end), context);
