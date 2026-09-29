@@ -7,6 +7,7 @@ const $ = (id) => document.getElementById(id);
 // ---------- 상태 ----------
 const state = {
   identifier: '',
+  timetableSource: 'everytime',
   subjects: [],           // 사용자가 직접 추가한 과목
   timetableSubjects: [],  // 에브리타임 자동 연동 과목명
   todos: [],              // { id, text, subject|null, due, dueTime?, done, doneAt, createdAt }
@@ -21,6 +22,8 @@ const state = {
   showGeneral: false,
   lmsOpenCourse: {},
   theme: 'dark',
+  opacity: 100,
+  alwaysOnTop: true,
   focus: { sessions: [] },
   evtDraft: { endDate: null, remind: 3 },  // 일정 추가: 종료일(명시), 미리알림(일)
   pickEndMode: false,
@@ -263,46 +266,74 @@ function openTimerStart(anchor) {
 }
 
 // ---------- 저장 ----------
-function persist(patch) { window.api.saveConfig(patch); mirrorSynced(); }
+function persist(patch) {
+  window.api.saveConfig(patch);
+  if (sharedFields.some(key => Object.prototype.hasOwnProperty.call(patch, key))) mirrorSynced();
+}
 
-// ---------- 개인 데이터 동기화(할 일·일정·기록·타이머·출석 등) ----------
-// 경로 없는 데이터만(기기별 설정·토큰·materialsDone 경로는 제외 → 크로스 OS 안전)
-const SYNC_KEYS = ['todos', 'events', 'focus', 'attendance', 'readIds', 'starredLms', 'lmsDone', 'subjects', 'identifier', 'newMaterials', 'notifyState'];
-let _localSyncedAt = 0, _mirrorT = null;
-function syncedSnapshot() {
-  const o = { _syncedAt: Date.now() };
-  SYNC_KEYS.forEach((k) => { o[k] = state[k]; });
-  return o;
-}
+// Only an initialized shared state may be published (a fresh device starts empty).
+let _localSyncedAt = 0, _mirrorQueue = Promise.resolve(), _syncInFlight = null;
 function mirrorSynced() {
-  if (!state.syncEnabled) return;
-  clearTimeout(_mirrorT);
-  _mirrorT = setTimeout(async () => {
-    try {
-      const snap = syncedSnapshot(); _localSyncedAt = snap._syncedAt;
-      await window.api.syncWrite(snap);
-      window.api.saveConfig({ syncedAt: _localSyncedAt }); // 로컬 기준시각 기록(재귀 방지: persist 아닌 saveConfig 직접)
-      scheduleGitSync();
-    } catch (e) {}
-  }, 1500);
+  if (!state.syncEnabled || !state.syncReady) return _mirrorQueue;
+  const snap = { ...sharedSnapshot(state), _syncedAt: Math.max(Date.now(), _localSyncedAt + 1) };
+  const snapshot = JSON.parse(JSON.stringify(snap));
+  _localSyncedAt = snapshot._syncedAt;
+  _mirrorQueue = _mirrorQueue.catch(() => {}).then(async () => {
+    const result = await window.api.syncWrite(snapshot);
+    if (!result || !result.ok) throw new Error((result && result.error) || '동기화 데이터 저장 실패');
+    await window.api.saveConfig({ syncedAt: snapshot._syncedAt });
+    scheduleGitSync();
+  });
+  _mirrorQueue.catch(error => { $('git-sync-msg').textContent = '오류: ' + error.message; });
+  return _mirrorQueue;
 }
-// 시작/포커스 시: 원격이 더 최신이면 개인 데이터 채택(순차 사용이면 항상 안전)
-async function initSync() {
-  try {
-    const st = await window.api.gitSyncStatus(); state.syncEnabled = !!(st && st.enabled);
-    if (!state.syncEnabled) return;
-    await window.api.gitSync();                 // 최신 pull
+function applySharedState(remote) {
+  const oldIdentifier = state.identifier;
+  const patch = sharedSnapshot(remote);
+  Object.assign(state, patch);
+  _localSyncedAt = remote._syncedAt;
+  window.api.saveConfig({ ...patch, syncedAt: _localSyncedAt });
+  applyTheme(); applyClockFormat();
+  $('inp-id').value = state.identifier || '';
+  $('inp-focus-goal').value = state.focusGoalMin / 60;
+  $('inp-morning').value = String(state.notifyPrefs.morningHour).padStart(2, '0') + ':00';
+  $('inp-deadline').checked = state.notifyPrefs.deadlineAlerts !== false;
+  $('inp-rollover').checked = state.rolloverOverdue;
+  $('inp-lms-auto').checked = state.lmsAuto;
+  $('inp-autodl').checked = state.autoDownload;
+  $('inp-opacity').value = state.opacity;
+  $('inp-top').checked = state.alwaysOnTop;
+  window.api.setOpacity(state.opacity / 100);
+  window.api.setAlwaysOnTop(state.alwaysOnTop);
+  if (state.timetableFull.length) renderTimetable(state.timetableFull);
+  else showTimetableState('empty');
+  if (state.timetableSource !== 'syllabus' && state.identifier && state.identifier !== oldIdentifier) loadTimetable(state.identifier);
+  renderSummary(); rerenderTodoAreas(); updateLmsBadge();
+  if (currentTab === 'schedule') renderCalendar();
+  if (currentTab === 'stats') renderStats();
+  if (currentTab === 'attend') renderAttendance();
+  if (currentTab === 'lms') renderLms();
+}
+function initSync() {
+  if (_syncInFlight) return _syncInFlight;
+  _syncInFlight = (async () => {
+    const st = await window.api.gitSyncStatus();
+    state.syncEnabled = !!(st && st.enabled);
+    if (!state.syncEnabled) return { ok: false, error: '동기화 연결 설정이 필요합니다.' };
+    await _mirrorQueue;
+    const result = await window.api.gitSync();
+    if (!result || !result.ok) return result;
     const remote = await window.api.syncRead();
-    if (remote && remote._syncedAt && remote._syncedAt > (_localSyncedAt || 0)) {
-      const patch = {};
-      SYNC_KEYS.forEach((k) => { if (remote[k] !== undefined) { state[k] = remote[k]; patch[k] = remote[k]; } });
-      _localSyncedAt = remote._syncedAt; patch.syncedAt = _localSyncedAt;
-      window.api.saveConfig(patch);
-      rolloverOverdue(); renderSummary(); rerenderTodoAreas();
-      if (currentTab === 'attend') renderAttendance();
-      if ($('inp-id')) $('inp-id').value = state.identifier || '';
-    }
-  } catch (e) {}
+    if (remote && remote._syncedAt > _localSyncedAt) applySharedState(remote);
+    state.syncReady = true;
+    if (!remote || sharedFields.some(key => remote[key] === undefined && state[key] !== undefined)) await mirrorSynced();
+    $('git-sync-msg').textContent = '✅ 동기화 완료';
+    return result;
+  })().catch(error => ({ ok: false, error: error.message })).then(result => {
+    if (result && !result.ok) $('git-sync-msg').textContent = '오류: ' + (result.error || '동기화 실패');
+    return result;
+  }).finally(() => { _syncInFlight = null; });
+  return _syncInFlight;
 }
 function saveTodos() { persist({ todos: state.todos }); }
 function saveEvents() { persist({ events: state.events }); }
@@ -394,7 +425,9 @@ function setStatus(msg) { $('status').textContent = msg; showTimetableState('sta
 
 function renderTimetable(subjects) {
   state.timetableSubjects = [...new Set(subjects.map((s) => s.name).filter(Boolean))];
-  state.timetableFull = subjects;  // 출석 탭에서 요일 계산용
+  const changed = JSON.stringify(state.timetableFull) !== JSON.stringify(subjects);
+  state.timetableFull = subjects;
+  if (changed) persist({ timetableFull: subjects });
   let minStart = Infinity, maxEnd = -Infinity, maxDay = 4;
   for (const s of subjects) for (const t of s.times) {
     minStart = Math.min(minStart, toMin(t.start));
@@ -436,9 +469,12 @@ function renderTimetable(subjects) {
 }
 
 async function loadTimetable(identifier) {
+  if (state.timetableSource === 'syllabus') { renderTimetable(state.timetableFull); return; }
+  const previous = state.timetableFull;
   if (!identifier) { showTimetableState('empty'); return; }
   setStatus('시간표를 불러오는 중…');
   const res = await window.api.fetchTimetable(identifier);
+  if (state.timetableSource === 'syllabus' || state.timetableFull !== previous || state.identifier !== identifier) return;
   if (res.ok) renderTimetable(res.subjects);
   else setStatus('⚠️ ' + res.error);
 }
@@ -1000,7 +1036,7 @@ async function syncDownloads(list, doneMap, kind, force) {
     // 과제인데 기록 경로가 '과제' 폴더가 아니면(옛 버그로 수업자료에 저장됨) 신규로 재수집
     const wrongFolder = rec && rec.path && kind === 'assign' && !/[\\/]과제[\\/]/.test(rec.path);
     if (!rec || wrongFolder) items.push({ url: m.url, course, title: m.title, kind, mode: 'new' });
-    else if (force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig });
+    else if (kind === 'assign' || force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig });
   });
   if (!items.length) return { gotNew: [], changed: [] };
   const byUrl = {}; items.forEach((it) => (byUrl[it.url] = it));
@@ -1012,8 +1048,8 @@ async function syncDownloads(list, doneMap, kind, force) {
     const it = byUrl[r.url]; if (!it) return;
     const prev = doneMap[r.url];
     doneMap[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now };
-    if (!prev) { if (!r.existed) gotNew.push({ course: it.course, title: r.filename || it.title, at: now, kind }); }
-    else if (r.changed) changed.push({ course: it.course, title: r.filename || it.title, at: now, kind, changed: true });
+    if (r.changed) changed.push({ course: it.course, title: r.filename || it.title, at: now, kind, changed: true });
+    else if (!prev) { if (!r.existed) gotNew.push({ course: it.course, title: r.filename || it.title, at: now, kind }); }
   });
   return { gotNew, changed };
 }
@@ -1361,8 +1397,11 @@ $('btn-settings').onclick = openSettings;
 $('btn-setup').onclick = openSettings;
 $('btn-min').onclick = () => window.api.minimize();
 $('btn-mini').onclick = toggleMini;
-$('btn-close').onclick = () => window.api.close();
-// (미니 목록의 click/change/keydown은 아래 공유 핸들러 onTodoListClick 등이 처리)
+$('btn-close').onclick = async () => {
+  try { await _mirrorQueue; } catch (error) { showToast(error.message); return; }
+  window.api.close();
+};
+// 미니 목록도 아래 공용 할 일 핸들러를 사용합니다.
 // 미니 모드에서도 우클릭 메뉴/더블클릭 편집 동작하게
 $('mini-list').addEventListener('contextmenu', (e) => {
   const row = e.target.closest('.todo'); if (!row) return;
@@ -1373,7 +1412,7 @@ $('mini-list').addEventListener('dblclick', (e) => {
 });
 
 $('td-add').onclick = addTodo;
-$('td-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTodo(); });
+$('td-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && !e.repeat) { e.preventDefault(); addTodo(); } });
 $('chip-date').onclick = () => openDatePopover($('chip-date'));
 $('chip-subject').onclick = () => openSubjectPopover($('chip-subject'));
 $('chip-repeat').onclick = () => openRepeatPopover($('chip-repeat'));
@@ -1434,6 +1473,7 @@ function onTodoListChange(e) {
   const tog = e.target.closest('[data-toggle]'); if (tog) toggleTodo(tog.dataset.toggle, tog.checked);
 }
 function onTodoListKeydown(e) {
+  if (e.isComposing || e.keyCode === 229 || e.repeat) return;
   const add = e.target.closest('[data-subadd]');
   if (!add) return;
   if (e.key === 'Enter') {
@@ -1469,7 +1509,7 @@ function startEditTodo(id) {
   ed.replaceWith(inp); inp.focus(); inp.select();
   let committed = false;
   const commit = (save) => { if (committed) return; committed = true; if (save) { const v = inp.value.trim(); if (v) { t.text = v; saveTodos(); } } renderTodos(); };
-  inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') commit(true); if (ev.key === 'Escape') commit(false); });
+  inp.addEventListener('keydown', (ev) => { if (ev.isComposing || ev.keyCode === 229 || ev.repeat) return; if (ev.key === 'Enter') commit(true); if (ev.key === 'Escape') commit(false); });
   inp.addEventListener('blur', () => commit(true));
 }
 $('todo-list').addEventListener('dblclick', (e) => {
@@ -1560,7 +1600,7 @@ $('day-panel').addEventListener('click', (e) => {
   const del = e.target.closest('[data-del-ev]');
   if (del) { state.events = state.events.filter((ev) => ev.id !== del.dataset.delEv); saveEvents(); renderCalendar(); renderSummary(); }
 });
-$('day-panel').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'dp-title-input') addEventOnSelected(); });
+$('day-panel').addEventListener('keydown', (e) => { if (!e.isComposing && e.keyCode !== 229 && !e.repeat && e.key === 'Enter' && e.target.id === 'dp-title-input') addEventOnSelected(); });
 $('day-panel').addEventListener('change', (e) => {
   const tog = e.target.closest('[data-toggle]'); if (tog) toggleTodo(tog.dataset.toggle, tog.checked);
 });
@@ -1639,11 +1679,11 @@ $('btn-save').onclick = async () => {
   if (!raw) { $('settings-err').textContent = '공유 링크 또는 식별자를 입력하세요.'; return; }
   $('settings-err').textContent = '';
   const res = await window.api.fetchTimetable(raw);
-  if (res.ok) { state.identifier = raw; persist({ identifier: raw }); renderTimetable(res.subjects); $('settings').classList.add('hidden'); switchTab('timetable'); }
+  if (res.ok) { state.identifier = raw; state.timetableSource = 'everytime'; state.timetableFull = res.subjects; persist({ identifier: raw, timetableSource: 'everytime', timetableFull: res.subjects }); renderTimetable(res.subjects); $('settings').classList.add('hidden'); switchTab('timetable'); }
   else $('settings-err').textContent = res.error;
 };
-$('inp-opacity').oninput = () => { window.api.setOpacity($('inp-opacity').value / 100); persist({ opacity: Number($('inp-opacity').value) }); };
-$('inp-top').onchange = () => { window.api.setAlwaysOnTop($('inp-top').checked); persist({ alwaysOnTop: $('inp-top').checked }); };
+$('inp-opacity').oninput = () => { state.opacity = Number($('inp-opacity').value); window.api.setOpacity(state.opacity / 100); persist({ opacity: state.opacity }); };
+$('inp-top').onchange = () => { state.alwaysOnTop = $('inp-top').checked; window.api.setAlwaysOnTop(state.alwaysOnTop); persist({ alwaysOnTop: state.alwaysOnTop }); };
 $('inp-lms-auto').onchange = () => { state.lmsAuto = $('inp-lms-auto').checked; persist({ lmsAuto: state.lmsAuto }); };
 $('inp-morning').onchange = () => { const h = parseInt(($('inp-morning').value || '8').split(':')[0], 10); state.notifyPrefs.morningHour = isNaN(h) ? 8 : h; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-deadline').checked; persist({ notifyPrefs: state.notifyPrefs }); };
@@ -1661,21 +1701,21 @@ async function refreshGitStatus() {
   try {
     const s = await window.api.gitSyncStatus();
     if (s && s.repo && $('inp-git-repo') && !$('inp-git-repo').value) $('inp-git-repo').value = s.repo;
-    if ($('git-sync-msg')) $('git-sync-msg').textContent = (s && s.enabled) ? `연결됨: ${s.repo}` : '연결 안 됨';
+    if ($('git-sync-msg')) $('git-sync-msg').textContent = (s && s.enabled) ? `연결 설정됨: ${s.repo} (동기화 완료 여부는 지금 동기화로 확인)` : '연결 안 됨';
   } catch (e) {}
 }
 if ($('btn-git-connect')) $('btn-git-connect').onclick = async () => {
   const repo = $('inp-git-repo').value.trim(), token = $('inp-git-token').value.trim();
   if (!repo || !token) { $('git-sync-msg').textContent = '저장소(owner/이름)와 토큰을 입력하세요.'; return; }
   $('git-sync-msg').textContent = '연결·동기화 중…';
-  const r = await window.api.gitConnect(repo, token);
-  if (r && r.ok) { state.syncEnabled = true; mirrorSynced(); }
+  let r = await window.api.gitConnect(repo, token);
+  if (r && r.ok) { state.syncEnabled = true; r = await initSync(); }
   $('git-sync-msg').textContent = r && r.ok ? '✅ 연결·동기화 완료' : ('오류: ' + ((r && (r.error || r.push)) || '실패'));
   $('inp-git-token').value = '';
 };
 if ($('btn-git-sync')) $('btn-git-sync').onclick = async () => {
   $('git-sync-msg').textContent = '동기화 중…';
-  const r = await window.api.gitSync();
+  const r = await initSync();
   $('git-sync-msg').textContent = r && r.ok ? '✅ 동기화 완료' : ('오류: ' + ((r && (r.error || r.push)) || '실패'));
 };
 // 파일 변경 후 자동 동기화(디바운스) — 연결돼 있을 때만
@@ -1683,7 +1723,7 @@ let _gitSyncT = null;
 function scheduleGitSync() {
   clearTimeout(_gitSyncT);
   _gitSyncT = setTimeout(async () => {
-    try { const s = await window.api.gitSyncStatus(); if (s && s.enabled) window.api.gitSync(); } catch (e) {}
+    try { if (state.syncEnabled) await initSync(); } catch (e) {}
   }, 8000);
 }
 $('inp-autostart').onchange = async () => {
@@ -1716,6 +1756,70 @@ $('btn-lms-dump').onclick = async () => {
   $('lms-dump-msg').textContent = r && r.dir ? `저장됨: ${r.dir}` : ('오류: ' + (r && r.error || '실패'));
 };
 
+// A draft remains local to the preview until the user explicitly applies it.
+function previewSyllabus(result) {
+  const ov = document.createElement('div');
+  ov.id = 'syllabus-preview';
+  ov.style.cssText = 'position:absolute;inset:0;z-index:30;background:var(--bg);padding:18px;overflow:auto;display:flex;flex-direction:column;gap:10px;font-size:12px;';
+  ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '강의계획서 미리보기');
+  ov.innerHTML = `<h2 style="font-size:15px">강의계획서 미리보기</h2>
+    <div>${escapeHtml(result.filename)}</div><div style="color:var(--muted)">${escapeHtml(result.warning)}</div>
+    <label>과목명 <input id="sy-name" type="text" style="width:100%" /></label>
+    <label>교수 (선택) <input id="sy-prof" type="text" style="width:100%" /></label>
+    <div id="sy-times"></div><button id="sy-add" class="btn mini">수업 시간 추가</button>
+    <label>반영 방법 <select id="sy-target" style="width:100%"><option value="">새 과목으로 추가</option></select></label>
+    <div style="color:var(--muted);line-height:1.6">선택한 과목만 추가·교체합니다. 반영 후에는 에브리타임 자동 새로고침을 멈추고 이 시간표를 기기 간 공유합니다. 에브리타임으로 돌아가려면 설정에서 공유 링크를 다시 불러오세요.</div>
+    <div id="sy-error" style="color:#ff7b7b" role="alert"></div>
+    <div style="display:flex;gap:8px"><button id="sy-cancel" class="btn" style="flex:1">취소</button><button id="sy-apply" class="btn primary" style="flex:1">확인 후 시간표 반영</button></div>`;
+  $('app').appendChild(ov);
+  const q = id => ov.querySelector('#' + id);
+  q('sy-name').value = result.draft.name; q('sy-prof').value = result.draft.professor;
+  const baseline = JSON.stringify(state.timetableFull);
+  state.timetableFull.forEach((s, i) => {
+    const option = document.createElement('option'); option.value = String(i); option.textContent = s.name + ' 교체'; q('sy-target').appendChild(option);
+  });
+  const matching = state.timetableFull.map((s, i) => s.name === result.draft.name ? i : -1).filter(i => i >= 0);
+  if (matching.length === 1) q('sy-target').value = String(matching[0]);
+  const addTime = (time = { day: '', start: '', end: '', place: '' }) => {
+    const row = document.createElement('div'); row.className = 'sy-time';
+    row.style.cssText = 'border:1px solid var(--line);padding:10px;border-radius:8px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;';
+    row.innerHTML = `<label>요일 <select class="sy-day"><option value="">선택</option>${DAY_NAMES.map((d, i) => `<option value="${i}">${d}</option>`).join('')}</select></label>
+      <label>시작 <input class="sy-start" type="time" step="300" /></label><label>종료 <input class="sy-end" type="time" step="300" /></label>
+      <label>강의실 <input class="sy-place" type="text" /></label><button class="btn mini sy-remove">삭제</button>`;
+    for (const key of ['day', 'start', 'end', 'place']) row.querySelector('.sy-' + key).value = time[key];
+    row.querySelector('.sy-remove').onclick = () => row.remove();
+    q('sy-times').appendChild(row);
+  };
+  result.draft.times.forEach(addTime); q('sy-add').onclick = () => addTime();
+  const close = () => { ov.remove(); $('btn-syllabus').focus(); };
+  q('sy-cancel').onclick = close;
+  ov.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.isComposing) close(); });
+  q('sy-apply').onclick = () => {
+    try {
+      if (JSON.stringify(state.timetableFull) !== baseline) throw new Error('다른 기기 또는 새로고침으로 시간표가 바뀌었습니다. 취소 후 PDF를 다시 열어 주세요.');
+      const draft = { name: q('sy-name').value, professor: q('sy-prof').value, times: [...ov.querySelectorAll('.sy-time')].map(row => Object.fromEntries(['day', 'start', 'end', 'place'].map(key => [key, row.querySelector('.sy-' + key).value]))) };
+      const subject = syllabusSubject(draft);
+      const subjects = mergeSyllabus(state.timetableFull, subject, q('sy-target').value);
+      state.timetableSource = 'syllabus'; state.timetableFull = subjects;
+      persist({ timetableSource: 'syllabus', timetableFull: subjects });
+      renderTimetable(subjects); close();
+      $('syllabus-msg').textContent = '강의계획서 시간표를 반영했습니다. 에브리타임 자동 새로고침은 꺼져 있습니다.';
+    } catch (error) { q('sy-error').textContent = error.message; }
+  };
+  q('sy-name').focus();
+}
+$('btn-syllabus').onclick = async () => {
+  $('btn-syllabus').disabled = true; $('syllabus-msg').textContent = 'PDF를 선택하면 내용을 읽어 미리 보여드립니다…';
+  try {
+    const result = await window.api.importSyllabus();
+    $('syllabus-msg').textContent = '';
+    if (result.canceled) return;
+    if (!result.ok) throw new Error(result.error);
+    previewSyllabus(result);
+  } catch (error) { $('syllabus-msg').textContent = error.message; }
+  finally { $('btn-syllabus').disabled = false; }
+};
+
 // ---------- 미니 프롬프트 ----------
 function miniPrompt(title) {
   return new Promise((resolve) => {
@@ -1731,7 +1835,7 @@ function miniPrompt(title) {
     const done = (v) => { ov.remove(); resolve(v); };
     ov.querySelector('#mp-cancel').onclick = () => done(null);
     ov.querySelector('#mp-ok').onclick = () => done(inp.value.trim() || null);
-    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(inp.value.trim() || null); if (e.key === 'Escape') done(null); });
+    inp.addEventListener('keydown', (e) => { if (e.isComposing || e.keyCode === 229 || e.repeat) return; if (e.key === 'Enter') done(inp.value.trim() || null); if (e.key === 'Escape') done(null); });
   });
 }
 
@@ -1740,6 +1844,8 @@ function miniPrompt(title) {
 // =====================================================================
 (async () => {
   const cfg = await window.api.loadConfig();
+  state.opacity = typeof cfg.opacity === 'number' ? cfg.opacity : 100;
+  state.alwaysOnTop = cfg.alwaysOnTop !== false;
   if (cfg.opacity) { $('inp-opacity').value = cfg.opacity; window.api.setOpacity(cfg.opacity / 100); }
   if (typeof cfg.alwaysOnTop === 'boolean') { $('inp-top').checked = cfg.alwaysOnTop; window.api.setAlwaysOnTop(cfg.alwaysOnTop); }
   state.subjects = cfg.subjects || [];
@@ -1783,15 +1889,19 @@ function miniPrompt(title) {
   setInterval(updateClock, 1000);  // 헤더 시계(초 단위)
   updateLmsBadge();
 
-  if (cfg.identifier) { state.identifier = cfg.identifier; loadTimetable(cfg.identifier); }
-  else showTimetableState('empty');
+  state.timetableSource = cfg.timetableSource === 'syllabus' ? 'syllabus' : 'everytime';
+  state.identifier = cfg.identifier || '';
+  if (Array.isArray(cfg.timetableFull) && cfg.timetableFull.length) renderTimetable(cfg.timetableFull);
+  if (state.timetableSource !== 'syllabus' && cfg.identifier) loadTimetable(cfg.identifier);
+  else if (!state.timetableFull.length) showTimetableState('empty');
 
   if (state.lms && state.lms.courses && state.lms.courses.length) {
     window.api.lmsStatus().then((s) => { if (s && s.valid) doLmsRefresh(true); });
   }
   // 시작 시 GitHub에서 최신 자료·개인데이터 받아오기(+로컬 변경 올리기)
   _localSyncedAt = cfg.syncedAt || 0;
-  initSync();
+  await initSync();
+  setInterval(() => { if (state.syncEnabled) initSync(); }, 60000);
 
   // 과제 제출 창을 닫으면 자동 새로고침 → 제출한 과제가 '완료'로 전환
   window.api.onSubmissionClosed(() => {

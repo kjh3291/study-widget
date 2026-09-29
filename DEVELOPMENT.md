@@ -34,12 +34,7 @@
 ## OS별 빌드
 - 윈도우: `npx electron-builder --win` → `dist/StudyWidget-<v>-Setup.exe`
 - 맥(arm64): `npx electron-builder --mac` → `dist/StudyWidget-<v>-mac-arm64.dmg`
-  - **맥 앱은 미서명이라 첫 실행 시** 격리 해제 + 애드혹 서명 필요:
-    ```bash
-    xattr -dr com.apple.quarantine "/Applications/스터디 위젯.app"
-    codesign --force --deep --sign - "/Applications/스터디 위젯.app"
-    ```
-  - (TODO: CI에서 맥 애드혹 서명 자동화하면 위 과정 불필요.)
+  - CI에서 `StudyWidget.app`과 Helper에 electron-builder 기본 ad-hoc 서명을 적용하고 실행을 검사합니다. 기존 수동 `--deep` 재서명은 사용하지 않습니다. Apple 공증은 별도이며 최초 실행은 macOS의 확인이 필요할 수 있습니다.
 
 ## 설치 시 주의 (단일 인스턴스)
 - 새 버전을 설치·실행해도 **옛 앱이 켜져 있으면** 단일 인스턴스 잠금 때문에 새 버전이 안 뜨고 기존 창만 앞으로 온다.

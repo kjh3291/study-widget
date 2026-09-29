@@ -606,6 +606,7 @@
 
   <div id="body">
     <div id="view-timetable" class="view">
+      <div class="pad"><button id="btn-syllabus" class="btn mini">강의계획서 PDF 가져오기</button><div id="syllabus-msg" style="font-size:11px;color:var(--muted);margin-top:6px" aria-live="polite"></div></div>
       <div id="empty">
         <div>에브리타임 공유 링크를 등록하면<br/>시간표가 여기에 표시됩니다.</div>
         <button id="btn-setup" class="btn primary">공유 링크 등록하기</button>
@@ -716,6 +717,8 @@
   </div>
 </div>
 
+<script src="sync-fields.js"></script>
+<script src="syllabus.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

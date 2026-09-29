@@ -1,9 +1,11 @@
-const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session, dialog } = require('electron');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const lms = require('./lms');
+const { sharedSnapshot } = require('./sync-fields');
+const { preserveMaterial, archiveGitChanges } = require('./material-history');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -179,6 +181,19 @@ ipcMain.handle('save-config', (_e, data) => {
   return c;
 });
 
+ipcMain.handle('import-syllabus', async () => {
+  const parent = win;
+  const wasOnTop = parent && parent.isAlwaysOnTop();
+  try {
+    // The screen-saver window level can cover macOS native file panels.
+    if (wasOnTop) parent.setAlwaysOnTop(false);
+    const choice = await dialog.showOpenDialog(parent, { title: '강의계획서 PDF 선택', properties: ['openFile'], filters: [{ name: '강의계획서 PDF', extensions: ['pdf'] }] });
+    if (choice.canceled || !choice.filePaths.length) return { canceled: true };
+    return { ok: true, ...await require('./syllabus-pdf').readSyllabus(choice.filePaths[0]) };
+  } catch { return { ok: false, error: 'PDF를 읽지 못했습니다. 암호가 없고 20MB 이하인 PDF로 다시 시도해 주세요.' }; }
+  finally { if (wasOnTop && parent && !parent.isDestroyed()) parent.setAlwaysOnTop(true, 'screen-saver'); }
+});
+
 ipcMain.handle('fetch-timetable', async (_e, identifier) => {
   try {
     const subjects = await fetchTimetable(identifier);
@@ -306,7 +321,7 @@ ipcMain.handle('lms-dump', async () => {
 // ---------- 수업 자료 다운로드 / 폴더 (바탕화면\Studeck) ----------
 const STUDECK_DIR = () => path.join(app.getPath('desktop'), 'Studeck');
 function safeName(s) {
-  return String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '기타';
+  return String(s || '').normalize('NFC').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '기타';
 }
 function parseCdFilename(cd) {
   if (!cd) return '';
@@ -416,21 +431,25 @@ async function downloadMaterial(url, course, title, opts) {
   const got = await fetchMaterialBytes(url, title);
   if (!got || !got.body) return { url, ok: false, error: 'download-fail' };
   const sig = sha1(got.body);
-  // 재확인: 내용 같으면 그대로 두고(중복 방지), 다르면 같은 파일 덮어쓰기(교수 수정본 반영)
-  if (opts.mode === 'recheck' && opts.dest) {
-    if (opts.prevSig && opts.prevSig === sig && fs.existsSync(opts.dest)) return { url, ok: true, path: opts.dest, filename: path.basename(opts.dest), sig, changed: false };
-    try { fs.mkdirSync(path.dirname(opts.dest), { recursive: true }); fs.writeFileSync(opts.dest, got.body); return { url, ok: true, path: opts.dest, filename: path.basename(opts.dest), sig, changed: !!opts.prevSig }; }
-    catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
-  }
-  // 신규: 과목별 폴더(수업자료/과제)에 저장. 같은 이름 파일이 이미 있으면 다운로드/저장 안 함(중복 방지),
-  // 삭제돼서 없으면 저장(재다운로드). '(2)' 사본을 만들지 않는다.
   const dir = path.join(STUDECK_DIR(), safeName(course), opts.kind === 'assign' ? '과제' : '수업자료');
+  const dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(dir, got.filename);
   try {
-    fs.mkdirSync(dir, { recursive: true });
-    const dest = path.join(dir, got.filename);
-    if (fs.existsSync(dest)) return { url, ok: true, path: dest, filename: got.filename, sig, changed: false, existed: true };
+    const existed = fs.existsSync(dest);
+    const oldSig = existed ? sha1(fs.readFileSync(dest)) : null;
+    if (existed && oldSig === sig) return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true };
+    // A new submission URL can still point to a revised file with the same filename.
+    if (existed && opts.kind !== 'assign' && opts.mode !== 'recheck') {
+      return { url, ok: true, path: dest, filename: path.basename(dest), sig: oldSig, changed: false, existed: true };
+    }
+    if (existed && opts.kind === 'assign') {
+      const backup = path.join(STUDECK_DIR(), '.studeck', 'backups', 'submissions', safeName(course));
+      fs.mkdirSync(backup, { recursive: true });
+      fs.copyFileSync(dest, path.join(backup, oldSig + '-' + path.basename(dest)));
+    }
+    if (existed && opts.kind !== 'assign') preserveMaterial(STUDECK_DIR(), path.relative(STUDECK_DIR(), dest), fs.readFileSync(dest));
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, got.body);
-    return { url, ok: true, path: dest, filename: got.filename, sig, changed: false };
+    return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: existed };
   } catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
 }
 ipcMain.handle('lms-download', async (_e, items) => {
@@ -489,8 +508,8 @@ function git(args, cwd) {
     SSH_ASKPASS: '',
   });
   return new Promise((resolve) => {
-    execFile('git', full, { cwd, windowsHide: true, env, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
-      resolve({ ok: !err, out: (stdout || '').toString(), err: (stderr || '').toString() });
+    execFile('git', full, { cwd, windowsHide: true, timeout: 120000, env, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
+      resolve({ ok: !err, out: (stdout || '').toString(), err: (stderr || (err && err.message) || '').toString() });
     });
   });
 }
@@ -498,26 +517,74 @@ const gitRemote = (repo, token) => `https://x-access-token:${token}@github.com/$
 const redact = (s, token) => (token ? String(s || '').split(token).join('***') : String(s || ''));
 async function ensureRepo(dir, repo, token) {
   fs.mkdirSync(dir, { recursive: true });
+  const checked = async (args) => {
+    const r = await git(args, dir);
+    if (!r.ok) throw new Error(redact(r.err || r.out || 'Git 실행 실패', token));
+  };
   if (!fs.existsSync(path.join(dir, '.git'))) {
-    await git(['init'], dir);
-    await git(['symbolic-ref', 'HEAD', 'refs/heads/main'], dir);
+    await checked(['init']);
+    await checked(['symbolic-ref', 'HEAD', 'refs/heads/main']);
   }
-  await git(['config', 'user.email', 'studeck@local'], dir);
-  await git(['config', 'user.name', 'Studeck'], dir);
-  try { fs.writeFileSync(path.join(dir, '.gitignore'), '.studeck-migrated\n.studeck/backups/\n', 'utf8'); } catch (e) {}
-  await git(['remote', 'remove', 'origin'], dir);
-  await git(['remote', 'add', 'origin', gitRemote(repo, token)], dir);
+  await checked(['config', 'user.email', 'studeck@local']);
+  await checked(['config', 'user.name', 'Studeck']);
+  const ignorePath = path.join(dir, '.gitignore');
+  const old = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, 'utf8') : '';
+  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store'].filter(x => !old.split(/\r?\n/).includes(x));
+  if (missing.length) fs.appendFileSync(ignorePath, (old && !old.endsWith('\n') ? '\n' : '') + missing.join('\n') + '\n');
+  const remote = await git(['remote', 'get-url', 'origin'], dir);
+  await checked(['remote', remote.ok ? 'set-url' : 'add', 'origin', gitRemote(repo, token)]);
 }
-async function gitSync(dir, repo, token, first) {
-  await ensureRepo(dir, repo, token);
-  await git(['add', '-A'], dir);
-  await git(['commit', '-m', 'studeck sync ' + new Date().toISOString().slice(0, 19)], dir); // nothing-to-commit이면 무시
-  const pullArgs = ['pull', 'origin', 'main', '--no-edit'];
-  if (first) pullArgs.push('--allow-unrelated-histories');
-  const pull = await git(pullArgs, dir);
-  const push = await git(['push', '-u', 'origin', 'main'], dir);
-  const ok = push.ok || /up-to-date/i.test(push.err + push.out);
-  return { ok, pull: redact(pull.err || pull.out, token).slice(-500), push: redact(push.err || push.out, token).slice(-500) };
+let syncQueue = Promise.resolve();
+function gitSync(dir, repo, token) {
+  const run = async () => {
+    await ensureRepo(dir, repo, token);
+    const fail = r => ({ ok: false, error: redact([r.err, r.out].filter(Boolean).join('\n') || 'Git 실행 실패', token).slice(-1000) });
+    const conflicts = await git(['diff', '--name-only', '--diff-filter=U'], dir);
+    if (!conflicts.ok) return fail(conflicts);
+    if (conflicts.out.trim()) return { ok: false, error: '파일 충돌을 먼저 해결해야 합니다. 자동 업로드를 중단했습니다.' };
+    await archiveGitChanges(dir);
+    const add = await git(['add', '-A'], dir);
+    if (!add.ok) return fail(add);
+    const diff = await git(['diff', '--cached', '--quiet'], dir);
+    if (!diff.ok) {
+      const commit = await git(['commit', '-m', 'studeck sync ' + new Date().toISOString().slice(0, 19)], dir);
+      if (!commit.ok) return fail(commit);
+    }
+    const remote = await git(['ls-remote', '--heads', 'origin', 'main'], dir);
+    if (!remote.ok) return fail(remote);
+    if (remote.out.trim()) {
+      // Explicit merge policy is required by modern Git for independently initialized devices.
+      const fetched = await git(['fetch', 'origin', 'main'], dir);
+      if (!fetched.ok) return fail(fetched);
+      await archiveGitChanges(dir, true);
+      const stagedHistory = await git(['add', '-A'], dir);
+      if (!stagedHistory.ok) return fail(stagedHistory);
+      if (!(await git(['diff', '--cached', '--quiet'], dir)).ok) {
+        const historyCommit = await git(['commit', '-m', 'Preserve previous materials'], dir);
+        if (!historyCommit.ok) return fail(historyCommit);
+      }
+      const pull = await git(['merge', '--allow-unrelated-histories', 'FETCH_HEAD', '--no-edit'], dir);
+      if (!pull.ok) {
+        const unmerged = await git(['diff', '--name-only', '--diff-filter=U'], dir);
+        if (unmerged.out.trim() !== '.gitignore') return fail(pull);
+        const ours = await git(['show', ':2:.gitignore'], dir);
+        const theirs = await git(['show', ':3:.gitignore'], dir);
+        const rules = [...new Set((ours.out + '\n' + theirs.out).split(/\r?\n/).filter(Boolean))];
+        // Only reconcile the app's own ignore template, never user file conflicts.
+        if (!ours.ok || !theirs.ok || rules.some(rule => !['.studeck-migrated', '.studeck/backups/', '.DS_Store'].includes(rule))) return fail(pull);
+        fs.writeFileSync(path.join(dir, '.gitignore'), rules.join('\n') + '\n');
+        const staged = await git(['add', '.gitignore'], dir);
+        if (!staged.ok) return fail(staged);
+        const merged = await git(['commit', '--no-edit'], dir);
+        if (!merged.ok) return fail(merged);
+      }
+    }
+    const push = await git(['push', '-u', 'origin', 'main'], dir);
+    return push.ok ? { ok: true } : fail(push);
+  };
+  const result = syncQueue.then(run);
+  syncQueue = result.catch(() => {});
+  return result;
 }
 ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
   if (!repo || !token) return { ok: false, error: 'repo/token 필요' };
@@ -539,7 +606,7 @@ ipcMain.handle('git-disconnect', () => { const c = loadConfig(); c.sync = { enab
 const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json');
 ipcMain.handle('sync-read', () => { try { return JSON.parse(fs.readFileSync(SYNC_DATA_PATH(), 'utf8')); } catch (e) { return null; } });
 ipcMain.handle('sync-write', (_e, data) => {
-  try { const p = SYNC_DATA_PATH(); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(data || {}, null, 2), 'utf8'); return { ok: true }; }
+  try { const p = SYNC_DATA_PATH(); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify({ ...sharedSnapshot(data || {}), _syncedAt: Number(data && data._syncedAt) || Date.now() }, null, 2), 'utf8'); return { ok: true }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });
 
@@ -571,6 +638,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
+    if (!win || win.isDestroyed()) createWindow();
     if (win) {
       if (win.isMinimized()) win.restore();
       win.show();
@@ -585,6 +653,13 @@ if (!gotLock) {
     createWindow();
   });
 }
+
+// Hidden LMS pages must not cancel quit via beforeunload and leave a windowless app.
+app.on('before-quit', () => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isVisible()) window.destroy();
+  }
+});
 
 app.on('window-all-closed', () => app.quit());
 app.on('activate', () => {

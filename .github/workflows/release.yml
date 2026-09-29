@@ -28,10 +28,30 @@ jobs:
 
       - run: npm ci
 
+      - name: Verify file sync
+        run: |
+          node scripts/test-git-sync.js
+          node scripts/test-shared-settings.js
+          node scripts/test-input-downloads.js
+          node scripts/test-syllabus.js
+
+      - name: Verify preview interactions
+        run: npx electron scripts/test-syllabus-ui.cjs
+
       - name: Build (no publish)
         run: npx electron-builder --publish never
         env:
           CSC_IDENTITY_AUTODISCOVERY: false
+
+      - name: Verify macOS signature and startup
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            python3 scripts/check-mac.py dist/mac-arm64/StudyWidget.app
+          else
+            python3 scripts/check-mac.py dist/mac/StudyWidget.app
+          fi
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
