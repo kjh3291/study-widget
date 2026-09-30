@@ -34,6 +34,8 @@ app.on('will-quit', () => {
   const saved = JSON.parse(fs.readFileSync(path.join(temp, 'config.json')));
   if (!verified || saved.todos.length !== 2 || !saved.pendingShared.todos) process.exitCode = 1;
   else console.log('PASS: production main/preload IPC, legacy migration, durable offline outbox and native app quit');
-  fs.rmSync(temp, { recursive: true, force: true });
 });
+// Windows can retain Chromium file locks through will-quit. Cleanup must never
+// raise an uncaught exception/native error dialog and prevent the tested quit.
+app.on('quit', () => { try { fs.rmSync(temp, { recursive: true, force: true }); } catch { /* CI/temp cleanup after process exit. */ } });
 require('../main');
