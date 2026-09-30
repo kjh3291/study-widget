@@ -2,11 +2,12 @@ name: Checks
 on:
   pull_request:
   push:
-    branches: [main, sync-reliability]
+    branches: [main]
 permissions:
   contents: read
 jobs:
   test:
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -21,6 +22,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:ui
+        timeout-minutes: 3
       - name: Package production modules
         run: npx electron-builder --dir --publish never
         env:

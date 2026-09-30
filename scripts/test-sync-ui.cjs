@@ -3,6 +3,7 @@ const { app, BrowserWindow } = require('electron');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'study-sync-ui-'));
 app.setPath('userData', temp);
+const timeout = setTimeout(() => { console.error('Sync UI test timed out'); app.exit(1); }, 20000);
 const preload = path.join(temp, 'preload.cjs');
 fs.writeFileSync(preload, `window.test = { enabled:false, writes:[], closes:0, result:{ok:true,snapshot:{},status:{phase:'synced'}} };
 window.api=new Proxy({}, {get:(_,key)=>{
@@ -16,22 +17,23 @@ window.api=new Proxy({}, {get:(_,key)=>{
   return async()=>({enabled:false,ok:true});
 }});`);
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 430, height: 640, show: false, webPreferences: { preload, contextIsolation: false, sandbox: false } });
+  const win = new BrowserWindow({ width: 430, height: 640, show: false, webPreferences: { preload, contextIsolation: false, sandbox: false, backgroundThrottling: false } });
   try {
     await win.loadFile(path.join(__dirname, '..', 'index.html'));
     const result = await win.webContents.executeJavaScript(`(async()=>{
       const check=(condition,message)=>{if(!condition)throw new Error(message)};
       const settle=()=>new Promise(r=>setTimeout(r,20));
-      await settle();
+      const until=async check=>{const start=Date.now();while(!check()){if(Date.now()-start>3000)throw new Error('UI transition timed out');await settle();}};
+      await initSync();
       test.failSave=true; state.todos=[{id:'a',text:'offline task',done:false}]; persist({todos:state.todos}); await settle();
       check($('sync-label').textContent.includes('저장 실패'),'Save failure hidden');
       await requestQuit();check(test.closes===0,'Quit despite failed local save');
       test.failSave=false;await flushSaves();check(test.writes.some(w=>w.data.todos?.[0].text==='offline task'),'Failed save not retried');
       test.enabled=true;
       test.result={ok:false,error:'offline'};
-      const quitting=requestQuit();await settle();check(!!$('sync-exit'),'Missing offline exit choice');
+      const quitting=requestQuit();await until(()=>!!$('sync-exit'));
       $('exit-stay').click();await quitting;check(test.closes===0,'Stay still closed');
-      const offlineExit=requestQuit();await settle();$('exit-offline').click();await offlineExit;check(test.closes===1,'Offline exit unavailable');
+      const offlineExit=requestQuit();await until(()=>!!$('sync-exit'));$('exit-offline').click();await offlineExit;check(test.closes===1,'Offline exit unavailable');
       test.closes=0;
       test.result={ok:true,snapshot:{todos:[{id:'a',text:'offline task',done:false},{id:'b',text:'remote added',done:false}]},status:{phase:'synced'}};
       test.during=async()=>{state.todos[0].text='edited during upload';persist({todos:state.todos});await flushSaves();};
@@ -44,7 +46,7 @@ app.whenReady().then(async () => {
       check(!!$('sync-conflicts')&&!$('sync-conflicts').querySelector('script'),'Conflict dialog or escaping broken');
       const select=$('sync-conflicts').querySelector('select');select.value='remote';select.dispatchEvent(new Event('change'));
       test.result={ok:true,snapshot:{todos:[{id:'a',text:'chosen remote',done:false}]},status:{phase:'synced'}};
-      $('sync-conflicts').querySelector('.primary').click();await settle();
+      $('sync-conflicts').querySelector('.primary').click();await until(()=>!$('sync-conflicts'));
       check(test.resolution.choices.conflict==='remote'&&!$('sync-conflicts'),'Choice not sent');
       check(state.todos[0].text==='chosen remote','Resolved state not applied');
       test.status({phase:'synced',lastSuccessfulAt:Date.now(),conflicts:null,error:''});
@@ -56,4 +58,4 @@ app.whenReady().then(async () => {
     app.exit(0);
   } catch (error) { console.error(error); app.exit(1); }
 });
-app.on('will-quit', () => fs.rmSync(temp, { recursive: true, force: true }));
+app.on('will-quit', () => { clearTimeout(timeout); fs.rmSync(temp, { recursive: true, force: true }); });

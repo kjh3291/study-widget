@@ -366,13 +366,17 @@ function openSyncConflicts() {
   const ov = document.createElement('div'); ov.id = 'sync-conflicts';
   ov.style.cssText = 'position:absolute;inset:0;z-index:40;background:var(--bg);padding:16px;overflow:auto;font-size:12px;';
   ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '동기화 충돌 확인');
-  const names = { todos: '할 일', events: '일정', focus: '집중 기록', timetableFull: '시간표', notifyPrefs: '알림 설정', theme: '테마' };
+  const names = { todos: '할 일', events: '일정', focus: '집중 기록', attendance: '출석', readIds: '읽은 공지', starredLms: '중요 과제', lmsDone: '완료 과제', subjects: '과목', identifier: '시간표 공유 링크', timetableFull: '시간표', timetableSource: '시간표 입력 방식', newMaterials: '새 자료', notifyState: '알림 기록', notifyPrefs: '알림 설정', theme: '테마', clockFormat: '시계 표시', focusGoalMin: '집중 목표', rolloverOverdue: '지난 할 일 이월', lmsAuto: 'LMS 자동 갱신', autoDownload: '자료 자동 다운로드', matCourses: '자료 수집 과목', opacity: '투명도', alwaysOnTop: '항상 위에 표시', text: '내용', title: '제목', done: '완료 여부', due: '마감일', dueTime: '마감 시간', subject: '과목', starred: '중요 표시', repeat: '반복', subs: '세부 할 일', start: '시작', end: '종료', sessions: '공부 기록', minutes: '공부 시간', morningHour: '아침 알림 시간', deadlineAlerts: '마감 알림', professor: '교수', times: '수업 시간', place: '강의실', name: '이름' };
   const text = value => !value.exists ? '(삭제됨)' : typeof value.value === 'string' ? value.value : JSON.stringify(value.value, null, 2);
   ov.innerHTML = '<h2 style="font-size:15px">양쪽 변경 비교</h2><p>선택하기 전에는 자동으로 덮어쓰지 않습니다. 파일은 두 버전을 모두 보관할 수도 있습니다.</p>';
   const choices = {};
   for (const item of conflict.items) {
     const row = document.createElement('div'); row.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
-    const label = item.path ? item.path.map(p => typeof p === 'object' ? p.id : names[p] || p).join(' / ') : item.file;
+    const label = item.path ? item.path.map(p => {
+      if (typeof p !== 'object') return names[p] || '항목';
+      const entry = Array.isArray(state[item.path[0]]) ? state[item.path[0]].find(x => x.id === p.id) : null;
+      return entry?.text || entry?.title || item.local.value?.text || item.remote.value?.text || '수정 항목';
+    }).join(' / ') : item.file;
     row.innerHTML = `<b>${escapeHtml(label)}</b><div style="display:flex;gap:8px;margin:8px 0"><div style="min-width:0;flex:1">이 기기<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto">${escapeHtml(text(item.local))}</pre></div><div style="min-width:0;flex:1">GitHub<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto">${escapeHtml(text(item.remote))}</pre></div></div>`;
     const select = document.createElement('select'); select.setAttribute('aria-label', label + ' 버전 선택');
     select.innerHTML = '<option value="">사용할 버전 선택</option><option value="local">이 기기 버전</option><option value="remote">GitHub 버전</option>' + (item.both ? '<option value="both">둘 다 보관 (GitHub 사본 추가)</option>' : '');
