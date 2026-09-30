@@ -1808,13 +1808,18 @@ function previewSyllabus(result) {
   };
   q('sy-name').focus();
 }
+function manualTimetable(message = '요일·시간·강의실을 직접 입력해 주세요.') {
+  const result = parseSyllabus('');
+  previewSyllabus({ ...result, filename: '시간표 직접 입력', warning: message });
+}
+$('btn-manual-timetable').onclick = () => manualTimetable();
 $('btn-syllabus').onclick = async () => {
   $('btn-syllabus').disabled = true; $('syllabus-msg').textContent = 'PDF를 선택하면 내용을 읽어 미리 보여드립니다…';
   try {
     const result = await window.api.importSyllabus();
     $('syllabus-msg').textContent = '';
     if (result.canceled) return;
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) { manualTimetable(result.error + ' 아래에 수업 시간을 직접 입력할 수 있습니다.'); return; }
     previewSyllabus(result);
   } catch (error) { $('syllabus-msg').textContent = error.message; }
   finally { $('btn-syllabus').disabled = false; }

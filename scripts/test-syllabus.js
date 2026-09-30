@@ -26,7 +26,7 @@ assert.throws(() => mergeSyllabus(existing, replacement, '8'));
 assert.equal(sharedSnapshot({ timetableSource: 'syllabus' }).timetableSource, 'syllabus');
 (async () => {
   // An in-flight Everytime request cannot overwrite a just-applied syllabus.
-  const renderer = fs.readFileSync(require.resolve('../renderer'), 'utf8');
+  const renderer = fs.readFileSync(require.resolve('../renderer'), 'utf8').replace(/\r\n/g, '\n');
   let resolve, rendered = 0, fetched = 0;
   const context = { state: { identifier: 'id', timetableSource: 'everytime', timetableFull: existing },
     window: { api: { fetchTimetable: () => { fetched++; return new Promise(r => { resolve = r; }); } } },

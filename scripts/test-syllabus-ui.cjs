@@ -19,6 +19,7 @@ app.whenReady().then(async () => {
       const check=(condition,message)=>{if(!condition)throw new Error(message)};
       await new Promise(r=>setTimeout(r,100));
       const result={filename:'test.pdf',warning:'Test',draft:{name:'Test',professor:'Teacher',times:[{day:'2',start:'10:00',end:'13:00',place:'N23-507'}]}};
+      $('btn-manual-timetable').click();check(!!$('syllabus-preview')&&$('sy-name').value==='','Manual entry unavailable');$('sy-cancel').click();
       const before=JSON.stringify(state.timetableFull);window.testWrites=[];
       previewSyllabus(result);$('sy-cancel').click();
       check(JSON.stringify(state.timetableFull)===before&&window.testWrites.length===0,'Cancel wrote data');
