@@ -22,12 +22,12 @@ const context = {
   currentTab: 'schedule', applyTheme() {}, applyClockFormat() {}, renderTimetable() {}, showTimetableState() {}, loadTimetable() {}, renderSummary() {}, rerenderTodoAreas() {}, updateLmsBadge() {}, renderCalendar() {}, renderStats() {}, renderAttendance() {}, renderLms() {},
 };
 vm.createContext(context);
-vm.runInContext('let _localSyncedAt = 0;\n' + source.slice(source.indexOf('function applySharedState('), source.indexOf('function initSync()')), context);
+vm.runInContext('let _localSyncedAt = 0;\n' + source.slice(source.indexOf('function applySharedState('), source.indexOf('function initSync(')), context);
 context.applySharedState({ ...snapshot, _syncedAt: 42, sync: { token: 'REMOTE_SECRET' } });
 assert.equal(context.state.theme, 'light');
 assert.equal(elements.get('inp-focus-goal').value, 1.5);
 assert.equal(elements.get('inp-morning').value, '09:00');
 assert.equal(elements.get('inp-top').checked, false);
-assert.equal(saved.syncedAt, 42);
-assert.equal(saved.sync, undefined);
+assert.equal(saved, undefined, 'Incoming snapshots must not be saved as new local edits');
+assert.equal(context.state.sync, undefined);
 console.log('PASS: shared tasks/settings apply to UI; credentials, paths and device settings excluded');

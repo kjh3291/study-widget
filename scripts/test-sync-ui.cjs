@@ -1,0 +1,59 @@
+// Isolated renderer integration. No real profile, credentials, files, or network.
+const { app, BrowserWindow } = require('electron');
+const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'study-sync-ui-'));
+app.setPath('userData', temp);
+const preload = path.join(temp, 'preload.cjs');
+fs.writeFileSync(preload, `window.test = { enabled:false, writes:[], closes:0, result:{ok:true,snapshot:{},status:{phase:'synced'}} };
+window.api=new Proxy({}, {get:(_,key)=>{
+  if(key==='loadConfig') return async()=>({lmsAuto:false,autoDownload:false,rolloverOverdue:false,assignFix1:true,materialsFix2:true});
+  if(key==='saveConfig') return async(data,bases)=>{if(test.failSave)throw new Error('disk full');test.writes.push({data,bases});return data;};
+  if(key==='gitSyncStatus') return async()=>({enabled:test.enabled});
+  if(key==='gitSync') return async resolution=>{test.resolution=resolution;if(test.during)await test.during();return test.result;};
+  if(key==='close') return ()=>test.closes++;
+  if(key==='onRequestQuit') return cb=>test.quit=cb;
+  if(key==='onSyncStatus') return cb=>test.status=cb;
+  return async()=>({enabled:false,ok:true});
+}});`);
+app.whenReady().then(async () => {
+  const win = new BrowserWindow({ width: 430, height: 640, show: false, webPreferences: { preload, contextIsolation: false, sandbox: false } });
+  try {
+    await win.loadFile(path.join(__dirname, '..', 'index.html'));
+    const result = await win.webContents.executeJavaScript(`(async()=>{
+      const check=(condition,message)=>{if(!condition)throw new Error(message)};
+      const settle=()=>new Promise(r=>setTimeout(r,20));
+      await settle();
+      test.failSave=true; state.todos=[{id:'a',text:'offline task',done:false}]; persist({todos:state.todos}); await settle();
+      check($('sync-label').textContent.includes('저장 실패'),'Save failure hidden');
+      await requestQuit();check(test.closes===0,'Quit despite failed local save');
+      test.failSave=false;await flushSaves();check(test.writes.some(w=>w.data.todos?.[0].text==='offline task'),'Failed save not retried');
+      test.enabled=true;
+      test.result={ok:false,error:'offline'};
+      const quitting=requestQuit();await settle();check(!!$('sync-exit'),'Missing offline exit choice');
+      $('exit-stay').click();await quitting;check(test.closes===0,'Stay still closed');
+      const offlineExit=requestQuit();await settle();$('exit-offline').click();await offlineExit;check(test.closes===1,'Offline exit unavailable');
+      test.closes=0;
+      test.result={ok:true,snapshot:{todos:[{id:'a',text:'offline task',done:false},{id:'b',text:'remote added',done:false}]},status:{phase:'synced'}};
+      test.during=async()=>{state.todos[0].text='edited during upload';persist({todos:state.todos});await flushSaves();};
+      await initSync();test.during=null;await flushSaves();
+      check(state.todos.length===2&&state.todos[0].text==='edited during upload','Concurrent local or incoming edits lost');
+      check($('sync-label').textContent.includes('대기'),'Concurrent edits falsely called uploaded');
+      const item={id:'conflict',path:['todos',{id:'a'},'text'],local:{exists:true,value:'<script>local</script>'},remote:{exists:true,value:'remote'}};
+      const conflicts={kind:'settings',token:'sample',items:[item]};
+      showSyncStatus({phase:'conflict',conflicts});$('sync-resolve').click();
+      check(!!$('sync-conflicts')&&!$('sync-conflicts').querySelector('script'),'Conflict dialog or escaping broken');
+      const select=$('sync-conflicts').querySelector('select');select.value='remote';select.dispatchEvent(new Event('change'));
+      test.result={ok:true,snapshot:{todos:[{id:'a',text:'chosen remote',done:false}]},status:{phase:'synced'}};
+      $('sync-conflicts').querySelector('.primary').click();await settle();
+      check(test.resolution.choices.conflict==='remote'&&!$('sync-conflicts'),'Choice not sent');
+      check(state.todos[0].text==='chosen remote','Resolved state not applied');
+      test.status({phase:'synced',lastSuccessfulAt:Date.now(),conflicts:null,error:''});
+      check($('sync-label').textContent==='GitHub 업로드 완료','Status label incorrect');
+      await test.quit();check(test.closes===1,'Native quit path did not flush and close');
+      return 'PASS: failed-save retry/quit guard, offline-exit choices, concurrent edits, conflict dialog, escaped content and native quit callback';
+    })()`);
+    console.log(result);
+    app.exit(0);
+  } catch (error) { console.error(error); app.exit(1); }
+});
+app.on('will-quit', () => fs.rmSync(temp, { recursive: true, force: true }));

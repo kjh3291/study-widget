@@ -28,6 +28,7 @@ app.whenReady().then(async () => {
       $('sy-name').value='Test';$('sy-apply').click();
       check(!$('syllabus-preview')&&state.timetableFull.length===2,'Apply failed');
       check(state.timetableFull[0].name==='Keep'&&state.timetableSource==='syllabus','Lost existing course or source');
+      await flushSaves();
       check(window.testWrites.some(p=>p.timetableSource==='syllabus'&&p.timetableFull.length===2),'Missing atomic config save');
       previewSyllabus(result);check($('sy-target').value==='1','Matching subject not offered for replacement');
       $('sy-prof').value='Updated';$('sy-apply').click();

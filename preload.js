@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   loadConfig: () => ipcRenderer.invoke('load-config'),
-  saveConfig: (data) => ipcRenderer.invoke('save-config', data),
+  saveConfig: (data, conflictBases) => ipcRenderer.invoke('save-config', data, conflictBases),
   importSyllabus: () => ipcRenderer.invoke('import-syllabus'),
   fetchTimetable: (identifier) => ipcRenderer.invoke('fetch-timetable', identifier),
   setOpacity: (v) => ipcRenderer.send('set-opacity', v),
@@ -22,9 +22,9 @@ contextBridge.exposeInMainWorld('api', {
   lmsDownload: (items) => ipcRenderer.invoke('lms-download', items),
   openStudeckFolder: (kind, course) => ipcRenderer.invoke('open-studeck-folder', { kind, course }),
   gitConnect: (repo, token) => ipcRenderer.invoke('git-connect', { repo, token }),
-  gitSync: () => ipcRenderer.invoke('git-sync'),
+  gitSync: (resolution) => ipcRenderer.invoke('git-sync', resolution),
+  onSyncStatus: cb => ipcRenderer.on('sync-status', (_e, status) => cb(status)),
+  onRequestQuit: cb => ipcRenderer.on('request-quit', () => cb()),
   gitSyncStatus: () => ipcRenderer.invoke('git-sync-status'),
   gitDisconnect: () => ipcRenderer.invoke('git-disconnect'),
-  syncRead: () => ipcRenderer.invoke('sync-read'),
-  syncWrite: (data) => ipcRenderer.invoke('sync-write', data),
 });

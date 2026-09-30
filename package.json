@@ -9,7 +9,9 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
-    "pack": "electron-builder --dir"
+    "pack": "electron-builder --dir",
+    "test": "node scripts/test-sync-reliability.js && node scripts/test-git-sync.js && node scripts/test-shared-settings.js && node scripts/test-input-downloads.js && node scripts/test-syllabus.js",
+    "test:ui": "electron scripts/test-sync-ui.cjs && electron scripts/test-sync-main.cjs && electron scripts/test-syllabus-ui.cjs"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -27,6 +29,10 @@
       "preload.js",
       "renderer.js",
       "sync-fields.js",
+      "sync-model.js",
+      "sync-storage.js",
+      "sync-service.js",
+      "sync-conflicts.js",
       "material-history.js",
       "syllabus.js",
       "syllabus-pdf.js",

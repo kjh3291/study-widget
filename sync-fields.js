@@ -13,3 +13,5 @@ function sharedSnapshot(data) {
   return result;
 }
 if (typeof module !== 'undefined') module.exports = { sharedFields, sharedSnapshot };
+
+if (typeof window !== 'undefined') window.SyncFields = { sharedFields, sharedSnapshot };

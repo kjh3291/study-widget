@@ -604,6 +604,11 @@
 
   <div id="summary" class="summary"></div>
 
+  <div id="sync-bar" class="summary" style="gap:6px;flex-wrap:wrap" role="status">
+    <span id="sync-label" style="flex:1;min-width:140px">기기에 저장됨</span>
+    <button id="sync-now" class="btn mini">지금 동기화</button>
+    <button id="sync-resolve" class="btn mini" hidden>충돌 확인</button>
+  </div>
   <div id="body">
     <div id="view-timetable" class="view">
       <div class="pad"><button id="btn-syllabus" class="btn mini">강의계획서 PDF 가져오기</button> <button id="btn-manual-timetable" class="btn mini">시간 직접 입력</button><div id="syllabus-msg" style="font-size:11px;color:var(--muted);margin-top:6px" aria-live="polite"></div></div>
@@ -718,6 +723,7 @@
 </div>
 
 <script src="sync-fields.js"></script>
+<script src="sync-model.js"></script>
 <script src="syllabus.js"></script>
 <script src="renderer.js"></script>
 </body>
