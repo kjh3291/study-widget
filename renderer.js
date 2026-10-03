@@ -266,33 +266,47 @@ function openTimerStart(anchor) {
 }
 
 // ---------- 저장 ----------
-function persist(patch) {
-  window.api.saveConfig(patch);
-  if (sharedFields.some(key => Object.prototype.hasOwnProperty.call(patch, key))) mirrorSynced();
+let _saveQueue = null, _unsaved = [], _syncInFlight = null, _editEpoch = 0, _syncStatus = {}, _quitting = false;
+function showSyncStatus(status) {
+  _syncStatus = { ..._syncStatus, ...status };
+  const phase = _unsaved.length ? 'saving' : _syncStatus.phase;
+  const labels = { saving: '기기에 저장 중…', pending: '기기 저장됨 · 업로드 대기', syncing: 'GitHub 동기화 중…', synced: 'GitHub 업로드 완료', conflict: '충돌 확인 필요', error: '동기화 실패 · 다시 시도 필요', idle: '기기에 저장됨' };
+  $('sync-label').textContent = labels[phase] || labels.idle;
+  $('sync-label').title = _syncStatus.error || (_syncStatus.lastSuccessfulAt ? '최근 GitHub 동기화: ' + new Date(_syncStatus.lastSuccessfulAt).toLocaleString() + '\n다른 기기는 실행 후 동기화해야 반영됩니다.' : '외부 파일 변경은 1분마다 확인합니다. 지금 동기화로 즉시 확인할 수 있습니다.');
+  $('sync-now').disabled = phase === 'syncing';
+  $('sync-resolve').hidden = !_syncStatus.conflicts;
+  if ($('git-sync-msg')) $('git-sync-msg').textContent = _syncStatus.error || $('sync-label').textContent;
 }
-
-// Only an initialized shared state may be published (a fresh device starts empty).
-let _localSyncedAt = 0, _mirrorQueue = Promise.resolve(), _syncInFlight = null;
-function mirrorSynced() {
-  if (!state.syncEnabled || !state.syncReady) return _mirrorQueue;
-  const snap = { ...sharedSnapshot(state), _syncedAt: Math.max(Date.now(), _localSyncedAt + 1) };
-  const snapshot = JSON.parse(JSON.stringify(snap));
-  _localSyncedAt = snapshot._syncedAt;
-  _mirrorQueue = _mirrorQueue.catch(() => {}).then(async () => {
-    const result = await window.api.syncWrite(snapshot);
-    if (!result || !result.ok) throw new Error((result && result.error) || '동기화 데이터 저장 실패');
-    await window.api.saveConfig({ syncedAt: snapshot._syncedAt });
-    scheduleGitSync();
+function flushSaves() {
+  if (_saveQueue) return _saveQueue;
+  _saveQueue = Promise.resolve().then(async () => {
+    while (_unsaved.length) {
+      const entry = _unsaved[0];
+      await window.api.saveConfig(entry.patch, entry.conflictBases);
+      _unsaved.shift();
+    }
+  }).finally(() => { _saveQueue = null; });
+  return _saveQueue;
+}
+function persist(patch, conflictBases) {
+  _editEpoch++;
+  _unsaved.push({ patch: JSON.parse(JSON.stringify(patch)), conflictBases });
+  showSyncStatus({ phase: 'saving' });
+  const saving = flushSaves();
+  saving.then(() => {
+    showSyncStatus({ phase: state.syncEnabled ? 'pending' : 'idle', error: '' });
+    if (sharedFields.some(key => Object.hasOwn(patch, key))) scheduleGitSync();
+  }).catch(error => {
+    $('sync-label').textContent = '기기 저장 실패 · 종료하지 마세요';
+    $('sync-label').title = error.message;
+    $('git-sync-msg').textContent = '기기 저장 실패: ' + error.message;
   });
-  _mirrorQueue.catch(error => { $('git-sync-msg').textContent = '오류: ' + error.message; });
-  return _mirrorQueue;
+  return saving;
 }
 function applySharedState(remote) {
   const oldIdentifier = state.identifier;
   const patch = sharedSnapshot(remote);
   Object.assign(state, patch);
-  _localSyncedAt = remote._syncedAt;
-  window.api.saveConfig({ ...patch, syncedAt: _localSyncedAt });
   applyTheme(); applyClockFormat();
   $('inp-id').value = state.identifier || '';
   $('inp-focus-goal').value = state.focusGoalMin / 60;
@@ -314,26 +328,100 @@ function applySharedState(remote) {
   if (currentTab === 'attend') renderAttendance();
   if (currentTab === 'lms') renderLms();
 }
-function initSync() {
+function initSync(resolution) {
   if (_syncInFlight) return _syncInFlight;
   _syncInFlight = (async () => {
+    await flushSaves();
     const st = await window.api.gitSyncStatus();
-    state.syncEnabled = !!(st && st.enabled);
-    if (!state.syncEnabled) return { ok: false, error: '동기화 연결 설정이 필요합니다.' };
-    await _mirrorQueue;
-    const result = await window.api.gitSync();
-    if (!result || !result.ok) return result;
-    const remote = await window.api.syncRead();
-    if (remote && remote._syncedAt > _localSyncedAt) applySharedState(remote);
+    state.syncEnabled = !!st?.enabled;
+    if (!state.syncEnabled) { showSyncStatus({ phase: 'idle', conflicts: null, error: '' }); return { ok: false, error: '동기화 연결 설정이 필요합니다.' }; }
+    const baseline = JSON.parse(JSON.stringify(sharedSnapshot(state))), epoch = _editEpoch;
+    showSyncStatus({ phase: 'syncing', error: '', conflicts: null });
+    const result = await window.api.gitSync(resolution);
+    if (!result?.ok) { showSyncStatus({ phase: result?.conflicts ? 'conflict' : 'error', error: result?.error || '동기화 실패', conflicts: result?.conflicts || null }); return result; }
     state.syncReady = true;
-    if (!remote || sharedFields.some(key => remote[key] === undefined && state[key] !== undefined)) await mirrorSynced();
-    $('git-sync-msg').textContent = '✅ 동기화 완료';
+    if (result.snapshot) {
+      if (epoch === _editEpoch) applySharedState(result.snapshot);
+      else {
+        // Edits made while the network was busy stay visible and are merged with incoming changes.
+        const merged = window.SyncModel.mergeShared(baseline, sharedSnapshot(state), result.snapshot);
+        applySharedState(merged.data);
+        const patch = {}, conflictBases = {};
+        for (const key of sharedFields) if (!window.SyncModel.equal(merged.data[key], result.snapshot[key])) patch[key] = merged.data[key];
+        for (const conflict of merged.conflicts) conflictBases[conflict.path[0]] = window.SyncModel.version(baseline[conflict.path[0]]);
+        if (Object.keys(patch).length) await persist(patch, conflictBases);
+        result.pending = true;
+      }
+    }
+    showSyncStatus({ ...result.status, phase: result.pending ? 'pending' : 'synced' });
+    if (result.pending) scheduleGitSync();
     return result;
-  })().catch(error => ({ ok: false, error: error.message })).then(result => {
-    if (result && !result.ok) $('git-sync-msg').textContent = '오류: ' + (result.error || '동기화 실패');
-    return result;
-  }).finally(() => { _syncInFlight = null; });
+  })().catch(error => { showSyncStatus({ phase: 'error', error: error.message }); return { ok: false, error: error.message }; })
+    .finally(() => { _syncInFlight = null; });
   return _syncInFlight;
+}
+function openSyncConflicts() {
+  const conflict = _syncStatus.conflicts;
+  if (!conflict || document.getElementById('sync-conflicts')) return;
+  const ov = document.createElement('div'); ov.id = 'sync-conflicts';
+  ov.style.cssText = 'position:absolute;inset:0;z-index:40;background:var(--bg);padding:16px;overflow:auto;font-size:12px;';
+  ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '동기화 충돌 확인');
+  const names = { todos: '할 일', events: '일정', focus: '집중 기록', attendance: '출석', readIds: '읽은 공지', starredLms: '중요 과제', lmsDone: '완료 과제', subjects: '과목', identifier: '시간표 공유 링크', timetableFull: '시간표', timetableSource: '시간표 입력 방식', newMaterials: '새 자료', notifyState: '알림 기록', notifyPrefs: '알림 설정', theme: '테마', clockFormat: '시계 표시', focusGoalMin: '집중 목표', rolloverOverdue: '지난 할 일 이월', lmsAuto: 'LMS 자동 갱신', autoDownload: '자료 자동 다운로드', matCourses: '자료 수집 과목', opacity: '투명도', alwaysOnTop: '항상 위에 표시', text: '내용', title: '제목', done: '완료 여부', due: '마감일', dueTime: '마감 시간', subject: '과목', starred: '중요 표시', repeat: '반복', subs: '세부 할 일', start: '시작', end: '종료', sessions: '공부 기록', minutes: '공부 시간', morningHour: '아침 알림 시간', deadlineAlerts: '마감 알림', professor: '교수', times: '수업 시간', place: '강의실', name: '이름' };
+  const text = value => !value.exists ? '(삭제됨)' : typeof value.value === 'string' ? value.value : JSON.stringify(value.value, null, 2);
+  ov.innerHTML = '<h2 style="font-size:15px">양쪽 변경 비교</h2><p>선택하기 전에는 자동으로 덮어쓰지 않습니다. 파일은 두 버전을 모두 보관할 수도 있습니다.</p>';
+  const choices = {};
+  for (const item of conflict.items) {
+    const row = document.createElement('div'); row.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
+    const label = item.path ? item.path.map(p => {
+      if (typeof p !== 'object') return names[p] || '항목';
+      const entry = Array.isArray(state[item.path[0]]) ? state[item.path[0]].find(x => x.id === p.id) : null;
+      return entry?.text || entry?.title || item.local.value?.text || item.remote.value?.text || '수정 항목';
+    }).join(' / ') : item.file;
+    row.innerHTML = `<b>${escapeHtml(label)}</b><div style="display:flex;gap:8px;margin:8px 0"><div style="min-width:0;flex:1">이 기기<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto">${escapeHtml(text(item.local))}</pre></div><div style="min-width:0;flex:1">GitHub<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto">${escapeHtml(text(item.remote))}</pre></div></div>`;
+    const select = document.createElement('select'); select.setAttribute('aria-label', label + ' 버전 선택');
+    select.innerHTML = '<option value="">사용할 버전 선택</option><option value="local">이 기기 버전</option><option value="remote">GitHub 버전</option>' + (item.both ? '<option value="both">둘 다 보관 (GitHub 사본 추가)</option>' : '');
+    select.onchange = () => { choices[item.id] = select.value; }; row.appendChild(select); ov.appendChild(row);
+  }
+  const message = document.createElement('p'); message.setAttribute('role', 'alert'); ov.appendChild(message);
+  const later = document.createElement('button'); later.className = 'btn'; later.textContent = '나중에'; later.onclick = () => ov.remove();
+  const apply = document.createElement('button'); apply.className = 'btn primary'; apply.textContent = '선택한 내용으로 동기화';
+  apply.onclick = async () => {
+    if (conflict.items.some(i => !choices[i.id])) { message.textContent = '모든 항목에서 사용할 버전을 선택해 주세요.'; return; }
+    apply.disabled = true;
+    const result = await initSync({ kind: conflict.kind, token: conflict.token, choices });
+    ov.remove();
+    if (!result?.ok) { showToast(result?.error || '동기화 실패'); if (_syncStatus.conflicts) openSyncConflicts(); }
+  };
+  ov.append(later, apply); $('app').appendChild(ov); later.focus();
+}
+function askOfflineExit(message) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div'); ov.id = 'sync-exit';
+    ov.style.cssText = 'position:absolute;inset:0;z-index:50;background:var(--bg);padding:24px;font-size:13px;';
+    ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '동기화 전 종료');
+    ov.innerHTML = `<h2 style="font-size:16px">GitHub 전송이 끝나지 않았습니다</h2><p>${escapeHtml(message)}</p><p>변경 내용은 이 기기에 저장되어 있습니다. 지금 종료하면 다음 실행 때 다시 전송하며, 그전에는 다른 기기에 반영되지 않습니다.</p><button id="exit-stay" class="btn primary">앱으로 돌아가기</button> <button id="exit-offline" class="btn">기기에 보관하고 종료</button>`;
+    $('app').appendChild(ov);
+    const done = value => { ov.remove(); resolve(value); };
+    ov.querySelector('#exit-stay').onclick = () => done(false);
+    ov.querySelector('#exit-offline').onclick = () => done(true);
+    ov.querySelector('#exit-stay').focus();
+  });
+}
+async function requestQuit() {
+  if (_quitting) return;
+  _quitting = true;
+  try {
+    await flushSaves();
+    const epoch = _editEpoch, st = await window.api.gitSyncStatus();
+    if (st.enabled) {
+      const result = await initSync();
+      await flushSaves();
+      if ((!result?.ok || result.pending || epoch !== _editEpoch) && !await askOfflineExit(result?.error || '아직 업로드하지 않은 변경이 있습니다.')) return;
+    }
+    await flushSaves();
+    window.api.close();
+  } catch (error) { showToast('기기에 저장하지 못해 종료를 멈췄습니다: ' + error.message); }
+  finally { _quitting = false; }
 }
 function saveTodos() { persist({ todos: state.todos }); }
 function saveEvents() { persist({ events: state.events }); }
@@ -455,7 +543,7 @@ function renderTimetable(subjects) {
       if (t.day !== d) continue;
       const top = (toMin(t.start) - gridStart) * pxPerMin;
       const h = (toMin(t.end) - toMin(t.start)) * pxPerMin;
-      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 자료 폴더 열기" style="top:${top}px;height:${h}px;background:${colorFor(s.name)}">
+      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 과목 폴더 열기" style="top:${top}px;height:${h}px;background:${colorFor(s.name)}">
         <div class="b-name">${escapeHtml(s.name)}</div>
         ${t.place ? `<div class="b-place">${escapeHtml(t.place)}</div>` : ''}
         ${s.professor ? `<div class="b-prof">${escapeHtml(s.professor)}</div>` : ''}
@@ -553,7 +641,7 @@ function todoRow(it, showSubj) {
   const star = `<span class="star ${it.starred ? 'on' : ''}" data-star="${it.id}" title="중요 표시">${ICO.star}</span>`;
   const rep = it.repeat ? `<span class="rep" title="반복 ${it.repeat === 'weekly' ? '매주' : '매일'}">${ICO.repeat}</span>` : '';
   const subs = it.subs || [];
-  const subsBadge = subs.length ? `<span class="subs-badge" data-expand="${it.id}" title="하위 항목">${subs.filter((s) => s.done).length}/${subs.length}</span>` : '';
+  const subsBadge = subs.length ? `<button type="button" class="subs-badge" data-expand="${it.id}" aria-expanded="${!!state.expandedTodos[it.id]}" title="하위 항목 펼치기/접기">${subs.filter((s) => s.done).length}/${subs.length}</button>` : '';
   const addSub = `<span class="play addsub" data-addsub="${it.id}" title="하위 추가">${ICO.plus}</span>`;
   return `<div class="todo ${it.done ? 'done' : ''}" data-id="${it.id}" data-kind="todo">
     <input type="checkbox" class="check" data-toggle="${it.id}" ${it.done ? 'checked' : ''}/>
@@ -1026,6 +1114,7 @@ function detectLmsSubmissions(prevById) {
 // 공용 동기화: list의 파일들을 doneMap 기준으로 신규 다운로드 + 하루1회 변경확인.
 // 파일명 중복은 main에서 방지(existed), 변경분은 같은 위치 덮어쓰기(changed).
 async function syncDownloads(list, doneMap, kind, force) {
+  if (state.syncEnabled && !state.syncReady) return { gotNew: [], changed: [] };
   const DAY = 24 * 60 * 60 * 1000, now = Date.now();
   let cand = (list || []).filter((m) => m && m.url);
   if (!force) cand = cand.filter((m) => state.matCourses[m.courseId] !== false); // 제외 과목만 빼고 전부
@@ -1397,10 +1486,11 @@ $('btn-settings').onclick = openSettings;
 $('btn-setup').onclick = openSettings;
 $('btn-min').onclick = () => window.api.minimize();
 $('btn-mini').onclick = toggleMini;
-$('btn-close').onclick = async () => {
-  try { await _mirrorQueue; } catch (error) { showToast(error.message); return; }
-  window.api.close();
-};
+$('btn-close').onclick = requestQuit;
+$('sync-now').onclick = () => state.syncEnabled ? initSync() : openSettings();
+$('sync-resolve').onclick = openSyncConflicts;
+window.api.onSyncStatus(showSyncStatus);
+window.api.onRequestQuit(requestQuit);
 // 미니 목록도 아래 공용 할 일 핸들러를 사용합니다.
 // 미니 모드에서도 우클릭 메뉴/더블클릭 편집 동작하게
 $('mini-list').addEventListener('contextmenu', (e) => {
@@ -1441,10 +1531,10 @@ $('focus-view').addEventListener('click', (e) => {
   if (e.target.closest('#fv-pause')) { pauseTimer(); renderFocus(); return; }
   if (e.target.closest('#fv-stop')) { stopTimer(); return; }                    // 종료+기록(자동 exitFocus)
 });
-// 시간표 수업 블록 클릭 → 그 과목 자료 폴더 열기
+// 시간표 수업 블록 클릭 → 수업자료·보조자료·과제가 있는 과목 폴더 열기
 $('grid-wrap').addEventListener('click', (e) => {
   const blk = e.target.closest('.block'); if (!blk || !blk.dataset.subj) return;
-  window.api.openStudeckFolder('materials', blk.dataset.subj);
+  window.api.openStudeckFolder('subject', blk.dataset.subj);
 });
 
 // 위임 클릭 (일반 목록 + 미니 목록 공용)
@@ -1562,7 +1652,7 @@ function openTodoMenu(kind, id, x, y) {
   } else {
     const t = state.todos.find((v) => v.id === id); if (!t) return;
     add('집중 시작', () => startFocus(t.text, t.subject || null));
-    add('하위 항목 추가', () => { state.expandedTodos[id] = true; state.subAddOpen = id; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); });
+    add('하위 항목 추가', () => { state.expandedTodos[id] = true; state.subAddOpen = id; renderList(); focusSubAdd(); });
     add('미루기…', () => openDeferMenu(id, x, y));
     add(t.skipped ? '넘김 해제' : '넘김으로 표시', () => { t.skipped = !t.skipped; if (t.skipped) { t.doneAt = Date.now(); } saveTodos(); rerenderTodoAreas(); });
     add(t.starred ? '별표 해제' : '별표', () => { t.starred = !t.starred; saveTodos(); renderTodos(); });
@@ -1701,7 +1791,9 @@ async function refreshGitStatus() {
   try {
     const s = await window.api.gitSyncStatus();
     if (s && s.repo && $('inp-git-repo') && !$('inp-git-repo').value) $('inp-git-repo').value = s.repo;
-    if ($('git-sync-msg')) $('git-sync-msg').textContent = (s && s.enabled) ? `연결 설정됨: ${s.repo} (동기화 완료 여부는 지금 동기화로 확인)` : '연결 안 됨';
+    state.syncEnabled = !!s?.enabled;
+    if (s?.enabled) showSyncStatus(s);
+    else $('git-sync-msg').textContent = '연결 안 됨';
   } catch (e) {}
 }
 if ($('btn-git-connect')) $('btn-git-connect').onclick = async () => {
@@ -1710,20 +1802,20 @@ if ($('btn-git-connect')) $('btn-git-connect').onclick = async () => {
   $('git-sync-msg').textContent = '연결·동기화 중…';
   let r = await window.api.gitConnect(repo, token);
   if (r && r.ok) { state.syncEnabled = true; r = await initSync(); }
-  $('git-sync-msg').textContent = r && r.ok ? '✅ 연결·동기화 완료' : ('오류: ' + ((r && (r.error || r.push)) || '실패'));
+  if (!r?.ok) $('git-sync-msg').textContent = r?.error || '연결 실패';
   $('inp-git-token').value = '';
 };
 if ($('btn-git-sync')) $('btn-git-sync').onclick = async () => {
   $('git-sync-msg').textContent = '동기화 중…';
   const r = await initSync();
-  $('git-sync-msg').textContent = r && r.ok ? '✅ 동기화 완료' : ('오류: ' + ((r && (r.error || r.push)) || '실패'));
+  if (!r?.ok) $('git-sync-msg').textContent = r?.error || '동기화 실패';
 };
 // 파일 변경 후 자동 동기화(디바운스) — 연결돼 있을 때만
 let _gitSyncT = null;
 function scheduleGitSync() {
   clearTimeout(_gitSyncT);
   _gitSyncT = setTimeout(async () => {
-    try { if (state.syncEnabled) await initSync(); } catch (e) {}
+    try { if (state.syncEnabled && !_quitting) await initSync(); } catch (e) {}
   }, 8000);
 }
 $('inp-autostart').onchange = async () => {
@@ -1849,6 +1941,7 @@ function miniPrompt(title) {
 // =====================================================================
 (async () => {
   const cfg = await window.api.loadConfig();
+  state.syncEnabled = !!cfg.sync?.enabled;
   state.opacity = typeof cfg.opacity === 'number' ? cfg.opacity : 100;
   state.alwaysOnTop = cfg.alwaysOnTop !== false;
   if (cfg.opacity) { $('inp-opacity').value = cfg.opacity; window.api.setOpacity(cfg.opacity / 100); }
@@ -1904,9 +1997,8 @@ function miniPrompt(title) {
     window.api.lmsStatus().then((s) => { if (s && s.valid) doLmsRefresh(true); });
   }
   // 시작 시 GitHub에서 최신 자료·개인데이터 받아오기(+로컬 변경 올리기)
-  _localSyncedAt = cfg.syncedAt || 0;
   await initSync();
-  setInterval(() => { if (state.syncEnabled) initSync(); }, 60000);
+  setInterval(() => { if (state.syncEnabled && !_quitting) initSync(); }, 60000);
 
   // 과제 제출 창을 닫으면 자동 새로고침 → 제출한 과제가 '완료'로 전환
   window.api.onSubmissionClosed(() => {

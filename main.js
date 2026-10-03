@@ -4,8 +4,12 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const lms = require('./lms');
-const { sharedSnapshot } = require('./sync-fields');
+const { trackChanges, initializeOutbox } = require('./sync-model');
+const { atomicJSON, readShared } = require('./sync-storage');
+const { createSyncService } = require('./sync-service');
+const { autoResolve, describeConflicts, resolveConflicts } = require('./sync-conflicts');
 const { preserveMaterial, archiveGitChanges } = require('./material-history');
+const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -13,20 +17,12 @@ let win = null;
 
 // ---------- 설정 저장/불러오기 ----------
 function loadConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-  } catch {
-    return {};
-  }
+  if (!fs.existsSync(CONFIG_PATH)) return {};
+  const value = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('설정 파일을 읽을 수 없습니다. 백업 복구가 필요합니다.');
+  return value;
 }
-
-function saveConfig(cfg) {
-  try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8');
-  } catch (e) {
-    console.error('config save fail', e);
-  }
-}
+function saveConfig(cfg) { atomicJSON(CONFIG_PATH, cfg); }
 
 // ---------- 에브리타임 공유 링크 → 식별자 추출 ----------
 function extractIdentifier(input) {
@@ -158,26 +154,28 @@ function createWindow() {
   });
 
   win.setAlwaysOnTop(true, 'screen-saver');
-  win.loadFile('index.html');
+  win.loadFile(path.join(__dirname, 'index.html'));
 
   const persist = () => {
     if (!win) return;
-    const c = loadConfig();
-    c.bounds = win.getBounds();
-    saveConfig(c);
+    try { const c = loadConfig(); c.bounds = win.getBounds(); saveConfig(c); }
+    catch (error) { win.webContents.send('sync-status', { phase: 'error', error: '기기 저장 실패: ' + error.message }); }
   };
   win.on('moved', persist);
   win.on('resized', persist);
+  win.on('close', event => { if (!allowQuit) { event.preventDefault(); win.webContents.send('request-quit'); } });
   win.on('closed', () => (win = null));
 }
 
 // ---------- IPC ----------
 ipcMain.handle('load-config', () => loadConfig());
 
-ipcMain.handle('save-config', (_e, data) => {
-  const c = loadConfig();
-  Object.assign(c, data);
+ipcMain.handle('save-config', (_e, data, conflictBases) => {
+  const old = loadConfig();
+  const c = trackChanges(old, data);
+  if (conflictBases) Object.assign(c.pendingShared, conflictBases);
   saveConfig(c);
+  if (c.syncRevision !== old.syncRevision) syncService.changed();
   return c;
 });
 
@@ -211,7 +209,8 @@ ipcMain.on('set-always-on-top', (_e, flag) => {
   if (win) win.setAlwaysOnTop(!!flag, 'screen-saver');
 });
 
-ipcMain.on('close-app', () => app.quit());
+let allowQuit = false;
+ipcMain.on('close-app', () => { allowQuit = true; app.quit(); });
 ipcMain.on('minimize-app', () => win && win.minimize());
 
 let miniPrevBounds = null;
@@ -435,6 +434,9 @@ async function downloadMaterial(url, course, title, opts) {
   const dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(dir, got.filename);
   try {
     const existed = fs.existsSync(dest);
+    if (!existed && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
+      return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true, deleted: true };
+    }
     const oldSig = existed ? sha1(fs.readFileSync(dest)) : null;
     if (existed && oldSig === sig) return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true };
     // A new submission URL can still point to a revised file with the same filename.
@@ -529,8 +531,9 @@ async function ensureRepo(dir, repo, token) {
   await checked(['config', 'user.name', 'Studeck']);
   const ignorePath = path.join(dir, '.gitignore');
   const old = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, 'utf8') : '';
-  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store'].filter(x => !old.split(/\r?\n/).includes(x));
+  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store', '/삭제한 파일/'].filter(x => !old.split(/\r?\n/).includes(x));
   if (missing.length) fs.appendFileSync(ignorePath, (old && !old.endsWith('\n') ? '\n' : '') + missing.join('\n') + '\n');
+  await checked(['rm', '-r', '--cached', '--ignore-unmatch', '--', '삭제한 파일']);
   const remote = await git(['remote', 'get-url', 'origin'], dir);
   await checked(['remote', remote.ok ? 'set-url' : 'add', 'origin', gitRemote(repo, token)]);
 }
@@ -541,7 +544,11 @@ function gitSync(dir, repo, token) {
     const fail = r => ({ ok: false, error: redact([r.err, r.out].filter(Boolean).join('\n') || 'Git 실행 실패', token).slice(-1000) });
     const conflicts = await git(['diff', '--name-only', '--diff-filter=U'], dir);
     if (!conflicts.ok) return fail(conflicts);
-    if (conflicts.out.trim()) return { ok: false, error: '파일 충돌을 먼저 해결해야 합니다. 자동 업로드를 중단했습니다.' };
+    if (conflicts.out.trim()) {
+      await autoResolve(dir);
+      if ((await git(['ls-files', '-u'], dir)).out.trim()) return { ok: false, error: '파일 충돌을 먼저 해결해야 합니다. 자동 업로드를 중단했습니다.' };
+    }
+    readShared(path.join(dir, '.studeck/config.json'));
     await archiveGitChanges(dir);
     const add = await git(['add', '-A'], dir);
     if (!add.ok) return fail(add);
@@ -563,22 +570,17 @@ function gitSync(dir, repo, token) {
         const historyCommit = await git(['commit', '-m', 'Preserve previous materials'], dir);
         if (!historyCommit.ok) return fail(historyCommit);
       }
+      await preserveIncomingDeletions(dir);
       const pull = await git(['merge', '--allow-unrelated-histories', 'FETCH_HEAD', '--no-edit'], dir);
       if (!pull.ok) {
-        const unmerged = await git(['diff', '--name-only', '--diff-filter=U'], dir);
-        if (unmerged.out.trim() !== '.gitignore') return fail(pull);
-        const ours = await git(['show', ':2:.gitignore'], dir);
-        const theirs = await git(['show', ':3:.gitignore'], dir);
-        const rules = [...new Set((ours.out + '\n' + theirs.out).split(/\r?\n/).filter(Boolean))];
-        // Only reconcile the app's own ignore template, never user file conflicts.
-        if (!ours.ok || !theirs.ok || rules.some(rule => !['.studeck-migrated', '.studeck/backups/', '.DS_Store'].includes(rule))) return fail(pull);
-        fs.writeFileSync(path.join(dir, '.gitignore'), rules.join('\n') + '\n');
-        const staged = await git(['add', '.gitignore'], dir);
-        if (!staged.ok) return fail(staged);
-        const merged = await git(['commit', '--no-edit'], dir);
-        if (!merged.ok) return fail(merged);
+        await autoResolve(dir);
+        if ((await git(['ls-files', '-u'], dir)).out.trim()) return fail(pull);
+        // A merge can fail without creating conflict entries (e.g. a locked file).
+        const check = await git(['merge-base', '--is-ancestor', 'FETCH_HEAD', 'HEAD'], dir);
+        if (!check.ok) return fail(pull);
       }
     }
+    readShared(path.join(dir, '.studeck/config.json'));
     const push = await git(['push', '-u', 'origin', 'main'], dir);
     return push.ok ? { ok: true } : fail(push);
   };
@@ -586,29 +588,29 @@ function gitSync(dir, repo, token) {
   syncQueue = result.catch(() => {});
   return result;
 }
+const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json');
+const syncService = createSyncService({
+  load: loadConfig, save: saveConfig,
+  read: () => readShared(SYNC_DATA_PATH()),
+  write: value => atomicJSON(SYNC_DATA_PATH(), value, path.join(STUDECK_DIR(), '.studeck/backups/writes')),
+  transport: s => gitSync(STUDECK_DIR(), s.repo, s.token),
+  conflicts: () => describeConflicts(STUDECK_DIR()),
+  resolveFiles: choice => resolveConflicts(STUDECK_DIR(), choice),
+  dirty: async () => { const r = await git(['status', '--porcelain'], STUDECK_DIR()); if (!r.ok) throw new Error('파일 상태 확인 실패'); return !!r.out.trim(); },
+  notify: status => { if (win && !win.isDestroyed()) win.webContents.send('sync-status', status); },
+});
 ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
-  if (!repo || !token) return { ok: false, error: 'repo/token 필요' };
+  if (syncService.isRunning()) return { ok: false, error: '진행 중인 동기화가 끝난 뒤 연결을 바꿔 주세요.' };
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || '') || !token) return { ok: false, error: '저장소(owner/repo)와 토큰을 확인해 주세요.' };
   const c = loadConfig(); c.sync = { repo, token, enabled: true }; saveConfig(c);
-  try { return await gitSync(STUDECK_DIR(), repo, token, true); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  return { ok: true };
 });
-ipcMain.handle('git-sync', async () => {
-  const s = (loadConfig().sync) || {};
-  if (!s.enabled || !s.repo || !s.token) return { ok: false, error: 'not-configured' };
-  try { return await gitSync(STUDECK_DIR(), s.repo, s.token, false); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
-});
+ipcMain.handle('git-sync', (_e, resolution) => syncService.run(resolution));
 ipcMain.handle('git-sync-status', () => {
   const s = (loadConfig().sync) || {};
-  return { enabled: !!s.enabled, repo: s.repo || '', hasToken: !!s.token, gitDir: fs.existsSync(path.join(STUDECK_DIR(), '.git')) };
+  return { ...syncService.status(), enabled: !!s.enabled, repo: s.repo || '', hasToken: !!s.token, gitDir: fs.existsSync(path.join(STUDECK_DIR(), '.git')) };
 });
-ipcMain.handle('git-disconnect', () => { const c = loadConfig(); c.sync = { enabled: false, repo: (c.sync && c.sync.repo) || '', token: '' }; saveConfig(c); return { ok: true }; });
-
-// 개인 데이터(할 일·일정·기록·타이머 등)를 동기화 트리(.studeck/config.json)로 읽고/쓰기
-const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json');
-ipcMain.handle('sync-read', () => { try { return JSON.parse(fs.readFileSync(SYNC_DATA_PATH(), 'utf8')); } catch (e) { return null; } });
-ipcMain.handle('sync-write', (_e, data) => {
-  try { const p = SYNC_DATA_PATH(); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify({ ...sharedSnapshot(data || {}), _syncedAt: Number(data && data._syncedAt) || Date.now() }, null, 2), 'utf8'); return { ok: true }; }
-  catch (e) { return { ok: false, error: String(e && e.message || e) }; }
-});
+ipcMain.handle('git-disconnect', () => { if (syncService.isRunning()) return { ok: false, error: '동기화 중입니다.' }; const c = loadConfig(); c.sync = { enabled: false, repo: c.sync?.repo || '', token: '' }; saveConfig(c); return { ok: true }; });
 
 // 주기적 자동 백업: config.json을 7일마다 backups/에 복사, 최근 5개 유지
 function autoBackup() {
@@ -650,12 +652,22 @@ if (!gotLock) {
     app.setAppUserModelId('cbnu.study.widget');
     autoBackup();
     migrateFolders();
-    createWindow();
+    try {
+      const cfg = loadConfig();
+      if (!cfg.pendingShared) {
+        let baseline = {};
+        try { baseline = readShared(SYNC_DATA_PATH()); } catch { /* Keep legacy local data pending until the conflict is resolved. */ }
+        saveConfig(initializeOutbox(cfg, baseline));
+      }
+      createWindow();
+    }
+    catch (error) { dialog.showErrorBox('설정 파일 확인 필요', error.message + '\n기존 설정 파일은 보존했습니다.'); allowQuit = true; app.quit(); }
   });
 }
 
 // Hidden LMS pages must not cancel quit via beforeunload and leave a windowless app.
-app.on('before-quit', () => {
+app.on('before-quit', event => {
+  if (!allowQuit && win && !win.isDestroyed()) { event.preventDefault(); win.webContents.send('request-quit'); return; }
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isVisible()) window.destroy();
   }
