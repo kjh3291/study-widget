@@ -10,7 +10,7 @@
     "start": "electron .",
     "dist": "electron-builder",
     "pack": "electron-builder --dir",
-    "test": "node scripts/test-sync-reliability.js && node scripts/test-git-sync.js && node scripts/test-shared-settings.js && node scripts/test-input-downloads.js && node scripts/test-syllabus.js",
+    "test": "node scripts/test-deleted-files.js && node scripts/test-sync-reliability.js && node scripts/test-git-sync.js && node scripts/test-shared-settings.js && node scripts/test-input-downloads.js && node scripts/test-syllabus.js",
     "test:ui": "electron scripts/test-sync-ui.cjs && electron scripts/test-sync-main.cjs && electron scripts/test-syllabus-ui.cjs"
   },
   "devDependencies": {
@@ -40,7 +40,8 @@
       "index.html",
       "icon.ico",
       "icon.png",
-      "package.json"
+      "package.json",
+      "deleted-files.js"
     ],
     "win": {
       "target": [

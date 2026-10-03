@@ -543,7 +543,7 @@ function renderTimetable(subjects) {
       if (t.day !== d) continue;
       const top = (toMin(t.start) - gridStart) * pxPerMin;
       const h = (toMin(t.end) - toMin(t.start)) * pxPerMin;
-      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 자료 폴더 열기" style="top:${top}px;height:${h}px;background:${colorFor(s.name)}">
+      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 과목 폴더 열기" style="top:${top}px;height:${h}px;background:${colorFor(s.name)}">
         <div class="b-name">${escapeHtml(s.name)}</div>
         ${t.place ? `<div class="b-place">${escapeHtml(t.place)}</div>` : ''}
         ${s.professor ? `<div class="b-prof">${escapeHtml(s.professor)}</div>` : ''}
@@ -641,7 +641,7 @@ function todoRow(it, showSubj) {
   const star = `<span class="star ${it.starred ? 'on' : ''}" data-star="${it.id}" title="중요 표시">${ICO.star}</span>`;
   const rep = it.repeat ? `<span class="rep" title="반복 ${it.repeat === 'weekly' ? '매주' : '매일'}">${ICO.repeat}</span>` : '';
   const subs = it.subs || [];
-  const subsBadge = subs.length ? `<span class="subs-badge" data-expand="${it.id}" title="하위 항목">${subs.filter((s) => s.done).length}/${subs.length}</span>` : '';
+  const subsBadge = subs.length ? `<button type="button" class="subs-badge" data-expand="${it.id}" aria-expanded="${!!state.expandedTodos[it.id]}" title="하위 항목 펼치기/접기">${subs.filter((s) => s.done).length}/${subs.length}</button>` : '';
   const addSub = `<span class="play addsub" data-addsub="${it.id}" title="하위 추가">${ICO.plus}</span>`;
   return `<div class="todo ${it.done ? 'done' : ''}" data-id="${it.id}" data-kind="todo">
     <input type="checkbox" class="check" data-toggle="${it.id}" ${it.done ? 'checked' : ''}/>
@@ -1114,6 +1114,7 @@ function detectLmsSubmissions(prevById) {
 // 공용 동기화: list의 파일들을 doneMap 기준으로 신규 다운로드 + 하루1회 변경확인.
 // 파일명 중복은 main에서 방지(existed), 변경분은 같은 위치 덮어쓰기(changed).
 async function syncDownloads(list, doneMap, kind, force) {
+  if (state.syncEnabled && !state.syncReady) return { gotNew: [], changed: [] };
   const DAY = 24 * 60 * 60 * 1000, now = Date.now();
   let cand = (list || []).filter((m) => m && m.url);
   if (!force) cand = cand.filter((m) => state.matCourses[m.courseId] !== false); // 제외 과목만 빼고 전부
@@ -1530,10 +1531,10 @@ $('focus-view').addEventListener('click', (e) => {
   if (e.target.closest('#fv-pause')) { pauseTimer(); renderFocus(); return; }
   if (e.target.closest('#fv-stop')) { stopTimer(); return; }                    // 종료+기록(자동 exitFocus)
 });
-// 시간표 수업 블록 클릭 → 그 과목 자료 폴더 열기
+// 시간표 수업 블록 클릭 → 수업자료·보조자료·과제가 있는 과목 폴더 열기
 $('grid-wrap').addEventListener('click', (e) => {
   const blk = e.target.closest('.block'); if (!blk || !blk.dataset.subj) return;
-  window.api.openStudeckFolder('materials', blk.dataset.subj);
+  window.api.openStudeckFolder('subject', blk.dataset.subj);
 });
 
 // 위임 클릭 (일반 목록 + 미니 목록 공용)
@@ -1651,7 +1652,7 @@ function openTodoMenu(kind, id, x, y) {
   } else {
     const t = state.todos.find((v) => v.id === id); if (!t) return;
     add('집중 시작', () => startFocus(t.text, t.subject || null));
-    add('하위 항목 추가', () => { state.expandedTodos[id] = true; state.subAddOpen = id; renderTodos(); const inp = document.querySelector('[data-subadd]'); if (inp) inp.focus(); });
+    add('하위 항목 추가', () => { state.expandedTodos[id] = true; state.subAddOpen = id; renderList(); focusSubAdd(); });
     add('미루기…', () => openDeferMenu(id, x, y));
     add(t.skipped ? '넘김 해제' : '넘김으로 표시', () => { t.skipped = !t.skipped; if (t.skipped) { t.doneAt = Date.now(); } saveTodos(); rerenderTodoAreas(); });
     add(t.starred ? '별표 해제' : '별표', () => { t.starred = !t.starred; saveTodos(); renderTodos(); });
@@ -1940,6 +1941,7 @@ function miniPrompt(title) {
 // =====================================================================
 (async () => {
   const cfg = await window.api.loadConfig();
+  state.syncEnabled = !!cfg.sync?.enabled;
   state.opacity = typeof cfg.opacity === 'number' ? cfg.opacity : 100;
   state.alwaysOnTop = cfg.alwaysOnTop !== false;
   if (cfg.opacity) { $('inp-opacity').value = cfg.opacity; window.api.setOpacity(cfg.opacity / 100); }

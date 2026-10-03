@@ -20,7 +20,7 @@ assert.equal(names.safeName('팀.pdf'.normalize('NFD')), '팀.pdf');
 let body = Buffer.from('first submission');
 const hash = b => crypto.createHash('sha1').update(b).digest('hex');
 const { preserveMaterial } = require('../material-history');
-const context = { preserveMaterial, fs, path, STUDECK_DIR: () => root, safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
+const context = { wasDeletedFile: require('../deleted-files').wasDeletedFile, preserveMaterial, fs, path, STUDECK_DIR: () => root, safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('), source.indexOf("ipcMain.handle('lms-download'")), context);
 (async () => {
@@ -43,11 +43,18 @@ vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('),
   assert.equal(fs.readdirSync(historyDir).length, 1);
   assert.deepEqual(fs.readFileSync(path.join(historyDir, fs.readdirSync(historyDir)[0])), previousMaterial);
   assert.deepEqual(fs.readFileSync(material.path), body);
+  fs.unlinkSync(material.path);
+  const deletedMaterial = await context.downloadMaterial('material', 'Course', '', { mode: 'recheck', dest: material.path });
+  assert.equal(deletedMaterial.deleted, true);
+  assert.equal(fs.existsSync(material.path), false);
   let checked = 0;
   const downloadContext = { state: { matCourses: {} }, Date, cleanCourse: s => s, window: { api: { lmsDownload: async items => { checked = items.length; return []; } } } };
   vm.createContext(downloadContext);
   vm.runInContext(renderer.slice(renderer.indexOf('async function syncDownloads('), renderer.indexOf('async function downloadNewMaterials(')), downloadContext);
   await downloadContext.syncDownloads([{ url: 'url2', courseName: 'Course' }], { url2: { path: revised.path, checkedAt: Date.now() } }, 'assign', false);
   assert.equal(checked, 1);
+  downloadContext.state.syncEnabled = true; downloadContext.state.syncReady = false; checked = 0;
+  await downloadContext.syncDownloads([{ url: 'url2', courseName: 'Course' }], {}, 'assign', false);
+  assert.equal(checked, 0);
   console.log('PASS: IME Enter adds once; same-name resubmission replaces with backup; every refresh checks assignments');
 })().finally(() => fs.rmSync(root, { recursive: true, force: true })).catch(e => { console.error(e); process.exitCode = 1; });

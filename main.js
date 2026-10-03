@@ -9,6 +9,7 @@ const { atomicJSON, readShared } = require('./sync-storage');
 const { createSyncService } = require('./sync-service');
 const { autoResolve, describeConflicts, resolveConflicts } = require('./sync-conflicts');
 const { preserveMaterial, archiveGitChanges } = require('./material-history');
+const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -433,6 +434,9 @@ async function downloadMaterial(url, course, title, opts) {
   const dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(dir, got.filename);
   try {
     const existed = fs.existsSync(dest);
+    if (!existed && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
+      return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true, deleted: true };
+    }
     const oldSig = existed ? sha1(fs.readFileSync(dest)) : null;
     if (existed && oldSig === sig) return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true };
     // A new submission URL can still point to a revised file with the same filename.
@@ -527,8 +531,9 @@ async function ensureRepo(dir, repo, token) {
   await checked(['config', 'user.name', 'Studeck']);
   const ignorePath = path.join(dir, '.gitignore');
   const old = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, 'utf8') : '';
-  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store'].filter(x => !old.split(/\r?\n/).includes(x));
+  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store', '/삭제한 파일/'].filter(x => !old.split(/\r?\n/).includes(x));
   if (missing.length) fs.appendFileSync(ignorePath, (old && !old.endsWith('\n') ? '\n' : '') + missing.join('\n') + '\n');
+  await checked(['rm', '-r', '--cached', '--ignore-unmatch', '--', '삭제한 파일']);
   const remote = await git(['remote', 'get-url', 'origin'], dir);
   await checked(['remote', remote.ok ? 'set-url' : 'add', 'origin', gitRemote(repo, token)]);
 }
@@ -565,6 +570,7 @@ function gitSync(dir, repo, token) {
         const historyCommit = await git(['commit', '-m', 'Preserve previous materials'], dir);
         if (!historyCommit.ok) return fail(historyCommit);
       }
+      await preserveIncomingDeletions(dir);
       const pull = await git(['merge', '--allow-unrelated-histories', 'FETCH_HEAD', '--no-edit'], dir);
       if (!pull.ok) {
         await autoResolve(dir);

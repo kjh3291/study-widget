@@ -35,6 +35,18 @@ function fixture(initial, remote = {}) {
   assert.deepEqual(f.load().pendingShared, {}); assert.equal(f.load().theme, 'light');
   console.log('PASS: offline first-connection edits survive restart and merge with remote additions');
 
+  for (const key of ['todos', 'events']) {
+    const initial = { [key]: [{ id: 'deleted', text: 'removed while offline' }] };
+    const deletion = fixture(initial, { ...initial, _syncedAt: Date.now() + 86400000 });
+    deletion.edit({ [key]: [] }); deletion.offline = true;
+    assert.equal((await deletion.service.run()).ok, false);
+    deletion.restart(); deletion.offline = false;
+    assert.equal((await deletion.service.run()).ok, true);
+    assert.deepEqual(deletion.pushed[key], []);
+    assert.equal((await deletion.service.run()).ok, true);
+    assert.deepEqual(deletion.load()[key], []);
+  }
+  console.log('PASS: offline todo/event deletions survive restart and a remote clock ahead');
   const base = { todos: [task('a', 'A'), task('b', 'B')] };
   const left = copy(base), right = copy(base); left.todos[0].done = true; right.todos[1].text = 'B edited';
   const merged = mergeShared(base, left, right); assert.equal(merged.conflicts.length, 0);

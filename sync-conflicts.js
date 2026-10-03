@@ -5,6 +5,7 @@ const { promisify } = require('node:util');
 const { mergeShared } = require('./sync-model');
 const { atomicJSON } = require('./sync-storage');
 const { fingerprint } = require('./sync-service');
+const { preserveDeleted } = require('./deleted-files');
 const SHARED = '.studeck/config.json';
 const run = async (dir, args) => (await promisify(execFile)('git', args, { cwd: dir, windowsHide: true, encoding: 'buffer', maxBuffer: 100 * 1024 * 1024, timeout: 30000 })).stdout;
 function safePath(dir, name) {
@@ -68,7 +69,7 @@ async function autoResolve(dir) {
       atomicJSON(target, { ...merged.data, _syncedAt: Date.now() }, path.join(dir, '.studeck/backups/writes'));
     } else if (file.name === '.gitignore') {
       const rules = [...new Set([2, 3].flatMap(s => file.stages[s]?.content.toString('utf8').split(/\r?\n/).filter(Boolean) || []))];
-      if (rules.some(r => !['.studeck-migrated', '.studeck/backups/', '.DS_Store'].includes(r))) continue;
+      if (rules.some(r => !['.studeck-migrated', '.studeck/backups/', '.DS_Store', '/삭제한 파일/'].includes(r))) continue;
       fs.writeFileSync(target, rules.join('\n') + '\n');
     } else continue;
     await run(dir, ['add', '--', file.name]);
@@ -105,7 +106,10 @@ async function resolveConflicts(dir, resolution) {
   atomicJSON(path.join(backup, 'manifest.json'), info.entries.map(f => ({ name: f.name, stages: Object.fromEntries(Object.entries(f.stages).map(([k, s]) => [k, s.sha])) })));
   for (const plan of plans) {
     if (plan.content) { fs.mkdirSync(path.dirname(plan.target), { recursive: true }); fs.writeFileSync(plan.target, plan.content); if (process.platform !== 'win32' && plan.mode) fs.chmodSync(plan.target, plan.mode === '100755' ? 0o755 : 0o644); }
-    else fs.rmSync(plan.target, { force: true });
+    else {
+      if (fs.existsSync(plan.target)) preserveDeleted(dir, plan.file.name, fs.readFileSync(plan.target));
+      fs.rmSync(plan.target, { force: true });
+    }
     if (plan.extra) fs.writeFileSync(plan.extra, plan.file.stages[3].content);
     await run(dir, ['add', '--', plan.file.name, ...(plan.extra ? [path.relative(dir, plan.extra)] : [])]);
   }

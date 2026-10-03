@@ -11,7 +11,7 @@ const source = fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8');
 const start = source.indexOf('function git(args, cwd)');
 const end = source.indexOf("const SYNC_DATA_PATH", start);
 const { archiveGitChanges } = require('../material-history');
-const context = { readShared: require('../sync-storage').readShared, autoResolve: require('../sync-conflicts').autoResolve, archiveGitChanges, fs, path, process, console, execFile: (bin, args, opts, cb) => {
+const context = { preserveIncomingDeletions: require('../deleted-files').preserveIncomingDeletions, readShared: require('../sync-storage').readShared, autoResolve: require('../sync-conflicts').autoResolve, archiveGitChanges, fs, path, process, console, execFile: (bin, args, opts, cb) => {
   // Redirect only the remote URL to the isolated bare repository.
   const prefix = args[0] === '-c' ? args.slice(0, 2) : [];
   args = args.slice(prefix.length);
@@ -59,6 +59,27 @@ vm.runInContext(source.slice(start, end), context);
   const otherHistory = path.join(other, '테스트 과목', '보조자료', '이전 자료');
   assert.equal(fs.readdirSync(otherHistory).length, 2);
   assert.ok(fs.readdirSync(otherHistory).some(name => fs.readFileSync(path.join(otherHistory, name)).equals(updated)));
+  // Incoming deletions leave the original path empty and a device-local copy.
+  for (const [sender, receiver] of [[local, other], [other, local]]) {
+    const deletedPaths = ['삭제 테스트/보조자료/정리.pdf', '삭제 테스트/과제/nested/answer.bin', 'root-note.txt'];
+    for (const name of deletedPaths) { fs.mkdirSync(path.dirname(path.join(sender, name)), { recursive: true }); fs.writeFileSync(path.join(sender, name), updated); }
+    assert.equal((await context.gitSync(sender, 'owner/data', 'fake')).ok, true);
+    assert.equal((await context.gitSync(receiver, 'owner/data', 'fake')).ok, true);
+    for (const name of deletedPaths) fs.unlinkSync(path.join(sender, name));
+    assert.equal((await context.gitSync(sender, 'owner/data', 'fake')).ok, true);
+    assert.equal((await context.gitSync(receiver, 'owner/data', 'fake')).ok, true);
+    for (const name of deletedPaths) {
+      assert.equal(fs.existsSync(path.join(receiver, name)), false);
+      assert.deepEqual(fs.readFileSync(path.join(receiver, '삭제한 파일', name)), updated);
+    }
+    assert.equal(command(receiver, 'ls-files', '삭제한 파일').trim(), '');
+    assert.equal(command(remote, 'ls-tree', '-r', '--name-only', 'main', '삭제한 파일').trim(), '');
+    // Emptying this local holding folder must not restore or re-download its contents.
+    fs.rmSync(path.join(receiver, '삭제한 파일'), { recursive: true });
+    assert.equal((await context.gitSync(receiver, 'owner/data', 'fake')).ok, true);
+    assert.equal(fs.existsSync(path.join(receiver, '삭제한 파일')), false);
+  }
+  console.log('PASS: bidirectional file deletion, original paths removed, local holding copies, no trash upload or resurrection');
   // A conflicting edit must report failure and must not change remote HEAD.
   fs.writeFileSync(path.join(other, 'supplement.txt'), 'remote edit');
   command(other, 'commit', '-am', 'remote edit'); command(other, 'push');
@@ -81,6 +102,40 @@ vm.runInContext(source.slice(start, end), context);
   assert.equal(fs.readFileSync(path.join(other, extra), 'utf8'), 'remote edit');
   assert.equal(fs.readFileSync(path.join(other, 'supplement.txt'), 'utf8'), 'local edit');
   assert.equal(command(local, 'ls-files', '.studeck/backups').trim(), '');
+  // Delete/modify conflicts keep the edited file until the user chooses deletion.
+  for (const [sender, receiver] of [[local, other], [other, local]]) {
+    const name = '충돌 과목/보조자료/delete-edit.bin';
+    fs.mkdirSync(path.dirname(path.join(sender, name)), { recursive: true });
+    fs.writeFileSync(path.join(sender, name), first);
+    assert.equal((await context.gitSync(sender, 'owner/data', 'fake')).ok, true);
+    assert.equal((await context.gitSync(receiver, 'owner/data', 'fake')).ok, true);
+    fs.unlinkSync(path.join(sender, name)); fs.writeFileSync(path.join(receiver, name), updated);
+    assert.equal((await context.gitSync(sender, 'owner/data', 'fake')).ok, true);
+    const headBefore = command(remote, 'rev-parse', 'main');
+    assert.equal((await context.gitSync(receiver, 'owner/data', 'fake')).ok, false);
+    assert.deepEqual(fs.readFileSync(path.join(receiver, name)), updated);
+    assert.equal(command(remote, 'rev-parse', 'main'), headBefore);
+    const choices = await describeConflicts(receiver);
+    assert.equal(choices.items.find(x => x.file === name).remote.exists, false);
+    await resolveConflicts(receiver, { ...choices, choices: { [name]: 'remote' } });
+    const resolved = await context.gitSync(receiver, 'owner/data', 'fake');
+    assert.equal(resolved.ok, true, JSON.stringify(resolved));
+    assert.equal(fs.existsSync(path.join(receiver, name)), false);
+    assert.deepEqual(fs.readFileSync(path.join(receiver, '삭제한 파일', name)), updated);
+  }
+  // A failed holding-copy operation must stop BEFORE the original is removed.
+  const guarded = '보관 실패/자료.bin';
+  fs.mkdirSync(path.dirname(path.join(local, guarded)), { recursive: true }); fs.writeFileSync(path.join(local, guarded), updated);
+  assert.equal((await context.gitSync(local, 'owner/data', 'fake')).ok, true);
+  assert.equal((await context.gitSync(other, 'owner/data', 'fake')).ok, true);
+  const block = path.join(other, '삭제한 파일', '보관 실패');
+  fs.mkdirSync(path.dirname(block), { recursive: true }); fs.writeFileSync(block, 'blocking file');
+  fs.unlinkSync(path.join(local, guarded)); assert.equal((await context.gitSync(local, 'owner/data', 'fake')).ok, true);
+  await assert.rejects(context.gitSync(other, 'owner/data', 'fake'));
+  assert.deepEqual(fs.readFileSync(path.join(other, guarded)), updated);
+  fs.unlinkSync(block); assert.equal((await context.gitSync(other, 'owner/data', 'fake')).ok, true);
+  assert.equal(fs.existsSync(path.join(other, guarded)), false);
+  console.log('PASS: delete/edit conflicts require choices; failed backup never removes original');
   // Legacy clients can still edit the JSON file directly. Merge by stable task IDs.
   const writeConfig = (dir, data) => { fs.mkdirSync(path.join(dir, '.studeck'), { recursive: true }); fs.writeFileSync(path.join(dir, '.studeck/config.json'), JSON.stringify(data, null, 2)); };
   const base = { todos: [{ id: 'a', text: 'first', done: false }, { id: 'b', text: 'second', done: false }] };
@@ -135,6 +190,26 @@ vm.runInContext(source.slice(start, end), context);
   assert.equal(macClient.load().theme, 'light');
   const publicShared = readShared(path.join(local, '.studeck/config.json'));
   assert.equal(publicShared.pendingShared, undefined); assert.equal(publicShared.sync, undefined);
+  // Both item kinds delete in either direction without reviving after another sync.
+  for (const key of ['todos', 'events']) {
+    macClient.edit({ [key]: [{ id: 'delete-a', text: 'A' }, { id: 'delete-b', text: 'B' }, { id: 'keep', text: 'Keep' }] });
+    assert.equal((await macClient.service.run()).ok, true);
+    assert.equal((await winClient.service.run()).ok, true);
+    for (const [sender, receiver, id] of [[macClient, winClient, 'delete-a'], [winClient, macClient, 'delete-b']]) {
+      sender.edit({ [key]: sender.load()[key].filter(x => x.id !== id) });
+      receiver.edit({ [key]: receiver.load()[key].map(x => x.id === 'keep' ? { ...x, text: 'independent edit ' + id } : x) });
+      assert.equal((await sender.service.run()).ok, true);
+      assert.equal((await receiver.service.run()).ok, true);
+      assert.equal((await sender.service.run()).ok, true);
+      assert.equal(receiver.load()[key].some(x => x.id === id), false);
+      assert.deepEqual(sender.load()[key], receiver.load()[key]);
+    }
+    macClient.edit({ [key]: [] });
+    assert.equal((await macClient.service.run()).ok, true);
+    assert.equal((await winClient.service.run()).ok, true);
+    assert.deepEqual(winClient.load()[key], []);
+  }
+  console.log('PASS: todos and events delete both ways, including the last item and concurrent unrelated edits');
   console.log('PASS: full two-client config sharing, simultaneous task edits, explicit setting conflict and retry without loss');
   console.log('PASS: two-way files, same-name binary versions, conflicts block push, stale choices rejected, both versions shared, JSON field resolution preserves independent edits');
 })().finally(() => fs.rmSync(root, { recursive: true, force: true })).catch(error => { console.error(error); process.exitCode = 1; });
