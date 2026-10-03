@@ -9,6 +9,7 @@
 
 ## 기본 흐름 (매번)
 1. **작업 시작 전 반드시 최신화**: `git pull origin main`
+   - 루트에 **`HANDOFF.md`가 있으면 먼저 읽고 처리**(다른 기기가 남긴 인수인계).
 2. 작업 → `node --check`로 문법 확인
 3. **작업 끝나면 즉시 커밋 + 푸시**: `git add <파일> && git commit && git push origin main`
    - 다른 기기가 바로 받아갈 수 있게 **미루지 말고 바로 push**.
