@@ -516,11 +516,10 @@
   .mini .tabs { display: none; }
   .mini #body > .view { display: none !important; }
   .mini #body > #view-mini { display: block !important; }
-  /* 좁은 미니 폭에서 제목(할 일 내용)이 눌려 안 보이던 문제 방지:
-     과목 칩·별표·아이콘 등 부가 요소를 숨겨 제목이 우선 보이게. */
-  .mini .todo { gap: 6px; }
+  /* 과목은 별도 줄에 표시해 좁은 화면에서도 제목과 함께 읽을 수 있게 한다. */
+  .mini .todo { gap: 6px; flex-wrap: wrap; }
+  .mini .subj-chip { order: -1; flex: 0 0 calc(100% - 23px); margin-left: 23px; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere; }
   .mini .todo-text { -webkit-line-clamp: 2; min-width: 90px; }
-  .mini .subj-chip,
   .mini .star,
   .mini .play,
   .mini .addsub,

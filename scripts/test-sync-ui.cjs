@@ -18,7 +18,7 @@ window.api=new Proxy({}, {get:(_,key)=>{
   return async()=>({enabled:false,ok:true});
 }});`);
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 430, height: 640, show: false, webPreferences: { preload, contextIsolation: false, sandbox: false, backgroundThrottling: false } });
+  const win = new BrowserWindow({ width: 320, height: 640, show: false, webPreferences: { preload, contextIsolation: false, sandbox: false, backgroundThrottling: false } });
   try {
     await win.loadFile(path.join(__dirname, '..', 'index.html'));
     const result = await win.webContents.executeJavaScript(`(async()=>{
@@ -26,8 +26,11 @@ app.whenReady().then(async () => {
       const settle=()=>new Promise(r=>setTimeout(r,20));
       const until=async check=>{const start=Date.now();while(!check()){if(Date.now()-start>3000)throw new Error('UI transition timed out');await settle();}};
       await initSync();
-      state.todos=[{id:'mini-parent',text:'Parent',due:todayStr(),done:false,subs:[{text:'Child',done:false}]}];
+      state.todos=[{id:'mini-parent',text:'Parent',subject:'오픈소스개발프로젝트 긴 과목명',due:todayStr(),done:false,subs:[{text:'Child',done:false}]}];
       toggleMini();
+      const chip=$('mini-list').querySelector('.subj-chip');
+      check(chip?.textContent===state.todos[0].subject&&getComputedStyle(chip).display!=='none','Mini course hidden');
+      check(chip.getBoundingClientRect().right<=innerWidth&&document.documentElement.scrollWidth<=innerWidth,'Mini course overflows narrow window');
       let badge=$('mini-list').querySelector('[data-expand]');
       check(badge&&getComputedStyle(badge).display!=='none','Mini expand control hidden');
       badge.click();check(!!$('mini-list').querySelector('[data-subtoggle]'),'Mini child did not expand');
