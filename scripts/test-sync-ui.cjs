@@ -60,6 +60,11 @@ app.whenReady().then(async () => {
       await initSync();test.during=null;await flushSaves();
       check(state.todos.length===2&&state.todos[0].text==='edited during upload','Concurrent local or incoming edits lost');
       check($('sync-label').textContent.includes('대기'),'Concurrent edits falsely called uploaded');
+      const timetableConflict={id:'time-conflict',path:['timetableFull',{name:'Study'},'times'],base:{exists:true,value:[{day:0,start:108,end:120,place:'A'}]},local:{exists:true,value:[{day:1,start:120,end:132,place:'B'}]},remote:{exists:true,value:[{day:2,start:132,end:144,place:'C'}]}};
+      showSyncStatus({phase:'conflict',conflicts:{kind:'settings',token:'time',items:[timetableConflict]}});$('sync-resolve').click();
+      const compare=$('sync-conflicts').textContent;
+      check(compare.includes('Study')&&compare.includes('변경 전')&&compare.includes('월 09:00–10:00 · A')&&compare.includes('화 10:00–11:00 · B')&&compare.includes('수 11:00–12:00 · C'),'Timetable comparison missing readable differences');
+      $('sync-conflicts').remove();
       const item={id:'conflict',path:['todos',{id:'a'},'text'],local:{exists:true,value:'<script>local</script>'},remote:{exists:true,value:'remote'}};
       const conflicts={kind:'settings',token:'sample',items:[item]};
       showSyncStatus({phase:'conflict',conflicts});$('sync-resolve').click();

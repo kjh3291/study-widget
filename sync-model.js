@@ -20,6 +20,18 @@ function mergeValue(base, local, remote, path, conflicts, choices) {
   if ((base === undefined || Array.isArray(base)) && Array.isArray(local) && Array.isArray(remote)) {
     base = base || [];
     const keyed = values => values.every(x => object(x) && typeof x.id === 'string') && new Set(values.map(x => x.id)).size === values.length;
+    // Legacy timetables have no IDs. Match only unambiguous normalized course names.
+    // Renames versus edits remain delete/edit conflicts rather than guessing identity.
+    if (path.length === 1 && path[0] === 'timetableFull' && ![base, local, remote].every(keyed)) {
+      const named = values => values.every(x => object(x) && typeof x.name === 'string' && x.name.trim()) && new Set(values.map(x => x.name.normalize('NFC'))).size === values.length;
+      if ([base, local, remote].every(named)) {
+        const maps = [base, local, remote].map(xs => new Map(xs.map(x => [x.name.normalize('NFC'), x])));
+        return [...new Set([...local, ...remote, ...base].map(x => x.name.normalize('NFC')))].flatMap(name => {
+          const value = mergeValue(...maps.map(m => m.get(name)), [...path, { name }], conflicts, choices);
+          return value === undefined ? [] : [value];
+        });
+      }
+    }
     if ([base, local, remote].every(keyed)) {
       const maps = [base, local, remote].map(xs => new Map(xs.map(x => [x.id, x])));
       return [...new Set([...local, ...remote, ...base].map(x => x.id))].flatMap(id => {
@@ -34,7 +46,7 @@ function mergeValue(base, local, remote, path, conflicts, choices) {
   const id = JSON.stringify(path);
   if (choices[id] === 'local') return copy(local);
   if (choices[id] === 'remote') return copy(remote);
-  conflicts.push({ id, path, local: version(local), remote: version(remote) });
+  conflicts.push({ id, path, base: version(base), local: version(local), remote: version(remote) });
   return copy(local);
 }
 function mergeShared(base, local, remote, choices = {}) {

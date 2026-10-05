@@ -1,6 +1,6 @@
 {
   "name": "everytime-widget",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "충북대 LMS·에브리타임 연동 공부용 데스크톱 위젯 (시간표·할 일·일정·출석·기록)",
   "main": "main.js",
   "author": "study-widget contributors",
@@ -10,7 +10,7 @@
     "start": "electron .",
     "dist": "electron-builder",
     "pack": "electron-builder --dir",
-    "test": "node scripts/test-deleted-files.js && node scripts/test-sync-reliability.js && node scripts/test-git-sync.js && node scripts/test-shared-settings.js && node scripts/test-input-downloads.js && node scripts/test-syllabus.js",
+    "test": "node scripts/test-timetable-sync.js && node scripts/test-deleted-files.js && node scripts/test-sync-reliability.js && node scripts/test-git-sync.js && node scripts/test-shared-settings.js && node scripts/test-input-downloads.js && node scripts/test-syllabus.js",
     "test:ui": "electron scripts/test-sync-ui.cjs && electron scripts/test-sync-main.cjs && electron scripts/test-syllabus-ui.cjs"
   },
   "devDependencies": {

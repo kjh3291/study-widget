@@ -360,6 +360,28 @@ function initSync(resolution) {
     .finally(() => { _syncInFlight = null; });
   return _syncInFlight;
 }
+// Present timetable values in the same weekdays and clock units as the editor.
+function syncCompareText(version, field) {
+  if (!version.exists) return '삭제됨';
+  const value = version.value;
+  const clock = n => String(Math.floor(n * 5 / 60)).padStart(2, '0') + ':' + String(n * 5 % 60).padStart(2, '0');
+  if (typeof value === 'boolean') return field === 'done' ? (value ? '완료' : '미완료') : (value ? '예' : '아니요');
+  if (Array.isArray(value) && field === 'times') return value.map(t => `${'월화수목금토일'[t.day] || '?'} ${clock(t.start)}–${clock(t.end)} · ${t.place || '장소 없음'}`).join('\n') || '수업 시간 없음';
+  if (Array.isArray(value) && field === 'timetableFull') return value.map(course => syncCompareText({ exists: true, value: course }, 'course')).join('\n\n') || '시간표 없음';
+  if (value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.times)) return `${value.name || '이름 없음'} · ${value.professor || '교수 없음'}\n${syncCompareText({ exists: true, value: value.times }, 'times')}`;
+  if (value && typeof value === 'object') return JSON.stringify(value, null, 2);
+  return value == null ? '없음' : String(value);
+}
+function syncCompareRows(item) {
+  const local = item.local, remote = item.remote;
+  const value = (x, key) => ({ exists: x.exists && Object.hasOwn(x.value || {}, key), value: x.value?.[key] });
+  if (local.exists && remote.exists && local.value && remote.value && !Array.isArray(local.value) && !Array.isArray(remote.value) && typeof local.value === 'object' && typeof remote.value === 'object') {
+    return [...new Set([...Object.keys(local.value), ...Object.keys(remote.value)])]
+      .filter(key => !window.SyncModel.equal(local.value[key], remote.value[key]))
+      .map(key => ({ field: key, local: value(local, key), remote: value(remote, key), base: item.base ? value(item.base, key) : null }));
+  }
+  return [{ field: item.path?.at(-1), local, remote, base: item.base }];
+}
 function openSyncConflicts() {
   const conflict = _syncStatus.conflicts;
   if (!conflict || document.getElementById('sync-conflicts')) return;
@@ -367,17 +389,22 @@ function openSyncConflicts() {
   ov.style.cssText = 'position:absolute;inset:0;z-index:40;background:var(--bg);padding:16px;overflow:auto;font-size:12px;';
   ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '동기화 충돌 확인');
   const names = { todos: '할 일', events: '일정', focus: '집중 기록', attendance: '출석', readIds: '읽은 공지', starredLms: '중요 과제', lmsDone: '완료 과제', subjects: '과목', identifier: '시간표 공유 링크', timetableFull: '시간표', timetableSource: '시간표 입력 방식', newMaterials: '새 자료', notifyState: '알림 기록', notifyPrefs: '알림 설정', theme: '테마', clockFormat: '시계 표시', focusGoalMin: '집중 목표', rolloverOverdue: '지난 할 일 이월', lmsAuto: 'LMS 자동 갱신', autoDownload: '자료 자동 다운로드', matCourses: '자료 수집 과목', opacity: '투명도', alwaysOnTop: '항상 위에 표시', text: '내용', title: '제목', done: '완료 여부', due: '마감일', dueTime: '마감 시간', subject: '과목', starred: '중요 표시', repeat: '반복', subs: '세부 할 일', start: '시작', end: '종료', sessions: '공부 기록', minutes: '공부 시간', morningHour: '아침 알림 시간', deadlineAlerts: '마감 알림', professor: '교수', times: '수업 시간', place: '강의실', name: '이름' };
-  const text = value => !value.exists ? '(삭제됨)' : typeof value.value === 'string' ? value.value : JSON.stringify(value.value, null, 2);
+  const text = syncCompareText;
   ov.innerHTML = '<h2 style="font-size:15px">양쪽 변경 비교</h2><p>선택하기 전에는 자동으로 덮어쓰지 않습니다. 파일은 두 버전을 모두 보관할 수도 있습니다.</p>';
   const choices = {};
   for (const item of conflict.items) {
     const row = document.createElement('div'); row.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
     const label = item.path ? item.path.map(p => {
       if (typeof p !== 'object') return names[p] || '항목';
-      const entry = Array.isArray(state[item.path[0]]) ? state[item.path[0]].find(x => x.id === p.id) : null;
-      return entry?.text || entry?.title || item.local.value?.text || item.remote.value?.text || '수정 항목';
+      const entry = Array.isArray(state[item.path[0]]) ? state[item.path[0]].find(x => p.name ? x.name?.normalize('NFC') === p.name : x.id === p.id) : null;
+      return p.name || entry?.name || entry?.text || entry?.title || item.local.value?.name || item.remote.value?.name || item.local.value?.text || item.remote.value?.text || '수정 항목';
     }).join(' / ') : item.file;
-    row.innerHTML = `<b>${escapeHtml(label)}</b><div style="display:flex;gap:8px;margin:8px 0"><div style="min-width:0;flex:1">이 기기<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto">${escapeHtml(text(item.local))}</pre></div><div style="min-width:0;flex:1">GitHub<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto">${escapeHtml(text(item.remote))}</pre></div></div>`;
+    const details = syncCompareRows(item).map(pair => {
+      const field = names[pair.field] || (typeof pair.field === 'string' ? pair.field : '내용');
+      const before = pair.base ? `<div style="color:var(--muted);margin-top:6px">변경 전: <span style="white-space:pre-wrap">${escapeHtml(text(pair.base, pair.field))}</span></div>` : '';
+      return `<div class="sync-difference"><div>${escapeHtml(field)} · ${!pair.local.exists || !pair.remote.exists ? '삭제와 수정 비교' : '값이 다름'}</div>${before}<div style="display:flex;gap:8px;margin:8px 0"><div style="min-width:0;flex:1">이 기기<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(text(pair.local, pair.field))}</pre></div><div style="min-width:0;flex:1">GitHub에 저장된 내용<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(text(pair.remote, pair.field))}</pre></div></div></div>`;
+    }).join('');
+    row.innerHTML = `<b>${escapeHtml(label)}</b>${details}`;
     const select = document.createElement('select'); select.setAttribute('aria-label', label + ' 버전 선택');
     select.innerHTML = '<option value="">사용할 버전 선택</option><option value="local">이 기기 버전</option><option value="remote">GitHub 버전</option>' + (item.both ? '<option value="both">둘 다 보관 (GitHub 사본 추가)</option>' : '');
     select.onchange = () => { choices[item.id] = select.value; }; row.appendChild(select); ov.appendChild(row);
