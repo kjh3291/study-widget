@@ -1,6 +1,6 @@
 {
   "name": "everytime-widget",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "충북대 LMS·에브리타임 연동 공부용 데스크톱 위젯 (시간표·할 일·일정·출석·기록)",
   "main": "main.js",
   "author": "study-widget contributors",
@@ -41,7 +41,8 @@
       "icon.ico",
       "icon.png",
       "package.json",
-      "deleted-files.js"
+      "deleted-files.js",
+      "local-materials.js"
     ],
     "win": {
       "target": [

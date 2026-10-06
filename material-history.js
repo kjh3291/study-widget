@@ -21,17 +21,17 @@ function preserveMaterial(dir, relative, bytes) {
   } else fs.writeFileSync(target, bytes, { flag: 'wx' });
   return target;
 }
-async function archiveGitChanges(dir, incoming = false) {
+async function archiveGitChanges(dir, incoming = false, incomingRef = 'FETCH_HEAD') {
   // An empty repository has no previous version to retain.
   try { await gitBytes(dir, ['rev-parse', '--verify', 'HEAD']); } catch { return; }
   const args = ['diff', '--name-only', '--diff-filter=M', '-z', 'HEAD'];
-  if (incoming) args.push('FETCH_HEAD');
+  if (incoming) args.push(incomingRef);
   let changed = (await gitBytes(dir, args)).toString('utf8').split('\0').filter(isMaterial);
   if (incoming) {
     let base;
-    try { base = (await gitBytes(dir, ['merge-base', 'HEAD', 'FETCH_HEAD'])).toString('utf8').trim(); } catch { /* Independent initial histories. */ }
+    try { base = (await gitBytes(dir, ['merge-base', 'HEAD', incomingRef])).toString('utf8').trim(); } catch { /* Independent initial histories. */ }
     if (base) {
-      const remoteChanges = new Set((await gitBytes(dir, ['diff', '--name-only', '--diff-filter=M', '-z', base, 'FETCH_HEAD'])).toString('utf8').split('\0'));
+      const remoteChanges = new Set((await gitBytes(dir, ['diff', '--name-only', '--diff-filter=M', '-z', base, incomingRef])).toString('utf8').split('\0'));
       changed = changed.filter(relative => remoteChanges.has(relative));
     }
   }

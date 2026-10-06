@@ -10,6 +10,7 @@ const { createSyncService } = require('./sync-service');
 const { autoResolve, describeConflicts, resolveConflicts } = require('./sync-conflicts');
 const { preserveMaterial, archiveGitChanges } = require('./material-history');
 const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
+const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -434,15 +435,11 @@ async function downloadMaterial(url, course, title, opts) {
   const dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(dir, got.filename);
   try {
     const existed = fs.existsSync(dest);
-    if (!existed && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
+    if (!existed && opts.kind === 'assign' && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
       return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true, deleted: true };
     }
     const oldSig = existed ? sha1(fs.readFileSync(dest)) : null;
     if (existed && oldSig === sig) return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true };
-    // A new submission URL can still point to a revised file with the same filename.
-    if (existed && opts.kind !== 'assign' && opts.mode !== 'recheck') {
-      return { url, ok: true, path: dest, filename: path.basename(dest), sig: oldSig, changed: false, existed: true };
-    }
     if (existed && opts.kind === 'assign') {
       const backup = path.join(STUDECK_DIR(), '.studeck', 'backups', 'submissions', safeName(course));
       fs.mkdirSync(backup, { recursive: true });
@@ -531,9 +528,10 @@ async function ensureRepo(dir, repo, token) {
   await checked(['config', 'user.name', 'Studeck']);
   const ignorePath = path.join(dir, '.gitignore');
   const old = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, 'utf8') : '';
-  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store', '/삭제한 파일/'].filter(x => !old.split(/\r?\n/).includes(x));
+  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store', '/삭제한 파일/', '/*/수업자료/', '/*/수업자료/'.normalize('NFD')].filter(x => !old.split(/\r?\n/).includes(x));
   if (missing.length) fs.appendFileSync(ignorePath, (old && !old.endsWith('\n') ? '\n' : '') + missing.join('\n') + '\n');
   await checked(['rm', '-r', '--cached', '--ignore-unmatch', '--', '삭제한 파일']);
+  await untrackLocalMaterials(dir);
   const remote = await git(['remote', 'get-url', 'origin'], dir);
   await checked(['remote', remote.ok ? 'set-url' : 'add', 'origin', gitRemote(repo, token)]);
 }
@@ -563,20 +561,21 @@ function gitSync(dir, repo, token) {
       // Explicit merge policy is required by modern Git for independently initialized devices.
       const fetched = await git(['fetch', 'origin', 'main'], dir);
       if (!fetched.ok) return fail(fetched);
-      await archiveGitChanges(dir, true);
+      const incoming = await filterIncomingMaterials(dir);
+      await archiveGitChanges(dir, true, incoming);
       const stagedHistory = await git(['add', '-A'], dir);
       if (!stagedHistory.ok) return fail(stagedHistory);
       if (!(await git(['diff', '--cached', '--quiet'], dir)).ok) {
         const historyCommit = await git(['commit', '-m', 'Preserve previous materials'], dir);
         if (!historyCommit.ok) return fail(historyCommit);
       }
-      await preserveIncomingDeletions(dir);
-      const pull = await git(['merge', '--allow-unrelated-histories', 'FETCH_HEAD', '--no-edit'], dir);
+      await preserveIncomingDeletions(dir, incoming);
+      const pull = await git(['merge', '--allow-unrelated-histories', incoming, '--no-edit'], dir);
       if (!pull.ok) {
         await autoResolve(dir);
         if ((await git(['ls-files', '-u'], dir)).out.trim()) return fail(pull);
         // A merge can fail without creating conflict entries (e.g. a locked file).
-        const check = await git(['merge-base', '--is-ancestor', 'FETCH_HEAD', 'HEAD'], dir);
+        const check = await git(['merge-base', '--is-ancestor', incoming, 'HEAD'], dir);
         if (!check.ok) return fail(pull);
       }
     }
