@@ -11,6 +11,7 @@ const { autoResolve, describeConflicts, resolveConflicts } = require('./sync-con
 const { preserveMaterial, archiveGitChanges } = require('./material-history');
 const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
 const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
+const { resolveTarget } = require('./material-folders');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -323,6 +324,9 @@ const STUDECK_DIR = () => path.join(app.getPath('desktop'), 'Studeck');
 function safeName(s) {
   return String(s || '').normalize('NFC').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '기타';
 }
+// 자료 저장 위치 — 규칙은 material-folders.js
+const materialTarget = (course, kind) => resolveTarget(loadConfig(), course, kind, STUDECK_DIR(), safeName);
+
 function parseCdFilename(cd) {
   if (!cd) return '';
   let m = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(cd);
@@ -431,10 +435,24 @@ async function downloadMaterial(url, course, title, opts) {
   const got = await fetchMaterialBytes(url, title);
   if (!got || !got.body) return { url, ok: false, error: 'download-fail' };
   const sig = sha1(got.body);
-  const dir = path.join(STUDECK_DIR(), safeName(course), opts.kind === 'assign' ? '과제' : '수업자료');
-  const dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(dir, got.filename);
+  const target = materialTarget(course, opts.kind);
+  const dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(target.dir, got.filename);
   try {
     const existed = fs.existsSync(dest);
+    if (target.custom) {
+      // 사용자 폴더: 옮기거나 지운 파일은 다시 만들지 않고, 바뀐 자료는 이전 판을 기기 백업에 남긴다
+      if (!existed && opts.mode === 'recheck') return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true, missing: true };
+      const oldBytes = existed ? fs.readFileSync(dest) : null;
+      if (oldBytes && sha1(oldBytes) === sig) return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true };
+      if (oldBytes) {
+        const backup = path.join(app.getPath('userData'), 'backups', 'materials', safeName(course));
+        fs.mkdirSync(backup, { recursive: true });
+        fs.writeFileSync(path.join(backup, sha1(oldBytes).slice(0, 12) + '-' + path.basename(dest)), oldBytes);
+      }
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, got.body);
+      return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: !!oldBytes };
+    }
     if (!existed && opts.kind === 'assign' && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
       return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true, deleted: true };
     }
@@ -459,13 +477,43 @@ ipcMain.handle('lms-download', async (_e, items) => {
 const CAT_DIR = { materials: '수업자료', aux: '보조자료', assignment: '과제' };
 ipcMain.handle('open-studeck-folder', (_e, { kind, course } = {}) => {
   try {
-    let dir = STUDECK_DIR();
-    if (kind === 'subject') dir = path.join(dir, safeName(course));
-    else if (CAT_DIR[kind]) dir = path.join(dir, safeName(course), CAT_DIR[kind]);
+    let dir = loadConfig().materialsRoot || STUDECK_DIR();
+    if (kind === 'subject' || CAT_DIR[kind]) {
+      const t = materialTarget(course, kind === 'assignment' ? 'assign' : kind === 'aux' ? 'aux' : 'material');
+      dir = kind === 'subject' ? t.courseDir : t.dir;
+    }
     fs.mkdirSync(dir, { recursive: true });
     shell.openPath(dir);
     return { ok: true, dir };
   } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+
+ipcMain.handle('materials-settings', (_e, courses) => {
+  const c = loadConfig();
+  return {
+    root: c.materialsRoot || '', defaultRoot: STUDECK_DIR(),
+    subdirs: { material: '수업자료', assign: '과제', ...(c.materialsSubdirs || {}) },
+    courses: (courses || []).map((name) => { const t = materialTarget(name, 'material'); return { name, how: t.how, courseDir: t.courseDir }; }),
+  };
+});
+ipcMain.handle('materials-choose-dir', async (_e, title) => {
+  const r = await dialog.showOpenDialog(win, { title: title || '폴더 선택', properties: ['openDirectory', 'createDirectory'] });
+  return r.canceled ? '' : r.filePaths[0];
+});
+// 부분 저장: { root } 전체 위치('' = 기본) · { subdirs } · { course, folder } 과목별 위치(folder '' = 해제)
+ipcMain.handle('materials-save', (_e, patch = {}) => {
+  const c = loadConfig();
+  if ('root' in patch) { if (patch.root) c.materialsRoot = patch.root; else delete c.materialsRoot; }
+  if (patch.subdirs) {
+    const clean = (v, d) => String(v || '').replace(/[\\/:*?"<>|]/g, '').trim() || d;
+    c.materialsSubdirs = { material: clean(patch.subdirs.material, '수업자료'), assign: clean(patch.subdirs.assign, '과제') };
+  }
+  if (patch.course) {
+    c.materialsFolders = { ...(c.materialsFolders || {}) };
+    if (patch.folder) c.materialsFolders[patch.course] = patch.folder; else delete c.materialsFolders[patch.course];
+  }
+  saveConfig(c);
+  return { ok: true };
 });
 
 // 예전 '분류 먼저'(수업자료/과목) 구조를 '과목 먼저'(과목/수업자료)로 1회 이동
