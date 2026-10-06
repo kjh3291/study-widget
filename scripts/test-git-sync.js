@@ -11,7 +11,7 @@ const source = fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8');
 const start = source.indexOf('function git(args, cwd)');
 const end = source.indexOf("const SYNC_DATA_PATH", start);
 const { archiveGitChanges } = require('../material-history');
-const context = { preserveIncomingDeletions: require('../deleted-files').preserveIncomingDeletions, readShared: require('../sync-storage').readShared, autoResolve: require('../sync-conflicts').autoResolve, archiveGitChanges, fs, path, process, console, execFile: (bin, args, opts, cb) => {
+const context = { ...require('../local-materials'), preserveIncomingDeletions: require('../deleted-files').preserveIncomingDeletions, readShared: require('../sync-storage').readShared, autoResolve: require('../sync-conflicts').autoResolve, archiveGitChanges, fs, path, process, console, execFile: (bin, args, opts, cb) => {
   // Redirect only the remote URL to the isolated bare repository.
   const prefix = args[0] === '-c' ? args.slice(0, 2) : [];
   args = args.slice(prefix.length);
@@ -35,6 +35,29 @@ vm.runInContext(source.slice(start, end), context);
   assert.equal(fs.readFileSync(path.join(local, 'supplement.txt'), 'utf8'), 'from Windows');
   command(other, 'pull', '--no-rebase');
   assert.equal(fs.readFileSync(path.join(other, 'local.txt'), 'utf8'), 'from Mac');
+  // Migrate legacy tracked LMS caches without overwriting either device's copy.
+  const lecture = '테스트 과목/수업자료/lecture.pdf';
+  for (const dir of [local, other]) fs.mkdirSync(path.dirname(path.join(dir, lecture)), { recursive: true });
+  fs.writeFileSync(path.join(other, lecture), 'legacy server lecture');
+  command(other, 'add', '-f', '--', lecture); command(other, 'commit', '-m', 'legacy tracked lecture'); command(other, 'push');
+  fs.writeFileSync(path.join(local, lecture), 'Mac LMS copy');
+  assert.equal((await context.gitSync(local, 'owner/data', 'fake')).ok, true);
+  assert.equal(fs.readFileSync(path.join(local, lecture), 'utf8'), 'Mac LMS copy');
+  assert.equal(command(remote, 'ls-tree', '-r', '--name-only', 'main', '--', lecture).trim(), '');
+  fs.writeFileSync(path.join(other, lecture), 'Windows LMS copy');
+  assert.equal((await context.gitSync(other, 'owner/data', 'fake')).ok, true);
+  assert.equal(fs.readFileSync(path.join(other, lecture), 'utf8'), 'Windows LMS copy');
+  const bigLecture = path.join(local, '테스트 과목/수업자료/large.pdf');
+  const fd = fs.openSync(bigLecture, 'w'); fs.ftruncateSync(fd, 101 * 1024 * 1024); fs.closeSync(fd);
+  assert.equal((await context.gitSync(local, 'owner/data', 'fake')).ok, true);
+  assert.equal(command(local, 'ls-files', '--', bigLecture).trim(), '');
+  // Even a legacy client forcing materials back into Git cannot replace the cache.
+  fs.writeFileSync(path.join(other, lecture), 'legacy forced upload');
+  command(other, 'add', '-f', '--', lecture); command(other, 'commit', '-m', 'legacy force add'); command(other, 'push');
+  assert.equal((await context.gitSync(local, 'owner/data', 'fake')).ok, true);
+  assert.equal(fs.readFileSync(path.join(local, lecture), 'utf8'), 'Mac LMS copy');
+  assert.equal((await context.gitSync(other, 'owner/data', 'fake')).ok, true);
+  console.log('PASS: LMS material migration preserves both local copies, ignores large files and rejects legacy cache overwrites');
   // Same-name supplementary binary edits use content, not just the filename.
   const supplement = path.join('테스트 과목', '보조자료', '같은 이름.pdf');
   fs.mkdirSync(path.dirname(path.join(other, supplement)), { recursive: true });

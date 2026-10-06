@@ -4,6 +4,7 @@ const { createHash } = require('node:crypto');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const TRASH = '삭제한 파일';
+const { isLocalMaterial } = require('./local-materials');
 const git = async (dir, args) => (await promisify(execFile)('git', args, { cwd: dir, encoding: 'utf8', windowsHide: true, timeout: 30000, maxBuffer: 20 * 1024 * 1024 })).stdout;
 function userFile(relative) {
   return !['.git', '.studeck', '.gitignore', '.DS_Store', '.studeck-migrated', TRASH].includes(relative.split('/')[0]);
@@ -39,11 +40,11 @@ function preserveDeleted(dir, relative, bytes) {
   fs.closeSync(fd);
   return target;
 }
-async function preserveIncomingDeletions(dir) {
+async function preserveIncomingDeletions(dir, incomingRef = 'FETCH_HEAD') {
   let base;
-  try { base = (await git(dir, ['merge-base', 'HEAD', 'FETCH_HEAD'])).trim(); }
+  try { base = (await git(dir, ['merge-base', 'HEAD', incomingRef])).trim(); }
   catch (error) { if (error.code === 1) return; throw error; } // Independent repositories have no deletions relative to each other.
-  const deleted = (await git(dir, ['diff', '--no-renames', '--name-only', '--diff-filter=D', '-z', base, 'FETCH_HEAD'])).split('\0').filter(Boolean).filter(userFile);
+  const deleted = (await git(dir, ['diff', '--no-renames', '--name-only', '--diff-filter=D', '-z', base, incomingRef])).split('\0').filter(Boolean).filter(userFile).filter(relative => !isLocalMaterial(relative));
   for (const relative of deleted) {
     const source = safePath(dir, relative);
     if (!fs.existsSync(source)) continue;

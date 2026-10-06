@@ -1138,10 +1138,10 @@ function detectLmsSubmissions(prevById) {
 }
 
 // 새 수업 자료를 감지해 자동 다운로드(바탕화면\Studeck\수업자료\과목) + "새로 받은 자료"에 기록.
-// 공용 동기화: list의 파일들을 doneMap 기준으로 신규 다운로드 + 하루1회 변경확인.
+// 수업자료는 Git과 독립적으로 신규 다운로드·하루 1회 변경 확인. 수동 새로고침은 즉시 재확인.
 // 파일명 중복은 main에서 방지(existed), 변경분은 같은 위치 덮어쓰기(changed).
 async function syncDownloads(list, doneMap, kind, force) {
-  if (state.syncEnabled && !state.syncReady) return { gotNew: [], changed: [] };
+  if (kind === 'assign' && state.syncEnabled && !state.syncReady) return { gotNew: [], changed: [] };
   const DAY = 24 * 60 * 60 * 1000, now = Date.now();
   let cand = (list || []).filter((m) => m && m.url);
   if (!force) cand = cand.filter((m) => state.matCourses[m.courseId] !== false); // 제외 과목만 빼고 전부
@@ -1204,7 +1204,7 @@ async function doLmsRefresh(silent) {
   ((state.lms && state.lms.assignments) || []).forEach((a) => { prevAssignById[a.id] = a; });
   state.lms = res.lms;
   detectLmsSubmissions(prevAssignById);
-  await downloadNewMaterials();
+  await downloadNewMaterials(!silent);
 
   const notices = allNotices();
   if (!prevSeen.length && notices.length) {

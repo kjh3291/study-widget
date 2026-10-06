@@ -69,7 +69,7 @@ async function autoResolve(dir) {
       atomicJSON(target, { ...merged.data, _syncedAt: Date.now() }, path.join(dir, '.studeck/backups/writes'));
     } else if (file.name === '.gitignore') {
       const rules = [...new Set([2, 3].flatMap(s => file.stages[s]?.content.toString('utf8').split(/\r?\n/).filter(Boolean) || []))];
-      if (rules.some(r => !['.studeck-migrated', '.studeck/backups/', '.DS_Store', '/삭제한 파일/'].includes(r))) continue;
+      if (rules.some(r => !['.studeck-migrated', '.studeck/backups/', '.DS_Store', '/삭제한 파일/', '/*/수업자료/', '/*/수업자료/'.normalize('NFD')].includes(r))) continue;
       fs.writeFileSync(target, rules.join('\n') + '\n');
     } else continue;
     await run(dir, ['add', '--', file.name]);

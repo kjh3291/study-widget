@@ -45,8 +45,8 @@ vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('),
   assert.deepEqual(fs.readFileSync(material.path), body);
   fs.unlinkSync(material.path);
   const deletedMaterial = await context.downloadMaterial('material', 'Course', '', { mode: 'recheck', dest: material.path });
-  assert.equal(deletedMaterial.deleted, true);
-  assert.equal(fs.existsSync(material.path), false);
+  assert.equal(deletedMaterial.ok, true);
+  assert.equal(fs.existsSync(material.path), true);
   let checked = 0;
   const downloadContext = { state: { matCourses: {} }, Date, cleanCourse: s => s, window: { api: { lmsDownload: async items => { checked = items.length; return []; } } } };
   vm.createContext(downloadContext);
@@ -56,5 +56,7 @@ vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('),
   downloadContext.state.syncEnabled = true; downloadContext.state.syncReady = false; checked = 0;
   await downloadContext.syncDownloads([{ url: 'url2', courseName: 'Course' }], {}, 'assign', false);
   assert.equal(checked, 0);
+  await downloadContext.syncDownloads([{ url: 'material', courseName: 'Course' }], { material: { path: material.path, checkedAt: Date.now() } }, 'material', true);
+  assert.equal(checked, 1, 'LMS materials must download even when Git sync fails');
   console.log('PASS: IME Enter adds once; same-name resubmission replaces with backup; every refresh checks assignments');
 })().finally(() => fs.rmSync(root, { recursive: true, force: true })).catch(e => { console.error(e); process.exitCode = 1; });
