@@ -698,6 +698,23 @@
     <div class="row"><input type="checkbox" id="inp-autodl" checked /><label for="inp-autodl" style="cursor:pointer;">LMS 수업 자료 자동 다운로드</label></div>
     <div class="row" style="justify-content:space-between;"><span>바탕화면\Studeck 폴더</span><button class="btn" id="btn-open-studeck">폴더 열기</button></div>
     <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;border-top:1px solid var(--line);padding-top:11px;">
+      <span style="font-weight:700;font-size:12px;">자료 저장 위치 <span style="color:var(--muted);font-weight:600;">(이 PC에만 적용)</span></span>
+      <span style="font-size:11px;color:var(--muted);">전체 위치</span>
+      <span id="mat-root" style="font-size:11px;word-break:break-all;"></span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn mini" id="btn-mat-choose" style="flex:1;">전체 위치 선택</button>
+        <button class="btn mini" id="btn-mat-default" style="flex:1;">기본으로</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;font-size:11px;">
+        <span>하위 폴더</span>
+        <input type="text" id="inp-mat-sub" placeholder="수업자료" style="flex:1;min-width:0;" />
+        <input type="text" id="inp-asg-sub" placeholder="과제" style="flex:1;min-width:0;" />
+      </div>
+      <span style="font-size:11px;color:var(--muted);">과목별 위치 (지정하면 전체 위치보다 우선)</span>
+      <div id="mat-courses"></div>
+      <span class="hint" style="font-size:10.5px;">과목 폴더 안의 첫째 하위 폴더에 수업자료, 둘째에 내가 낸 과제가 저장됩니다. 전체 위치 안에 README.md 첫 줄이 과목명인 폴더가 있으면 그 폴더를 씁니다. 기본이 아닌 위치에서는 옮기거나 지운 파일을 다시 받지 않고, GitHub 동기화 대상에서도 빠집니다. 받고 싶지 않은 과목은 LMS 탭의 자료 수집 과목에서 끄세요.</span>
+    </div>
+    <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;border-top:1px solid var(--line);padding-top:11px;">
       <span style="font-weight:700;font-size:12px;">GitHub 동기화 <span style="color:var(--muted);font-weight:600;">(맥↔윈도우 자료 공유)</span></span>
       <input type="text" id="inp-git-repo" placeholder="예: kjh3291/studeck-data" autocomplete="off" />
       <input type="password" id="inp-git-token" placeholder="GitHub 토큰 붙여넣기" autocomplete="off" />

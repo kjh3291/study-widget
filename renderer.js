@@ -1150,7 +1150,7 @@ async function syncDownloads(list, doneMap, kind, force) {
     const rec = doneMap[m.url];
     const course = cleanCourse(m.courseName) || '기타';
     // 과제인데 기록 경로가 '과제' 폴더가 아니면(옛 버그로 수업자료에 저장됨) 신규로 재수집
-    const wrongFolder = rec && rec.path && kind === 'assign' && !/[\\/]과제[\\/]/.test(rec.path);
+    const wrongFolder = rec && rec.path && kind === 'assign' && !/[\\/](과제|assignments)[\\/]/.test(rec.path);
     if (!rec || wrongFolder) items.push({ url: m.url, course, title: m.title, kind, mode: 'new' });
     else if (kind === 'assign' || force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig });
   });
@@ -1789,7 +1789,7 @@ $('att-start').addEventListener('change', () => {
 });
 
 // ---------- 설정 ----------
-function openSettings() { $('inp-id').value = state.identifier || ''; $('settings-err').textContent = ''; $('settings').classList.remove('hidden'); refreshGitStatus(); }
+function openSettings() { $('inp-id').value = state.identifier || ''; $('settings-err').textContent = ''; $('settings').classList.remove('hidden'); refreshGitStatus(); refreshMaterialsSettings(); }
 $('btn-cancel').onclick = () => { $('settings-err').textContent = ''; $('settings').classList.add('hidden'); };
 $('btn-save').onclick = async () => {
   const raw = $('inp-id').value.trim();
@@ -1806,6 +1806,43 @@ $('inp-morning').onchange = () => { const h = parseInt(($('inp-morning').value |
 $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-deadline').checked; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-rollover').onchange = () => { state.rolloverOverdue = $('inp-rollover').checked; persist({ rolloverOverdue: state.rolloverOverdue }); if (state.rolloverOverdue) rolloverOverdue(); rerenderTodoAreas(); };
 $('inp-autodl').onchange = () => { state.autoDownload = $('inp-autodl').checked; persist({ autoDownload: state.autoDownload }); };
+// 자료 저장 위치 (이 기기 전용) — 전체 위치 하나, 또는 과목별 위치
+const MAT_HOW = { default: '기본', root: '전체 위치', readme: '전체 위치 · README로 찾음', course: '과목별 지정' };
+async function refreshMaterialsSettings() {
+  if (!$('mat-root')) return;
+  const courses = ((state.lms && state.lms.courses) || []).map((c) => cleanCourse(c.name)).filter(Boolean);
+  const s = await window.api.materialsSettings(courses);
+  $('mat-root').textContent = s.root || `기본 (${s.defaultRoot})`;
+  $('inp-mat-sub').value = s.subdirs.material;
+  $('inp-asg-sub').value = s.subdirs.assign;
+  $('mat-courses').innerHTML = s.courses.length ? s.courses.map((c, i) => `
+    <div style="display:flex;flex-direction:column;gap:3px;padding:6px 0;border-top:1px dashed var(--line);">
+      <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;">
+        <b style="font-size:11.5px;">${escapeHtml(c.name)}</b>
+        <span style="display:flex;gap:4px;">
+          <button class="btn mini" data-mat-pick="${i}">위치 선택</button>
+          ${c.how === 'course' ? `<button class="btn mini" data-mat-clear="${i}">해제</button>` : ''}
+        </span>
+      </div>
+      <span style="font-size:10.5px;color:var(--muted);word-break:break-all;">${escapeHtml(c.courseDir)} · ${MAT_HOW[c.how] || ''}</span>
+    </div>`).join('') : '<span class="hint">LMS를 한 번 새로고침하면 과목 목록이 나옵니다.</span>';
+  $('mat-courses').querySelectorAll('[data-mat-pick]').forEach((b) => (b.onclick = async () => {
+    const c = s.courses[+b.dataset.matPick];
+    const dir = await window.api.materialsChooseDir(`${c.name} 자료를 저장할 폴더`);
+    if (dir) { await window.api.materialsSave({ course: c.name, folder: dir }); refreshMaterialsSettings(); }
+  }));
+  $('mat-courses').querySelectorAll('[data-mat-clear]').forEach((b) => (b.onclick = async () => {
+    await window.api.materialsSave({ course: s.courses[+b.dataset.matClear].name, folder: '' }); refreshMaterialsSettings();
+  }));
+}
+if ($('btn-mat-choose')) $('btn-mat-choose').onclick = async () => {
+  const dir = await window.api.materialsChooseDir('모든 과목 자료를 둘 폴더 (안에 과목 폴더가 생깁니다)');
+  if (dir) { await window.api.materialsSave({ root: dir }); refreshMaterialsSettings(); }
+};
+if ($('btn-mat-default')) $('btn-mat-default').onclick = async () => { await window.api.materialsSave({ root: '' }); refreshMaterialsSettings(); };
+['inp-mat-sub', 'inp-asg-sub'].forEach((id) => { if ($(id)) $(id).onchange = async () => {
+  await window.api.materialsSave({ subdirs: { material: $('inp-mat-sub').value, assign: $('inp-asg-sub').value } }); refreshMaterialsSettings();
+}; });
 if ($('inp-focus-goal')) $('inp-focus-goal').onchange = () => {
   const h = parseFloat($('inp-focus-goal').value);
   state.focusGoalMin = (!isNaN(h) && h > 0) ? Math.round(h * 60) : 120;

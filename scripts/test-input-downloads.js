@@ -20,7 +20,8 @@ assert.equal(names.safeName('팀.pdf'.normalize('NFD')), '팀.pdf');
 let body = Buffer.from('first submission');
 const hash = b => crypto.createHash('sha1').update(b).digest('hex');
 const { preserveMaterial } = require('../material-history');
-const context = { wasDeletedFile: require('../deleted-files').wasDeletedFile, preserveMaterial, fs, path, STUDECK_DIR: () => root, safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
+const { resolveTarget } = require('../material-folders');
+const context = { materialTarget: (course, kind) => resolveTarget({}, course, kind, root, s => s), wasDeletedFile: require('../deleted-files').wasDeletedFile, preserveMaterial, fs, path, STUDECK_DIR: () => root, safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('), source.indexOf("ipcMain.handle('lms-download'")), context);
 (async () => {
@@ -58,5 +59,22 @@ vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('),
   assert.equal(checked, 0);
   await downloadContext.syncDownloads([{ url: 'material', courseName: 'Course' }], { material: { path: material.path, checkedAt: Date.now() } }, 'material', true);
   assert.equal(checked, 1, 'LMS materials must download even when Git sync fails');
-  console.log('PASS: IME Enter adds once; same-name resubmission replaces with backup; every refresh checks assignments');
+  // user-chosen folder: moved/deleted files are not recreated; replaced materials keep the old copy in the device backup
+  const userDir = path.join(root, 'study'), dataDir = path.join(root, 'userData');
+  context.app = { getPath: () => dataDir };
+  context.materialTarget = (course, kind) => resolveTarget({ materialsRoot: userDir, materialsSubdirs: { material: 'materials', assign: 'assignments' } }, course, kind, root, s => s);
+  body = Buffer.from('week1 slides');
+  const mine = await context.downloadMaterial('m1', 'Course', '', { kind: 'material', mode: 'new' });
+  assert.equal(mine.path, path.join(userDir, 'Course', 'materials', 'assignment.pdf'));
+  fs.renameSync(mine.path, path.join(userDir, 'Course', 'materials', 'renamed.pdf'));
+  const moved = await context.downloadMaterial('m1', 'Course', '', { kind: 'material', mode: 'recheck', dest: mine.path });
+  assert.equal(moved.missing, true);
+  assert.equal(fs.existsSync(mine.path), false, 'a file the user moved must not come back');
+  const again = await context.downloadMaterial('m2', 'Course', '', { kind: 'material', mode: 'new' });
+  const oldSlides = Buffer.from(body); body = Buffer.from('week1 slides v2');
+  const replaced = await context.downloadMaterial('m2', 'Course', '', { kind: 'material', mode: 'recheck', dest: again.path });
+  assert.equal(replaced.changed, true);
+  assert.equal(fs.readFileSync(path.join(dataDir, 'backups', 'materials', 'Course', hash(oldSlides).slice(0, 12) + '-assignment.pdf'), 'utf8'), 'week1 slides');
+  assert.equal(fs.existsSync(path.join(userDir, 'Course', 'materials', '이전 자료')), false, 'no sync history folders inside the user folder');
+  console.log('PASS: IME Enter adds once; same-name resubmission replaces with backup; every refresh checks assignments; user folders keep moves and back up replaced files');
 })().finally(() => fs.rmSync(root, { recursive: true, force: true })).catch(e => { console.error(e); process.exitCode = 1; });

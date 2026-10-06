@@ -27,4 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   onRequestQuit: cb => ipcRenderer.on('request-quit', () => cb()),
   gitSyncStatus: () => ipcRenderer.invoke('git-sync-status'),
   gitDisconnect: () => ipcRenderer.invoke('git-disconnect'),
+  materialsSettings: (courses) => ipcRenderer.invoke('materials-settings', courses),
+  materialsChooseDir: (title) => ipcRenderer.invoke('materials-choose-dir', title),
+  materialsSave: (patch) => ipcRenderer.invoke('materials-save', patch),
 });
