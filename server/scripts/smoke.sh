@@ -31,5 +31,5 @@ echo "$r" | grep -q '"deleted":true' && pass "삭제 전파" || fail "삭제" "$
 r=$(j "${A[@]}" -X POST "$BASE/sync" -d '{"since":0,"changes":[{"kind":"hack","id":"x","updatedAt":1}]}')
 echo "$r" | grep -q bad_change && pass "알 수 없는 종류 거부" || fail "종류 검사" "$r"
 r=$(j -H "authorization: Bearer wrong" "$BASE/sync"); echo "$r" | grep -q unauthorized && pass "잘못된 토큰 거부" || fail "토큰" "$r"
-r=$(j "${A[@]}" -X POST "$BASE/auth/logout"); r=$(j "${A[@]}" "$BASE/me"); echo "$r" | grep -q unauthorized && pass "로그아웃 후 토큰 폐기" || fail "로그아웃" "$r"
+r=$(j "${A[@]}" -X POST "$BASE/auth/logout" -d '{}'); r=$(j "${A[@]}" "$BASE/me"); echo "$r" | grep -q unauthorized && pass "로그아웃 후 토큰 폐기" || fail "로그아웃" "$r"
 echo "ALL PASS ($U)"
