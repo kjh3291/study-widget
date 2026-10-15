@@ -7,14 +7,14 @@ const $ = (id) => document.getElementById(id);
 const IS_LAB = new URLSearchParams(location.search).get('channel') === 'lab';
 const SYNC_NAME = IS_LAB ? '서버' : 'GitHub';
 $(IS_LAB ? 'git-box' : 'server-box')?.remove();
+if (!IS_LAB) $('auth-gate')?.remove();
 if (IS_LAB) { $('server-box').hidden = false; $('studeck-folder-label').textContent = '바탕화면\\Studeck-Lab 폴더'; }
 
 // ---------- 상태 ----------
 const state = {
-  identifier: '',
-  timetableSource: 'everytime',
+  timetableSource: 'syllabus',
   subjects: [],           // 사용자가 직접 추가한 과목
-  timetableSubjects: [],  // 에브리타임 자동 연동 과목명
+  timetableSubjects: [],  // 시간표 과목명
   todos: [],              // { id, text, subject|null, due, dueTime?, done, doneAt, createdAt }
   events: [],             // { id, title, start, end, remindDaysBefore }
   lms: null,
@@ -33,7 +33,7 @@ const state = {
   evtDraft: { endDate: null, remind: 3 },  // 일정 추가: 종료일(명시), 미리알림(일)
   pickEndMode: false,
   timer: null,  // { taskText, mode:'focus'|'break', remaining, running, intervalId }
-  timetableFull: [],  // 에타 시간표 subjects(name+times) 캐시 (출석용)
+  timetableFull: [],  // 시간표 subjects(name+times) — 강의계획서·직접 입력(출석에도 사용)
   attendance: { semesterStart: '', overrides: {} },  // 주차별 출석
   readIds: [],  // 읽은 공지/과제 id
   starredLms: [],  // 별표한 LMS 과제 id
@@ -309,11 +309,9 @@ function persist(patch, conflictBases) {
   return saving;
 }
 function applySharedState(remote) {
-  const oldIdentifier = state.identifier;
   const patch = sharedSnapshot(remote);
   Object.assign(state, patch);
   applyTheme(); applyClockFormat();
-  $('inp-id').value = state.identifier || '';
   $('inp-focus-goal').value = state.focusGoalMin / 60;
   $('inp-morning').value = String(state.notifyPrefs.morningHour).padStart(2, '0') + ':00';
   $('inp-deadline').checked = state.notifyPrefs.deadlineAlerts !== false;
@@ -326,7 +324,6 @@ function applySharedState(remote) {
   window.api.setAlwaysOnTop(state.alwaysOnTop);
   if (state.timetableFull.length) renderTimetable(state.timetableFull);
   else showTimetableState('empty');
-  if (state.timetableSource !== 'syllabus' && state.identifier && state.identifier !== oldIdentifier) loadTimetable(state.identifier);
   renderSummary(); rerenderTodoAreas(); updateLmsBadge();
   if (currentTab === 'schedule') renderCalendar();
   if (currentTab === 'stats') renderStats();
@@ -588,16 +585,6 @@ function renderTimetable(subjects) {
   showTimetableState('grid');
 }
 
-async function loadTimetable(identifier) {
-  if (state.timetableSource === 'syllabus') { renderTimetable(state.timetableFull); return; }
-  const previous = state.timetableFull;
-  if (!identifier) { showTimetableState('empty'); return; }
-  setStatus('시간표를 불러오는 중…');
-  const res = await window.api.fetchTimetable(identifier);
-  if (state.timetableSource === 'syllabus' || state.timetableFull !== previous || state.identifier !== identifier) return;
-  if (res.ok) renderTimetable(res.subjects);
-  else setStatus('⚠️ ' + res.error);
-}
 
 // =====================================================================
 // 할 일
@@ -1513,9 +1500,7 @@ function reRenderDynamic() {
 // 이벤트 바인딩
 // =====================================================================
 document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => switchTab(b.dataset.tab)));
-$('btn-refresh').onclick = () => loadTimetable(state.identifier);
 $('btn-settings').onclick = openSettings;
-$('btn-setup').onclick = openSettings;
 $('btn-min').onclick = () => window.api.minimize();
 $('btn-mini').onclick = toggleMini;
 $('btn-close').onclick = requestQuit;
@@ -1794,16 +1779,8 @@ $('att-start').addEventListener('change', () => {
 });
 
 // ---------- 설정 ----------
-function openSettings() { $('inp-id').value = state.identifier || ''; $('settings-err').textContent = ''; $('settings').classList.remove('hidden'); refreshGitStatus(); }
+function openSettings() { $('settings-err').textContent = ''; $('settings').classList.remove('hidden'); refreshGitStatus(); }
 $('btn-cancel').onclick = () => { $('settings-err').textContent = ''; $('settings').classList.add('hidden'); };
-$('btn-save').onclick = async () => {
-  const raw = $('inp-id').value.trim();
-  if (!raw) { $('settings-err').textContent = '공유 링크 또는 식별자를 입력하세요.'; return; }
-  $('settings-err').textContent = '';
-  const res = await window.api.fetchTimetable(raw);
-  if (res.ok) { state.identifier = raw; state.timetableSource = 'everytime'; state.timetableFull = res.subjects; persist({ identifier: raw, timetableSource: 'everytime', timetableFull: res.subjects }); renderTimetable(res.subjects); $('settings').classList.add('hidden'); switchTab('timetable'); }
-  else $('settings-err').textContent = res.error;
-};
 $('inp-opacity').oninput = () => { state.opacity = Number($('inp-opacity').value); window.api.setOpacity(state.opacity / 100); persist({ opacity: state.opacity }); };
 $('inp-top').onchange = () => { state.alwaysOnTop = $('inp-top').checked; window.api.setAlwaysOnTop(state.alwaysOnTop); persist({ alwaysOnTop: state.alwaysOnTop }); };
 $('inp-lms-auto').onchange = () => { state.lmsAuto = $('inp-lms-auto').checked; persist({ lmsAuto: state.lmsAuto }); };
@@ -1823,10 +1800,10 @@ async function refreshGitStatus() {
   try {
     const s = await window.api.gitSyncStatus();
     if (IS_LAB) {
-      $('server-out').hidden = !!s?.enabled;
-      $('server-in').hidden = !s?.enabled;
-      $('srv-who').textContent = s?.enabled ? `로그인: ${s.displayName || s.username} (${s.username})` : '';
-      if (!s?.enabled && s?.username && !$('inp-srv-user').value) $('inp-srv-user').value = s.username;
+      $('srv-who').textContent = s?.enabled ? `로그인: ${s.displayName || s.username} (${s.username})${s.role === 'admin' ? ' · 운영진' : ''}` : '';
+      state.serverRole = s?.role || 'member';
+      $('admin-box').hidden = !(s?.enabled && s.role === 'admin');
+      if (!$('admin-box').hidden) refreshAdminList();
     }
     if (s && s.repo && $('inp-git-repo') && !$('inp-git-repo').value) $('inp-git-repo').value = s.repo;
     state.syncEnabled = !!s?.enabled;
@@ -1848,41 +1825,95 @@ if ($('btn-git-sync')) $('btn-git-sync').onclick = async () => {
   const r = await initSync();
   if (!r?.ok) $('git-sync-msg').textContent = r?.error || '동기화 실패';
 };
-// 실험실 서버 계정: 로그인하면 기기 접속 키만 저장되고 곧바로 동기화한다.
+// 실험실: 시작 화면(로그인·가입 신청) + 설정의 서버 계정·운영진 승인. 비밀번호는 저장하지 않는다.
+const STUDENT_ID_RE = /^\d{8,10}$/;
+function showGate(on, message = '', tone = '') {
+  if (!IS_LAB) return;
+  $('auth-gate').hidden = !on;
+  gateMsg(message, tone);
+  if (on) setTimeout(() => ($('gate-login').hidden ? $('gate-s-id') : ($('gate-l-id').value ? $('gate-l-pw') : $('gate-l-id'))).focus(), 50);
+}
+function gateMsg(text, tone = '') { const m = $('gate-msg'); if (!m) return; m.textContent = text; m.className = tone; }
+function gateTab(which) {
+  $('gate-login').hidden = which !== 'login'; $('gate-signup').hidden = which !== 'signup';
+  $('gate-tab-login').classList.toggle('on', which === 'login'); $('gate-tab-signup').classList.toggle('on', which === 'signup');
+  gateMsg('');
+}
+// 로그인 만료·정지 등으로 서버가 거부하면 로그아웃 처리하고 시작 화면으로 돌아간다.
+async function handleAuthLost(error) {
+  if (!IS_LAB || !/로그인이 만료|승인 대기|권한이 없습니다/.test(error || '')) return false;
+  await window.api.serverLogout();
+  state.syncEnabled = false;
+  showGate(true, error, 'err');
+  return true;
+}
+let _adminSeen = -1;
+async function refreshAdminList(notify = false) {
+  if (!IS_LAB || state.serverRole !== 'admin') return;
+  const r = await window.api.adminUsers();
+  if (!r?.ok) { $('admin-list').textContent = r?.error || '불러오기 실패'; return; }
+  const pending = r.users.filter(u => u.status === 'pending');
+  $('admin-count').textContent = pending.length ? String(pending.length) : '';
+  $('admin-list').innerHTML = pending.length ? pending.map(u => `<div class="admin-row"><div class="who"><b>${escapeHtml(u.displayName)}</b> ${escapeHtml(u.username)}<small>신청 ${new Date(u.createdAt).toLocaleString()}</small></div>
+      <button class="btn mini primary" data-admin="approve" data-id="${u.id}">승인</button><button class="btn mini" data-admin="reject" data-id="${u.id}">거절</button></div>`).join('')
+    : '<span style="font-size:11px;color:var(--muted)">대기 중인 가입 신청이 없습니다.</span>';
+  if (notify && pending.length > Math.max(_adminSeen, 0)) {
+    window.api.notify('Studeck 가입 신청', `승인 대기 ${pending.length}건 — 설정 > 서버 동기화에서 확인하세요.`);
+    showToast(`가입 신청 ${pending.length}건이 승인을 기다려요`);
+  }
+  _adminSeen = pending.length;
+}
 if (IS_LAB) {
   const msg = t => { $('git-sync-msg').textContent = t; };
-  const creds = () => [$('inp-srv-user').value.trim().toLowerCase(), $('inp-srv-pw').value];
-  async function serverLogin() {
-    const [user, pw] = creds();
-    if (!user || !pw) return msg('아이디와 비밀번호를 입력하세요.');
-    msg('로그인 중…');
-    let r = await window.api.serverLogin(user, pw);
-    $('inp-srv-pw').value = '';
-    if (!r?.ok) return msg(r?.error || '로그인 실패');
-    state.syncEnabled = true;
-    await refreshGitStatus();
-    msg('동기화 중…');
-    r = await initSync();
-    if (!r?.ok) msg(r?.error || '동기화 실패');
-  }
-  $('btn-srv-login').onclick = serverLogin;
-  $('inp-srv-pw').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) serverLogin(); });
-  $('btn-srv-signup').onclick = async () => {
-    const [user, pw] = creds();
-    if (!user || !pw) return msg('가입할 아이디와 비밀번호를 입력하세요.');
-    msg('가입 중…');
-    const r = await window.api.serverSignup(user, pw, $('inp-srv-name').value.trim());
-    if (!r?.ok) return msg(r?.error || '가입 실패');
-    if (r.status !== 'approved') { $('inp-srv-pw').value = ''; return msg('가입 완료 · 운영진 승인 후 로그인할 수 있습니다.'); }
-    await serverLogin();
+  $('gate-tab-login').onclick = () => gateTab('login');
+  $('gate-tab-signup').onclick = () => gateTab('signup');
+  $('gate-close').onclick = () => $('btn-close').click();
+  $('gate-min').onclick = () => window.api.minimize();
+  $('gate-login').onsubmit = async e => {
+    e.preventDefault();
+    const id = $('gate-l-id').value.trim(), pw = $('gate-l-pw').value;
+    if (!id || !pw) return gateMsg('학번과 비밀번호를 입력하세요.', 'err');
+    $('gate-l-btn').disabled = true; gateMsg('로그인 중…');
+    try {
+      const r = await window.api.serverLogin(id, pw);
+      $('gate-l-pw').value = '';
+      if (!r?.ok) return gateMsg(r?.error || '로그인 실패', 'err');
+      state.syncEnabled = true;
+      showGate(false);
+      await refreshGitStatus();
+      const s = await initSync();
+      if (!s?.ok && !(await handleAuthLost(s?.error))) showToast(s?.error || '동기화 실패');
+      refreshAdminList(true);
+    } finally { $('gate-l-btn').disabled = false; }
   };
-  $('btn-srv-sync').onclick = async () => { msg('동기화 중…'); const r = await initSync(); if (!r?.ok) msg(r?.error || '동기화 실패'); };
+  $('gate-signup').onsubmit = async e => {
+    e.preventDefault();
+    const id = $('gate-s-id').value.trim(), name = $('gate-s-name').value.trim(), pw = $('gate-s-pw').value, pw2 = $('gate-s-pw2').value;
+    if (!STUDENT_ID_RE.test(id)) return gateMsg('학번을 숫자로 정확히 입력하세요.', 'err');
+    if (name.length < 2) return gateMsg('이름을 입력하세요.', 'err');
+    if (pw.length < 8) return gateMsg('비밀번호는 8자 이상이어야 합니다.', 'err');
+    if (pw !== pw2) return gateMsg('비밀번호 확인이 일치하지 않습니다.', 'err');
+    $('gate-s-btn').disabled = true; gateMsg('신청 중…');
+    try {
+      const r = await window.api.serverSignup(id, pw, name);
+      if (!r?.ok) return gateMsg(r?.error || '가입 신청 실패', 'err');
+      $('gate-s-pw').value = ''; $('gate-s-pw2').value = '';
+      gateTab('login'); $('gate-l-id').value = id;
+      gateMsg(r.status === 'approved' ? '가입 완료! 로그인하세요.' : '가입 신청 완료! 운영진 승인 후 로그인할 수 있습니다.', 'ok');
+    } finally { $('gate-s-btn').disabled = false; }
+  };
+  $('btn-srv-sync').onclick = async () => {
+    msg('동기화 중…');
+    const r = await initSync();
+    if (!r?.ok && !(await handleAuthLost(r?.error))) msg(r?.error || '동기화 실패');
+  };
   $('btn-srv-logout').onclick = async () => {
+    if (!confirm('로그아웃하면 시작 화면으로 돌아갑니다. 이 기기의 데이터는 남아 있고, 다시 로그인하면 이어서 동기화합니다.')) return;
     const r = await window.api.serverLogout();
     if (!r?.ok) return msg(r?.error || '로그아웃 실패');
-    state.syncEnabled = false;
-    await refreshGitStatus();
-    msg('로그아웃했습니다. 이 기기의 데이터는 그대로 남아 있습니다.');
+    state.syncEnabled = false; state.serverRole = 'member';
+    $('settings').classList.add('hidden');
+    showGate(true, '로그아웃했습니다.');
   };
   $('btn-srv-import').onclick = async () => {
     if (!confirm('운영 앱(Studeck)의 할 일·일정·시간표·설정을 이 실험실 앱으로 복사합니다.\n운영 앱의 데이터는 바뀌지 않습니다. 계속할까요?')) return;
@@ -1891,6 +1922,19 @@ if (IS_LAB) {
     alert(`가져왔습니다: 할 일 ${r.todos}개, 일정 ${r.events}개, 시간표 ${r.courses}과목.\n화면을 새로 고친 뒤 서버로 올립니다.`);
     location.reload();
   };
+  $('btn-admin-refresh').onclick = () => refreshAdminList();
+  $('admin-list').onclick = async e => {
+    const b = e.target.closest('[data-admin]'); if (!b) return;
+    const row = b.closest('.admin-row'), who = row.querySelector('.who b').textContent;
+    if (b.dataset.admin === 'reject' && !confirm(`${who}님의 가입 신청을 거절할까요? (신청이 삭제되고, 다시 신청할 수 있습니다)`)) return;
+    b.disabled = true;
+    const r = await window.api.adminAction(b.dataset.id, b.dataset.admin);
+    if (!r?.ok) { b.disabled = false; return showToast(r?.error || '처리 실패'); }
+    showToast(b.dataset.admin === 'approve' ? `${who}님을 승인했습니다` : `${who}님의 신청을 거절했습니다`);
+    refreshAdminList();
+  };
+  // 운영진: 5분마다 새 가입 신청 확인
+  setInterval(() => { if (state.syncEnabled && !_quitting) refreshAdminList(true); }, 5 * 60 * 1000);
 }
 // 파일 변경 후 자동 동기화(디바운스) — 연결돼 있을 때만
 let _gitSyncT = null;
@@ -1942,7 +1986,7 @@ function previewSyllabus(result) {
     <label>교수 (선택) <input id="sy-prof" type="text" style="width:100%" /></label>
     <div id="sy-times"></div><button id="sy-add" class="btn mini">수업 시간 추가</button>
     <label>반영 방법 <select id="sy-target" style="width:100%"><option value="">새 과목으로 추가</option></select></label>
-    <div style="color:var(--muted);line-height:1.6">선택한 과목만 추가·교체합니다. 반영 후에는 에브리타임 자동 새로고침을 멈추고 이 시간표를 기기 간 공유합니다. 에브리타임으로 돌아가려면 설정에서 공유 링크를 다시 불러오세요.</div>
+    <div style="color:var(--muted);line-height:1.6">선택한 과목만 추가·교체합니다. 반영한 시간표는 기기 간 공유됩니다.</div>
     <div id="sy-error" style="color:#ff7b7b" role="alert"></div>
     <div style="display:flex;gap:8px"><button id="sy-cancel" class="btn" style="flex:1">취소</button><button id="sy-apply" class="btn primary" style="flex:1">확인 후 시간표 반영</button></div>`;
   $('app').appendChild(ov);
@@ -1977,7 +2021,7 @@ function previewSyllabus(result) {
       state.timetableSource = 'syllabus'; state.timetableFull = subjects;
       persist({ timetableSource: 'syllabus', timetableFull: subjects });
       renderTimetable(subjects); close();
-      $('syllabus-msg').textContent = '강의계획서 시간표를 반영했습니다. 에브리타임 자동 새로고침은 꺼져 있습니다.';
+      $('syllabus-msg').textContent = '강의계획서 시간표를 반영했습니다.';
     } catch (error) { q('sy-error').textContent = error.message; }
   };
   q('sy-name').focus();
@@ -2030,6 +2074,8 @@ if (IS_LAB) {
 (async () => {
   const cfg = await window.api.loadConfig();
   state.syncEnabled = !!cfg.sync?.enabled;
+  state.serverRole = cfg.sync?.role || 'member';
+  if (IS_LAB && !state.syncEnabled) showGate(true); // 실험실: 로그인 전에는 시작 화면만
   state.opacity = typeof cfg.opacity === 'number' ? cfg.opacity : 100;
   state.alwaysOnTop = cfg.alwaysOnTop !== false;
   if (cfg.opacity) { $('inp-opacity').value = cfg.opacity; window.api.setOpacity(cfg.opacity / 100); }
@@ -2075,18 +2121,24 @@ if (IS_LAB) {
   setInterval(updateClock, 1000);  // 헤더 시계(초 단위)
   updateLmsBadge();
 
-  state.timetableSource = cfg.timetableSource === 'syllabus' ? 'syllabus' : 'everytime';
-  state.identifier = cfg.identifier || '';
   if (Array.isArray(cfg.timetableFull) && cfg.timetableFull.length) renderTimetable(cfg.timetableFull);
-  if (state.timetableSource !== 'syllabus' && cfg.identifier) loadTimetable(cfg.identifier);
-  else if (!state.timetableFull.length) showTimetableState('empty');
+  else showTimetableState('empty');
 
   if (state.lms && state.lms.courses && state.lms.courses.length) {
     window.api.lmsStatus().then((s) => { if (s && s.valid) doLmsRefresh(true); });
   }
   // 시작 시 GitHub에서 최신 자료·개인데이터 받아오기(+로컬 변경 올리기)
-  await initSync();
-  setInterval(() => { if (state.syncEnabled && !_quitting) initSync(); }, 60000);
+  const firstSync = await initSync();
+  if (IS_LAB && state.syncEnabled && !(firstSync?.ok === false && await handleAuthLost(firstSync.error))) {
+    const me = await window.api.serverRefreshMe();
+    if (me?.ok) state.serverRole = me.role;
+    refreshAdminList(true);
+  }
+  setInterval(async () => {
+    if (!state.syncEnabled || _quitting) return;
+    const r = await initSync();
+    if (r?.ok === false) handleAuthLost(r.error);
+  }, 60000);
 
   // 과제 제출 창을 닫으면 자동 새로고침 → 제출한 과제가 '완료'로 전환
   window.api.onSubmissionClosed(() => {

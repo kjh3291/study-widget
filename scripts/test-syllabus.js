@@ -25,24 +25,11 @@ assert.equal(JSON.stringify(existing), baseline);
 assert.throws(() => mergeSyllabus(existing, replacement, '8'));
 assert.equal(sharedSnapshot({ timetableSource: 'syllabus' }).timetableSource, 'syllabus');
 (async () => {
-  // An in-flight Everytime request cannot overwrite a just-applied syllabus.
-  const renderer = fs.readFileSync(require.resolve('../renderer'), 'utf8').replace(/\r\n/g, '\n');
-  let resolve, rendered = 0, fetched = 0;
-  const context = { state: { identifier: 'id', timetableSource: 'everytime', timetableFull: existing },
-    window: { api: { fetchTimetable: () => { fetched++; return new Promise(r => { resolve = r; }); } } },
-    setStatus() {}, showTimetableState() {}, renderTimetable() { rendered++; } };
-  vm.createContext(context);
-  vm.runInContext(renderer.slice(renderer.indexOf('async function loadTimetable('), renderer.indexOf('// =====================================================================\n// 할 일')), context);
-  const pending = context.loadTimetable('id');
-  context.state.timetableSource = 'syllabus';
-  resolve({ ok: true, subjects: [] }); await pending;
-  assert.equal(rendered, 0);
-  await context.loadTimetable('id'); assert.equal(fetched, 1); assert.equal(rendered, 1);
   if (process.argv[2]) {
     const { readSyllabus } = require('../syllabus-pdf');
     const preview = await readSyllabus(process.argv[2]);
     assert.equal(syllabusSubject(preview.draft).times.length, 1);
     console.log('PASS: real PDF extracted and validated');
   }
-  console.log('PASS: syllabus extraction, ambiguous/missing fields, edits, merge, sync source and refresh race');
+  console.log('PASS: syllabus extraction, ambiguous/missing fields, edits, merge, sync source');
 })().catch(e => { console.error(e); process.exitCode = 1; });

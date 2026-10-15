@@ -4,7 +4,6 @@ contextBridge.exposeInMainWorld('api', {
   loadConfig: () => ipcRenderer.invoke('load-config'),
   saveConfig: (data, conflictBases) => ipcRenderer.invoke('save-config', data, conflictBases),
   importSyllabus: () => ipcRenderer.invoke('import-syllabus'),
-  fetchTimetable: (identifier) => ipcRenderer.invoke('fetch-timetable', identifier),
   setOpacity: (v) => ipcRenderer.send('set-opacity', v),
   setAlwaysOnTop: (f) => ipcRenderer.send('set-always-on-top', f),
   close: () => ipcRenderer.send('close-app'),
@@ -31,4 +30,7 @@ contextBridge.exposeInMainWorld('api', {
   serverLogin: (username, password) => ipcRenderer.invoke('server-login', { username, password }),
   serverLogout: () => ipcRenderer.invoke('server-logout'),
   importProdData: () => ipcRenderer.invoke('import-prod-data'),
+  serverRefreshMe: () => ipcRenderer.invoke('server-refresh-me'),
+  adminUsers: () => ipcRenderer.invoke('admin-users'),
+  adminAction: (id, action) => ipcRenderer.invoke('admin-action', { id, action }),
 });

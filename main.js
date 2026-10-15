@@ -1,6 +1,5 @@
 const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session, dialog } = require('electron');
 const { CHANNEL, IS_LAB, PROFILE } = require('./channel'); // userData 분리를 위해 가장 먼저
-const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -26,102 +25,6 @@ function loadConfig() {
   return value;
 }
 function saveConfig(cfg) { atomicJSON(CONFIG_PATH, cfg); }
-
-// ---------- 에브리타임 공유 링크 → 식별자 추출 ----------
-function extractIdentifier(input) {
-  if (!input) return '';
-  const s = String(input).trim();
-  // everytime.kr/@Abc123  또는  @Abc123  또는  Abc123
-  const m = s.match(/@([A-Za-z0-9]+)/);
-  if (m) return m[1];
-  // URL 마지막 경로 조각
-  const parts = s.replace(/[?#].*$/, '').split('/').filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : s;
-}
-
-// ---------- 아주 작은 XML 파서 (에브리타임 응답 전용) ----------
-function decodeEntities(str) {
-  return String(str)
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
-}
-
-function attr(tag, name) {
-  const m = tag.match(new RegExp(name + '="([^"]*)"'));
-  return m ? decodeEntities(m[1]) : '';
-}
-
-function parseTimetable(xml) {
-  const subjects = [];
-  const subjectBlocks = xml.match(/<subject[\s\S]*?<\/subject>/g) || [];
-  for (const block of subjectBlocks) {
-    const nameTag = block.match(/<name[^>]*>/);
-    const profTag = block.match(/<professor[^>]*>/);
-    const name = nameTag ? attr(nameTag[0], 'value') : '';
-    const professor = profTag ? attr(profTag[0], 'value') : '';
-
-    const dataTags = block.match(/<data[^>]*\/?>/g) || [];
-    const times = [];
-    for (const d of dataTags) {
-      const day = parseInt(attr(d, 'day'), 10);
-      const start = parseInt(attr(d, 'starttime'), 10);
-      const end = parseInt(attr(d, 'endtime'), 10);
-      const place = attr(d, 'place');
-      if (Number.isNaN(day) || Number.isNaN(start) || Number.isNaN(end)) continue;
-      times.push({ day, start, end, place });
-    }
-    if (name || times.length) subjects.push({ name, professor, times });
-  }
-  return subjects;
-}
-
-// ---------- 에브리타임 API 호출 ----------
-function fetchTimetable(identifier) {
-  return new Promise((resolve, reject) => {
-    const id = extractIdentifier(identifier);
-    if (!id) return reject(new Error('식별자가 비어 있습니다.'));
-
-    const body = `identifier=${encodeURIComponent(id)}&friendInfo=true`;
-    const options = {
-      hostname: 'api.everytime.kr',
-      path: '/find/timetable/table/friend',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(body),
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) EverytimeWidget/1.0',
-        'Accept': '*/*',
-      },
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.setEncoding('utf8');
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        if (res.statusCode !== 200) {
-          return reject(new Error(`서버 응답 오류 (HTTP ${res.statusCode}). 공유 링크가 맞는지, 시간표가 '공개'로 공유됐는지 확인해 주세요.`));
-        }
-        if (/<error/i.test(data)) {
-          return reject(new Error('에브리타임에서 오류를 반환했습니다. 공유 링크(식별자)가 유효하지 않거나 비공개일 수 있어요.'));
-        }
-        const subjects = parseTimetable(data);
-        if (!subjects.length) {
-          return reject(new Error('시간표에서 과목을 찾지 못했습니다. 공유 링크가 맞는지 확인해 주세요.'));
-        }
-        resolve(subjects);
-      });
-    });
-    req.on('error', (e) => reject(new Error('네트워크 오류: ' + e.message)));
-    req.write(body);
-    req.end();
-  });
-}
 
 // ---------- 창 생성 ----------
 function createWindow() {
@@ -193,15 +96,6 @@ ipcMain.handle('import-syllabus', async () => {
     return { ok: true, ...await require('./syllabus-pdf').readSyllabus(choice.filePaths[0]) };
   } catch { return { ok: false, error: 'PDF를 읽지 못했습니다. 암호가 없고 20MB 이하인 PDF로 다시 시도해 주세요.' }; }
   finally { if (wasOnTop && parent && !parent.isDestroyed()) parent.setAlwaysOnTop(true, 'screen-saver'); }
-});
-
-ipcMain.handle('fetch-timetable', async (_e, identifier) => {
-  try {
-    const subjects = await fetchTimetable(identifier);
-    return { ok: true, subjects };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
 });
 
 ipcMain.on('set-opacity', (_e, value) => {
@@ -609,7 +503,7 @@ const syncService = createSyncService(IS_LAB ? {
   notify: notifySync,
 });
 // ---------- 실험실 서버 계정(가입·로그인·로그아웃). 비밀번호는 저장하지 않고 기기 토큰만 둔다. ----------
-const SERVER_ERRORS = { bad_username: '아이디는 영문 소문자·숫자·_ 3~24자입니다.', weak_password: '비밀번호는 8자 이상이어야 합니다.',
+const SERVER_ERRORS = { bad_username: '아이디는 학번(숫자 8~10자리)입니다.', bad_name: '이름을 2~20자로 입력해 주세요.', weak_password: '비밀번호는 8자 이상이어야 합니다.',
   username_taken: '이미 있는 아이디입니다.', bad_credentials: '아이디 또는 비밀번호가 틀렸습니다.', not_approved: '운영진 승인 대기 중입니다.' };
 const serverError = (r, fallback) => SERVER_ERRORS[r.json.error] || r.json.message || fallback + ' (' + r.status + ')';
 async function serverTry(fn) {
@@ -628,8 +522,35 @@ ipcMain.handle('server-login', (_e, { username, password } = {}) => serverTry(as
   const r = await serverCall(PROFILE.serverUrl, 'POST', '/auth/login', { username, password, deviceName: require('os').hostname() + ' (' + process.platform + ')' });
   if (r.status !== 200) return { ok: false, error: serverError(r, '로그인 실패') };
   const c = loadConfig();
-  c.sync = { enabled: true, mode: 'server', url: PROFILE.serverUrl, username: r.json.user.username, displayName: r.json.user.displayName, token: r.json.token };
+  c.sync = { enabled: true, mode: 'server', url: PROFILE.serverUrl, username: r.json.user.username, displayName: r.json.user.displayName, role: r.json.user.role, token: r.json.token };
   saveConfig(c);
+  return { ok: true, user: r.json.user };
+}));
+// 서버에서 내 역할(운영진 여부)을 다시 받아 저장한다(역할이 바뀌었거나 예전 로그인일 때).
+ipcMain.handle('server-refresh-me', () => serverTry(async () => {
+  const c = loadConfig(), s = c.sync || {};
+  if (!IS_LAB || !s.token) return { ok: false };
+  const res = await fetch(s.url + '/me', { headers: { authorization: 'Bearer ' + s.token }, signal: AbortSignal.timeout(15000) });
+  if (!res.ok) return { ok: false, status: res.status };
+  const { user } = await res.json();
+  if (user.role !== s.role || user.displayName !== s.displayName) { c.sync = { ...s, role: user.role, displayName: user.displayName }; saveConfig(c); }
+  return { ok: true, role: user.role };
+}));
+// 운영진: 가입 신청 목록·승인·거절(로그인한 기기 토큰으로 호출)
+ipcMain.handle('admin-users', () => serverTry(async () => {
+  const s = loadConfig().sync || {};
+  if (!IS_LAB || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
+  const res = await fetch(s.url + '/admin/users', { headers: { authorization: 'Bearer ' + s.token }, signal: AbortSignal.timeout(15000) });
+  const json = await res.json().catch(() => ({}));
+  if (res.status === 403) return { ok: false, error: '운영진만 볼 수 있습니다.', notAdmin: true };
+  if (!res.ok) return { ok: false, error: '목록을 불러오지 못했습니다 (' + res.status + ')' };
+  return { ok: true, users: json.users };
+}));
+ipcMain.handle('admin-action', (_e, { id, action } = {}) => serverTry(async () => {
+  const s = loadConfig().sync || {};
+  if (!IS_LAB || !s.token || !['approve', 'reject', 'suspend'].includes(action)) return { ok: false, error: '잘못된 요청입니다.' };
+  const r = await serverCall(s.url, 'POST', '/admin/users/' + Number(id) + '/' + action, {}, s.token);
+  if (r.status !== 200) return { ok: false, error: r.json.error === 'self' ? '자기 자신은 바꿀 수 없습니다.' : '처리 실패 (' + r.status + ')' };
   return { ok: true, user: r.json.user };
 }));
 // 운영 앱 데이터를 실험실로 복사(운영 설정 파일은 읽기만 한다). 가져온 내용은 미전송 변경이 되어 서버로 올라간다.
@@ -661,7 +582,7 @@ ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
 ipcMain.handle('git-sync', (_e, resolution) => syncService.run(resolution)); // 실험실은 서버, 운영은 GitHub
 ipcMain.handle('git-sync-status', () => {
   const s = (loadConfig().sync) || {};
-  if (IS_LAB) return { ...syncService.status(), enabled: !!s.enabled, mode: 'server', server: PROFILE.serverUrl, username: s.username || '', displayName: s.displayName || '', hasToken: !!s.token };
+  if (IS_LAB) return { ...syncService.status(), enabled: !!s.enabled, mode: 'server', server: PROFILE.serverUrl, username: s.username || '', displayName: s.displayName || '', role: s.role || 'member', hasToken: !!s.token };
   return { ...syncService.status(), enabled: !!s.enabled, repo: s.repo || '', hasToken: !!s.token, gitDir: fs.existsSync(path.join(STUDECK_DIR(), '.git')) };
 });
 ipcMain.handle('git-disconnect', () => { if (syncService.isRunning()) return { ok: false, error: '동기화 중입니다.' }; const c = loadConfig(); c.sync = { enabled: false, repo: c.sync?.repo || '', token: '' }; saveConfig(c); return { ok: true }; });

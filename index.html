@@ -135,11 +135,11 @@
     display: flex; align-items: center; gap: 8px;
     padding: 11px 13px 10px;
   }
-  header .brand { display: flex; align-items: center; gap: 7px; }
-  header .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent-soft); }
-  header .title { font-size: 13.5px; font-weight: 800; letter-spacing: -0.2px; }
-  header .title-accent { color: var(--accent); }
-  header .lab-badge { font-size: 9.5px; font-weight: 800; letter-spacing: .4px; padding: 1px 5px; border-radius: 4px; background: #e8893a; color: #1d1d1f; }
+  header .brand, #auth-gate .brand { display: flex; align-items: center; gap: 7px; }
+  header .dot, #auth-gate .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent-soft); }
+  header .title, #auth-gate .title { font-size: 13.5px; font-weight: 800; letter-spacing: -0.2px; }
+  header .title-accent, #auth-gate .title-accent { color: var(--accent); }
+  .lab-badge { font-size: 9.5px; font-weight: 800; letter-spacing: .4px; padding: 1px 5px; border-radius: 4px; background: #e8893a; color: #1d1d1f; }
   header .term { font-size: 11px; color: var(--muted); }
   header .spacer { flex: 1; }
   header button {
@@ -571,6 +571,31 @@
   #settings label { font-size: 12px; color: var(--muted); }
   #settings input[type=text], #settings input[type=password] { width: 100%; }
   #server-box [hidden] { display: none !important; }
+  .admin-count { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10.5px; text-align: center; }
+  .admin-count:empty { display: none; }
+  .admin-row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; font-size: 12px; }
+  .admin-row .who { flex: 1; min-width: 0; }
+  .admin-row .who small { color: var(--muted); display: block; font-size: 10.5px; }
+  /* 실험실 시작 화면: 로그인 / 가입 신청 */
+  #auth-gate { position: absolute; inset: 0; z-index: 40; background: var(--bg); display: flex; flex-direction: column; }
+  #auth-gate[hidden] { display: none; }
+  #auth-gate .gate-bar { -webkit-app-region: drag; display: flex; align-items: center; gap: 7px; padding: 11px 13px 10px; }
+  #auth-gate .gate-bar button { -webkit-app-region: no-drag; width: 27px; height: 27px; border: none; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+  #auth-gate .gate-bar button:hover { background: var(--surface); color: var(--text); }
+  #auth-gate .gate-body { flex: 1; overflow: auto; display: flex; flex-direction: column; justify-content: center; padding: 10px 26px 30px; gap: 14px; }
+  #auth-gate h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  #auth-gate .sub { color: var(--muted); font-size: 12.5px; margin-top: -8px; }
+  #auth-gate form { display: flex; flex-direction: column; gap: 8px; }
+  #auth-gate form[hidden] { display: none; }
+  #auth-gate input { width: 100%; padding: 10px 12px; font-size: 13px; }
+  #auth-gate .gate-tabs { display: flex; gap: 6px; }
+  #auth-gate .gate-tabs button { flex: 1; padding: 8px; border-radius: 9px; border: 1px solid var(--line2); background: transparent; color: var(--muted); font-weight: 700; cursor: pointer; }
+  #auth-gate .gate-tabs button.on { background: var(--surface); color: var(--text); border-color: var(--accent); }
+  #auth-gate .btn.primary { padding: 10px; font-size: 13px; }
+  #gate-msg { font-size: 12px; min-height: 16px; color: var(--muted); }
+  #gate-msg.err { color: #ff7b7b; }
+  #gate-msg.ok { color: var(--ok, #57d6a0); }
+  #auth-gate .hint { font-size: 10.5px; color: var(--muted); line-height: 1.6; }
   #settings .row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
   #settings .btns { display: flex; gap: 8px; margin-top: auto; }
   #settings .btns button { flex: 1; }
@@ -586,7 +611,6 @@
     <span class="brand"><span class="dot"></span><span class="title">Stu<span class="title-accent">deck</span></span></span>
     <span class="term" id="term"></span>
     <span class="spacer"></span>
-    <button id="btn-refresh" title="시간표 새로고침">⟳</button>
     <button id="btn-mini" title="미니 모드">⊟</button>
     <button id="btn-settings" title="설정">⚙</button>
     <button id="btn-min" title="최소화">—</button>
@@ -613,8 +637,7 @@
     <div id="view-timetable" class="view">
       <div class="pad"><button id="btn-syllabus" class="btn mini">강의계획서 PDF 가져오기</button> <button id="btn-manual-timetable" class="btn mini">시간 직접 입력</button><div id="syllabus-msg" style="font-size:11px;color:var(--muted);margin-top:6px" aria-live="polite"></div></div>
       <div id="empty">
-        <div>에브리타임 공유 링크를 등록하면<br/>시간표가 여기에 표시됩니다.</div>
-        <button id="btn-setup" class="btn primary">공유 링크 등록하기</button>
+        <div>강의계획서 PDF를 가져오거나<br/>수업 시간을 직접 입력하면 시간표가 여기에 표시됩니다.</div>
       </div>
       <div id="status" class="hidden"></div>
       <div id="grid-wrap" class="hidden pad"></div>
@@ -682,10 +705,37 @@
 
   <div id="toast"></div>
 
+  <!-- 실험실 시작 화면: 로그인하기 전에는 기능 대신 이 화면만 보인다 -->
+  <div id="auth-gate" hidden role="dialog" aria-label="로그인">
+    <div class="gate-bar">
+      <span class="brand"><span class="dot"></span><span class="title">Stu<span class="title-accent">deck</span></span><span class="lab-badge">LAB</span></span>
+      <span class="spacer" style="flex:1"></span>
+      <button id="gate-min" title="최소화">—</button>
+      <button id="gate-close" title="닫기">×</button>
+    </div>
+    <div class="gate-body">
+      <div><h1>Studeck</h1></div>
+      <div class="sub">동아리 학습 도우미 · 학번으로 로그인하세요</div>
+      <div class="gate-tabs"><button id="gate-tab-login" class="on">로그인</button><button id="gate-tab-signup">가입 신청</button></div>
+      <form id="gate-login" autocomplete="off">
+        <input type="text" id="gate-l-id" inputmode="numeric" placeholder="학번" />
+        <input type="password" id="gate-l-pw" placeholder="비밀번호" />
+        <button type="submit" class="btn primary" id="gate-l-btn">로그인</button>
+      </form>
+      <form id="gate-signup" hidden autocomplete="off">
+        <input type="text" id="gate-s-id" inputmode="numeric" placeholder="학번 (숫자)" />
+        <input type="text" id="gate-s-name" placeholder="이름" />
+        <input type="password" id="gate-s-pw" placeholder="비밀번호 (8자 이상)" />
+        <input type="password" id="gate-s-pw2" placeholder="비밀번호 확인" />
+        <button type="submit" class="btn primary" id="gate-s-btn">가입 신청</button>
+      </form>
+      <div id="gate-msg" role="status" aria-live="polite"></div>
+      <div class="hint">가입 신청 후 운영진이 승인하면 로그인할 수 있습니다.<br/>비밀번호는 이 기기에 저장되지 않습니다. 동아리 Tailscale에 연결돼 있어야 합니다.</div>
+    </div>
+  </div>
+
   <div id="settings" class="hidden">
     <h2>설정</h2>
-    <label>에브리타임 시간표 공유 링크 또는 식별자</label>
-    <input type="text" id="inp-id" placeholder="everytime.kr/@Abc12Xyz 또는 Abc12Xyz" />
     <div class="err" id="settings-err"></div>
     <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-cbnu">충북대</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
     <div class="row" style="justify-content:space-between;"><span>헤더 시계</span><span class="seg"><button id="clk-h">시</button><button id="clk-hm">시:분</button><button id="clk-hms">시:분:초</button></span></div>
@@ -701,22 +751,20 @@
     <div class="row" style="justify-content:space-between;"><span id="studeck-folder-label">바탕화면\Studeck 폴더</span><button class="btn" id="btn-open-studeck">폴더 열기</button></div>
     <div class="row" id="server-box" hidden style="flex-direction:column;align-items:stretch;gap:6px;border-top:1px solid var(--line);padding-top:11px;">
       <span style="font-weight:700;font-size:12px;">서버 동기화 <span style="color:var(--muted);font-weight:600;">(실험실 서버)</span></span>
-      <div id="server-out" style="display:flex;flex-direction:column;gap:6px;">
-        <input type="text" id="inp-srv-user" placeholder="아이디 (영문 소문자·숫자·_)" autocomplete="off" />
-        <input type="password" id="inp-srv-pw" placeholder="비밀번호 (8자 이상)" autocomplete="off" />
-        <input type="text" id="inp-srv-name" placeholder="표시 이름 (가입할 때만, 선택)" autocomplete="off" />
-        <div style="display:flex;gap:8px;">
-          <button class="btn primary mini" id="btn-srv-login" style="flex:1;">로그인</button>
-          <button class="btn mini" id="btn-srv-signup" style="flex:1;">가입</button>
-        </div>
-      </div>
-      <div id="server-in" hidden style="display:flex;flex-direction:column;gap:6px;">
+      <div id="server-in" style="display:flex;flex-direction:column;gap:6px;">
         <span id="srv-who" style="font-size:12px;"></span>
         <div style="display:flex;gap:8px;">
           <button class="btn primary mini" id="btn-srv-sync" style="flex:1;">지금 동기화</button>
           <button class="btn mini" id="btn-srv-logout" style="flex:1;">로그아웃</button>
         </div>
         <button class="btn mini" id="btn-srv-import">운영 앱 데이터 가져오기</button>
+      </div>
+      <div id="admin-box" hidden style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--line);padding-top:9px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:700;font-size:12px;">가입 신청 승인 <span style="color:var(--muted);font-weight:600;">(운영진)</span> <span id="admin-count" class="admin-count"></span></span>
+          <button class="btn mini" id="btn-admin-refresh">새로고침</button>
+        </div>
+        <div id="admin-list" style="display:flex;flex-direction:column;gap:6px;"></div>
       </div>
       <span id="git-sync-msg" style="font-size:11px;color:var(--muted);min-height:14px;"></span>
       <span class="hint" style="font-size:10.5px;">비밀번호는 저장하지 않고 이 기기 전용 접속 키만 보관합니다. Tailscale(동아리 tailnet)에 연결돼 있어야 합니다. 수업·보조 자료 파일은 아직 서버로 동기화되지 않습니다.</span>
@@ -732,14 +780,12 @@
       <span id="git-sync-msg" style="font-size:11px;color:var(--muted);min-height:14px;"></span>
       <span class="hint" style="font-size:10.5px;">비공개 저장소(studeck-data)를 만들고 Contents 읽기/쓰기 토큰으로 연결하세요. 토큰은 이 PC에만 저장됩니다. 자료 폴더가 양쪽 기기에서 자동 동기화됩니다.</span>
     </div>
-    <div class="hint">에브리타임 앱/웹 → 시간표 → 공유 → URL 복사 후 붙여넣으세요.<br/>시간표가 '공개'로 공유되어 있어야 불러올 수 있습니다.</div>
     <div class="row" style="justify-content:space-between;">
       <button id="btn-lms-dump" class="btn mini">LMS 디버그 저장</button>
       <span id="lms-dump-msg" style="font-size:10.5px;color:var(--muted);flex:1;text-align:right;"></span>
     </div>
     <div class="btns">
-      <button class="btn" id="btn-cancel">닫기</button>
-      <button class="btn primary" id="btn-save">저장 &amp; 불러오기</button>
+      <button class="btn primary" id="btn-cancel">닫기</button>
     </div>
   </div>
 </div>
