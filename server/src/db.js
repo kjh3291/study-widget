@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS items (
   PRIMARY KEY (user_id, kind, id)
 );
 CREATE INDEX IF NOT EXISTS items_user_rev ON items (user_id, rev);
+-- 변경 기록: 덮어써진 값과 늦게 도착한 오래된 값을 30일 보관(되돌리기·확인용).
+CREATE TABLE IF NOT EXISTS items_history (
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,
+  id          TEXT NOT NULL,
+  data        JSONB,
+  updated_at  BIGINT NOT NULL,
+  deleted     BOOLEAN NOT NULL DEFAULT false,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS items_history_item ON items_history (user_id, kind, id, recorded_at);
 `;
 
 export async function migrate() {

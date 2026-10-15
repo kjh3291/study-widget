@@ -2,6 +2,7 @@
 import Fastify from 'fastify';
 import { pool, migrate } from './db.js';
 import { hashPassword, verifyPassword, issueToken, authenticate, requireAdmin } from './auth.js';
+import { clientIp, limits, tooMany, securityHeaders } from './guard.js';
 
 const CHANNEL = process.env.STUDECK_CHANNEL || 'lab';
 const KINDS = new Set(['todo', 'event', 'course', 'setting', 'focus']);
@@ -13,6 +14,7 @@ const AUTO_APPROVE_PREFIX = CHANNEL === 'lab' ? String(process.env.AUTO_APPROVE_
 const autoApproved = (name) => !!AUTO_APPROVE_PREFIX && name.startsWith(AUTO_APPROVE_PREFIX);
 
 const app = Fastify({ logger: { level: 'info' }, bodyLimit: 5 * 1024 * 1024 });
+securityHeaders(app);
 
 const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name, role: u.role, status: u.status, createdAt: u.created_at });
 
@@ -24,6 +26,10 @@ app.get('/health', async () => {
 // 가입 신청: 아이디는 학번, 이름 필수. ADMIN_USERNAME은 운영진으로 바로 승인, 나머지는 승인 대기.
 // 실험실의 AUTO_APPROVE_PREFIX(자동 테스트용 가짜 학번)만 바로 승인한다.
 app.post('/auth/signup', async (req, reply) => {
+  const ip = clientIp(req);
+  const wait = limits.signupIp.blocked(ip);
+  if (wait) return tooMany(reply, wait);
+  limits.signupIp.hit(ip);
   const { username, password, displayName } = req.body || {};
   const name = String(username || '').trim().toLowerCase();
   const admin = !!ADMIN_USERNAME && name === ADMIN_USERNAME;
@@ -40,13 +46,24 @@ app.post('/auth/signup', async (req, reply) => {
   return reply.code(201).send({ user: publicUser(rows[0]) });
 });
 
+// 로그인: IP별 시도 제한 + 학번별 연속 실패 잠금(15분 동안 5번).
 app.post('/auth/login', async (req, reply) => {
   const { username, password, deviceName } = req.body || {};
-  const { rows } = await pool.query('SELECT * FROM users WHERE username = $1', [String(username || '').trim().toLowerCase()]);
+  const name = String(username || '').trim().toLowerCase();
+  const ip = clientIp(req);
+  const ipWait = limits.loginIp.blocked(ip);
+  if (ipWait) return tooMany(reply, ipWait);
+  const lockWait = limits.loginFail.blocked(name);
+  if (lockWait) return tooMany(reply, lockWait, 'locked');
+  limits.loginIp.hit(ip);
+  const { rows } = await pool.query('SELECT * FROM users WHERE username = $1', [name]);
   const u = rows[0];
   if (!u || typeof password !== 'string' || !(await verifyPassword(password, u.pw_hash))) {
+    limits.loginFail.hit(name);
+    req.log.warn({ ip, username: name }, 'login failed');
     return reply.code(401).send({ error: 'bad_credentials' });
   }
+  limits.loginFail.reset(name);
   if (u.status !== 'approved') return reply.code(403).send({ error: 'not_approved', status: u.status });
   return { token: await issueToken(u.id, deviceName), user: publicUser(u) };
 });
@@ -68,6 +85,7 @@ app.get('/admin/users', { preHandler: requireAdmin }, async () => {
 app.post('/admin/users/:id/reject', { preHandler: requireAdmin }, async (req, reply) => {
   const { rows } = await pool.query(`DELETE FROM users WHERE id = $1 AND status = 'pending' RETURNING *`, [Number(req.params.id)]);
   if (!rows[0]) return reply.code(404).send({ error: 'not_found' });
+  req.log.info({ admin: req.user.username, action: 'reject', target: rows[0].username }, 'admin action');
   return { user: publicUser(rows[0]) };
 });
 
@@ -77,6 +95,7 @@ for (const [action, status] of [['approve', 'approved'], ['suspend', 'suspended'
     const { rows } = await pool.query('UPDATE users SET status = $1 WHERE id = $2 RETURNING *', [status, Number(req.params.id)]);
     if (!rows[0]) return reply.code(404).send({ error: 'not_found' });
     if (status === 'suspended') await pool.query('UPDATE devices SET revoked = true WHERE user_id = $1', [rows[0].id]);
+    req.log.info({ admin: req.user.username, action, target: rows[0].username }, 'admin action');
     return { user: publicUser(rows[0]) };
   });
 }
@@ -112,13 +131,22 @@ app.post('/sync', { preHandler: authenticate }, async (req, reply) => {
   try {
     await client.query('BEGIN');
     for (const c of changes) {
+      const key = [req.user.id, c.kind, c.id], data = c.deleted ? null : JSON.stringify(c.data ?? null), at = Math.trunc(c.updatedAt);
+      // 모든 변경을 기록한다: 덮어써지는 이전 값(또는 더 오래된 늦은 도착분)을 items_history에 남긴다.
+      await client.query(
+        `INSERT INTO items_history (user_id, kind, id, data, updated_at, deleted)
+         SELECT user_id, kind, id, data, updated_at, deleted FROM items
+         WHERE user_id = $1 AND kind = $2 AND id = $3 AND updated_at < $4`, [...key, at]);
       const res = await client.query(
         `INSERT INTO items (user_id, kind, id, data, updated_at, deleted, rev)
          VALUES ($1, $2, $3, $4, $5, $6, nextval('item_rev'))
          ON CONFLICT (user_id, kind, id) DO UPDATE
            SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at, deleted = EXCLUDED.deleted, rev = EXCLUDED.rev
            WHERE items.updated_at < EXCLUDED.updated_at`,
-        [req.user.id, c.kind, c.id, c.deleted ? null : JSON.stringify(c.data ?? null), Math.trunc(c.updatedAt), !!c.deleted]);
+        [...key, data, at, !!c.deleted]);
+      if (!res.rowCount) {
+        await client.query(`INSERT INTO items_history (user_id, kind, id, data, updated_at, deleted) VALUES ($1, $2, $3, $4, $5, $6)`, [...key, data, at, !!c.deleted]);
+      }
       applied += res.rowCount;
     }
     await client.query('COMMIT');
@@ -132,6 +160,8 @@ app.post('/sync', { preHandler: authenticate }, async (req, reply) => {
 });
 
 await migrate();
+const pruneHistory = () => pool.query(`DELETE FROM items_history WHERE recorded_at < now() - interval '30 days'`).catch(e => app.log.error(e));
+pruneHistory(); setInterval(pruneHistory, 24 * 60 * 60 * 1000).unref();
 // 이미 가입된 계정도 ADMIN_USERNAME이면 운영진으로 올린다.
 if (ADMIN_USERNAME) await pool.query(`UPDATE users SET role = 'admin', status = 'approved' WHERE username = $1`, [ADMIN_USERNAME]);
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT) || 3000 });

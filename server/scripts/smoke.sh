@@ -38,4 +38,11 @@ r=$(j "${A[@]}" -X POST "$BASE/sync" -d '{"since":0,"changes":[{"kind":"hack","i
 echo "$r" | grep -q bad_change && pass "알 수 없는 종류 거부" || fail "종류 검사" "$r"
 r=$(j -H "authorization: Bearer wrong" "$BASE/sync"); echo "$r" | grep -q unauthorized && pass "잘못된 토큰 거부" || fail "토큰" "$r"
 r=$(j "${A[@]}" -X POST "$BASE/auth/logout" -d '{}'); r=$(j "${A[@]}" "$BASE/me"); echo "$r" | grep -q unauthorized && pass "로그아웃 후 토큰 폐기" || fail "로그아웃" "$r"
-echo "ALL PASS ($U)"
+h=$(curl -sS -m 10 -D - -o /dev/null "$BASE/health"); echo "$h" | grep -qi '^x-content-type-options: nosniff' && echo "$h" | grep -qi '^x-frame-options: DENY' && pass "보안 헤더" || fail "보안 헤더" "$h"
+# 연속 실패 잠금: 별도 시험 계정으로 비밀번호 5번 틀리면 맞는 비밀번호도 잠시 거부
+L="99$(printf %08d $(( (RANDOM * 32768 + RANDOM) % 100000000 )))"
+j -X POST "$BASE/auth/signup" -d "{\"username\":\"$L\",\"password\":\"$PW\",\"displayName\":\"잠금시험\"}" >/dev/null
+for _ in 1 2 3 4 5; do j -X POST "$BASE/auth/login" -d "{\"username\":\"$L\",\"password\":\"wrong-password\"}" >/dev/null; done
+r=$(j -X POST "$BASE/auth/login" -d "{\"username\":\"$L\",\"password\":\"$PW\"}")
+echo "$r" | grep -q '"locked"' && pass "비밀번호 5번 실패 → 일시 잠금" || fail "잠금" "$r"
+echo "ALL PASS ($U, $L)"
