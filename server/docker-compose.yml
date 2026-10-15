@@ -1,0 +1,34 @@
+# 운영(prod)·실험실(lab) 모두 이 파일을 쓰고, 차이는 각 폴더의 .env로만 준다.
+# api는 서버의 Tailscale IP에만 열고, db는 컨테이너 내부 네트워크 전용이다.
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: studeck
+      POSTGRES_DB: studeck
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 필요}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studeck -d studeck"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://studeck:${DB_PASSWORD}@db:5432/studeck
+      STUDECK_CHANNEL: ${STUDECK_CHANNEL:?STUDECK_CHANNEL 필요}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      AUTO_APPROVE: ${AUTO_APPROVE:-false}
+      PORT: "3000"
+    ports:
+      - "${BIND_IP:?BIND_IP 필요}:${API_PORT:?API_PORT 필요}:3000"
+
+volumes:
+  dbdata:

@@ -8,3 +8,6 @@ Thumbs.db
 
 # 실험용 빌드 자산(로컬)
 icon-dev.*
+
+# 서버 비밀값
+server/.env
