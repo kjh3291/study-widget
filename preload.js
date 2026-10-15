@@ -27,4 +27,8 @@ contextBridge.exposeInMainWorld('api', {
   onRequestQuit: cb => ipcRenderer.on('request-quit', () => cb()),
   gitSyncStatus: () => ipcRenderer.invoke('git-sync-status'),
   gitDisconnect: () => ipcRenderer.invoke('git-disconnect'),
+  serverSignup: (username, password, displayName) => ipcRenderer.invoke('server-signup', { username, password, displayName }),
+  serverLogin: (username, password) => ipcRenderer.invoke('server-login', { username, password }),
+  serverLogout: () => ipcRenderer.invoke('server-logout'),
+  importProdData: () => ipcRenderer.invoke('import-prod-data'),
 });

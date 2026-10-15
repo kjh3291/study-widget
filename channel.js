@@ -28,6 +28,7 @@ const PROFILE = IS_LAB ? {
   serverUrl: 'http://100.96.247.43:8443',
 };
 
-if (PROFILE.userDataName) app.setPath('userData', path.join(app.getPath('appData'), PROFILE.userDataName));
+// 테스트는 임시 프로필을 먼저 지정하고 STUDECK_KEEP_USERDATA=1로 실제 실험실 프로필을 건드리지 않는다.
+if (PROFILE.userDataName && !process.env.STUDECK_KEEP_USERDATA) app.setPath('userData', path.join(app.getPath('appData'), PROFILE.userDataName));
 
 module.exports = { CHANNEL, IS_LAB, PROFILE };

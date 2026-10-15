@@ -3,6 +3,11 @@ const DOW_KO = ['일', '월', '화', '수', '목', '금', '토'];
 const PX_PER_HOUR = 52;
 
 const $ = (id) => document.getElementById(id);
+// 운영(prod)/실험실(lab) 채널: 실험실은 GitHub 대신 실험실 서버로 동기화한다.
+const IS_LAB = new URLSearchParams(location.search).get('channel') === 'lab';
+const SYNC_NAME = IS_LAB ? '서버' : 'GitHub';
+$(IS_LAB ? 'git-box' : 'server-box')?.remove();
+if (IS_LAB) { $('server-box').hidden = false; $('studeck-folder-label').textContent = '바탕화면\\Studeck-Lab 폴더'; }
 
 // ---------- 상태 ----------
 const state = {
@@ -270,9 +275,9 @@ let _saveQueue = null, _unsaved = [], _syncInFlight = null, _editEpoch = 0, _syn
 function showSyncStatus(status) {
   _syncStatus = { ..._syncStatus, ...status };
   const phase = _unsaved.length ? 'saving' : _syncStatus.phase;
-  const labels = { saving: '기기에 저장 중…', pending: '기기 저장됨 · 업로드 대기', syncing: 'GitHub 동기화 중…', synced: 'GitHub 업로드 완료', conflict: '충돌 확인 필요', error: '동기화 실패 · 다시 시도 필요', idle: '기기에 저장됨' };
+  const labels = { saving: '기기에 저장 중…', pending: '기기 저장됨 · 업로드 대기', syncing: SYNC_NAME + ' 동기화 중…', synced: SYNC_NAME + ' 업로드 완료', conflict: '충돌 확인 필요', error: '동기화 실패 · 다시 시도 필요', idle: '기기에 저장됨' };
   $('sync-label').textContent = labels[phase] || labels.idle;
-  $('sync-label').title = _syncStatus.error || (_syncStatus.lastSuccessfulAt ? '최근 GitHub 동기화: ' + new Date(_syncStatus.lastSuccessfulAt).toLocaleString() + '\n다른 기기는 실행 후 동기화해야 반영됩니다.' : '외부 파일 변경은 1분마다 확인합니다. 지금 동기화로 즉시 확인할 수 있습니다.');
+  $('sync-label').title = _syncStatus.error || (_syncStatus.lastSuccessfulAt ? '최근 ' + SYNC_NAME + ' 동기화: ' + new Date(_syncStatus.lastSuccessfulAt).toLocaleString() + '\n다른 기기는 실행 후 동기화해야 반영됩니다.' : '외부 파일 변경은 1분마다 확인합니다. 지금 동기화로 즉시 확인할 수 있습니다.');
   $('sync-now').disabled = phase === 'syncing';
   $('sync-resolve').hidden = !_syncStatus.conflicts;
   if ($('git-sync-msg')) $('git-sync-msg').textContent = _syncStatus.error || $('sync-label').textContent;
@@ -402,11 +407,11 @@ function openSyncConflicts() {
     const details = syncCompareRows(item).map(pair => {
       const field = names[pair.field] || (typeof pair.field === 'string' ? pair.field : '내용');
       const before = pair.base ? `<div style="color:var(--muted);margin-top:6px">변경 전: <span style="white-space:pre-wrap">${escapeHtml(text(pair.base, pair.field))}</span></div>` : '';
-      return `<div class="sync-difference"><div>${escapeHtml(field)} · ${!pair.local.exists || !pair.remote.exists ? '삭제와 수정 비교' : '값이 다름'}</div>${before}<div style="display:flex;gap:8px;margin:8px 0"><div style="min-width:0;flex:1">이 기기<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(text(pair.local, pair.field))}</pre></div><div style="min-width:0;flex:1">GitHub에 저장된 내용<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(text(pair.remote, pair.field))}</pre></div></div></div>`;
+      return `<div class="sync-difference"><div>${escapeHtml(field)} · ${!pair.local.exists || !pair.remote.exists ? '삭제와 수정 비교' : '값이 다름'}</div>${before}<div style="display:flex;gap:8px;margin:8px 0"><div style="min-width:0;flex:1">이 기기<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(text(pair.local, pair.field))}</pre></div><div style="min-width:0;flex:1">${SYNC_NAME}에 저장된 내용<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(text(pair.remote, pair.field))}</pre></div></div></div>`;
     }).join('');
     row.innerHTML = `<b>${escapeHtml(label)}</b>${details}`;
     const select = document.createElement('select'); select.setAttribute('aria-label', label + ' 버전 선택');
-    select.innerHTML = '<option value="">사용할 버전 선택</option><option value="local">이 기기 버전</option><option value="remote">GitHub 버전</option>' + (item.both ? '<option value="both">둘 다 보관 (GitHub 사본 추가)</option>' : '');
+    select.innerHTML = '<option value="">사용할 버전 선택</option><option value="local">이 기기 버전</option><option value="remote">' + SYNC_NAME + ' 버전</option>' + (item.both ? '<option value="both">둘 다 보관 (GitHub 사본 추가)</option>' : '');
     select.onchange = () => { choices[item.id] = select.value; }; row.appendChild(select); ov.appendChild(row);
   }
   const message = document.createElement('p'); message.setAttribute('role', 'alert'); ov.appendChild(message);
@@ -426,7 +431,7 @@ function askOfflineExit(message) {
     const ov = document.createElement('div'); ov.id = 'sync-exit';
     ov.style.cssText = 'position:absolute;inset:0;z-index:50;background:var(--bg);padding:24px;font-size:13px;';
     ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '동기화 전 종료');
-    ov.innerHTML = `<h2 style="font-size:16px">GitHub 전송이 끝나지 않았습니다</h2><p>${escapeHtml(message)}</p><p>변경 내용은 이 기기에 저장되어 있습니다. 지금 종료하면 다음 실행 때 다시 전송하며, 그전에는 다른 기기에 반영되지 않습니다.</p><button id="exit-stay" class="btn primary">앱으로 돌아가기</button> <button id="exit-offline" class="btn">기기에 보관하고 종료</button>`;
+    ov.innerHTML = `<h2 style="font-size:16px">${SYNC_NAME} 전송이 끝나지 않았습니다</h2><p>${escapeHtml(message)}</p><p>변경 내용은 이 기기에 저장되어 있습니다. 지금 종료하면 다음 실행 때 다시 전송하며, 그전에는 다른 기기에 반영되지 않습니다.</p><button id="exit-stay" class="btn primary">앱으로 돌아가기</button> <button id="exit-offline" class="btn">기기에 보관하고 종료</button>`;
     $('app').appendChild(ov);
     const done = value => { ov.remove(); resolve(value); };
     ov.querySelector('#exit-stay').onclick = () => done(false);
@@ -1817,6 +1822,12 @@ $('btn-open-studeck').onclick = () => window.api.openStudeckFolder('root');
 async function refreshGitStatus() {
   try {
     const s = await window.api.gitSyncStatus();
+    if (IS_LAB) {
+      $('server-out').hidden = !!s?.enabled;
+      $('server-in').hidden = !s?.enabled;
+      $('srv-who').textContent = s?.enabled ? `로그인: ${s.displayName || s.username} (${s.username})` : '';
+      if (!s?.enabled && s?.username && !$('inp-srv-user').value) $('inp-srv-user').value = s.username;
+    }
     if (s && s.repo && $('inp-git-repo') && !$('inp-git-repo').value) $('inp-git-repo').value = s.repo;
     state.syncEnabled = !!s?.enabled;
     if (s?.enabled) showSyncStatus(s);
@@ -1837,6 +1848,50 @@ if ($('btn-git-sync')) $('btn-git-sync').onclick = async () => {
   const r = await initSync();
   if (!r?.ok) $('git-sync-msg').textContent = r?.error || '동기화 실패';
 };
+// 실험실 서버 계정: 로그인하면 기기 접속 키만 저장되고 곧바로 동기화한다.
+if (IS_LAB) {
+  const msg = t => { $('git-sync-msg').textContent = t; };
+  const creds = () => [$('inp-srv-user').value.trim().toLowerCase(), $('inp-srv-pw').value];
+  async function serverLogin() {
+    const [user, pw] = creds();
+    if (!user || !pw) return msg('아이디와 비밀번호를 입력하세요.');
+    msg('로그인 중…');
+    let r = await window.api.serverLogin(user, pw);
+    $('inp-srv-pw').value = '';
+    if (!r?.ok) return msg(r?.error || '로그인 실패');
+    state.syncEnabled = true;
+    await refreshGitStatus();
+    msg('동기화 중…');
+    r = await initSync();
+    if (!r?.ok) msg(r?.error || '동기화 실패');
+  }
+  $('btn-srv-login').onclick = serverLogin;
+  $('inp-srv-pw').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) serverLogin(); });
+  $('btn-srv-signup').onclick = async () => {
+    const [user, pw] = creds();
+    if (!user || !pw) return msg('가입할 아이디와 비밀번호를 입력하세요.');
+    msg('가입 중…');
+    const r = await window.api.serverSignup(user, pw, $('inp-srv-name').value.trim());
+    if (!r?.ok) return msg(r?.error || '가입 실패');
+    if (r.status !== 'approved') { $('inp-srv-pw').value = ''; return msg('가입 완료 · 운영진 승인 후 로그인할 수 있습니다.'); }
+    await serverLogin();
+  };
+  $('btn-srv-sync').onclick = async () => { msg('동기화 중…'); const r = await initSync(); if (!r?.ok) msg(r?.error || '동기화 실패'); };
+  $('btn-srv-logout').onclick = async () => {
+    const r = await window.api.serverLogout();
+    if (!r?.ok) return msg(r?.error || '로그아웃 실패');
+    state.syncEnabled = false;
+    await refreshGitStatus();
+    msg('로그아웃했습니다. 이 기기의 데이터는 그대로 남아 있습니다.');
+  };
+  $('btn-srv-import').onclick = async () => {
+    if (!confirm('운영 앱(Studeck)의 할 일·일정·시간표·설정을 이 실험실 앱으로 복사합니다.\n운영 앱의 데이터는 바뀌지 않습니다. 계속할까요?')) return;
+    const r = await window.api.importProdData();
+    if (!r?.ok) return msg(r?.error || '가져오기 실패');
+    alert(`가져왔습니다: 할 일 ${r.todos}개, 일정 ${r.events}개, 시간표 ${r.courses}과목.\n화면을 새로 고친 뒤 서버로 올립니다.`);
+    location.reload();
+  };
+}
 // 파일 변경 후 자동 동기화(디바운스) — 연결돼 있을 때만
 let _gitSyncT = null;
 function scheduleGitSync() {
@@ -1967,7 +2022,7 @@ function miniPrompt(title) {
 // 초기화
 // =====================================================================
 // 실험실 앱 표시: 운영 앱과 헷갈리지 않게 헤더에 LAB 배지
-if (new URLSearchParams(location.search).get('channel') === 'lab') {
+if (IS_LAB) {
   document.title = 'Studeck Lab';
   document.querySelector('header .brand')?.insertAdjacentHTML('beforeend', '<span class="lab-badge">LAB</span>');
 }

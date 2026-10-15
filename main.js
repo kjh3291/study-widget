@@ -5,13 +5,14 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const lms = require('./lms');
-const { trackChanges, initializeOutbox } = require('./sync-model');
+const { trackChanges, initializeOutbox, sharedSnapshot } = require('./sync-model');
 const { atomicJSON, readShared } = require('./sync-storage');
 const { createSyncService } = require('./sync-service');
 const { autoResolve, describeConflicts, resolveConflicts } = require('./sync-conflicts');
 const { preserveMaterial, archiveGitChanges } = require('./material-history');
 const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
 const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
+const { createServerStore, serverCall } = require('./server-sync');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -589,7 +590,15 @@ function gitSync(dir, repo, token) {
   return result;
 }
 const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json');
-const syncService = createSyncService({
+const notifySync = status => { if (win && !win.isDestroyed()) win.webContents.send('sync-status', status); };
+// 실험실 앱: 같은 병합 엔진에 전송부만 서버로 바꾼다(자료 파일은 아직 서버 동기화 대상 아님).
+const serverStore = IS_LAB ? createServerStore({ file: path.join(app.getPath('userData'), 'server-mirror.json') }) : null;
+const syncService = createSyncService(IS_LAB ? {
+  load: loadConfig, save: saveConfig,
+  read: serverStore.read, write: serverStore.write, transport: serverStore.transport,
+  conflicts: async () => null, resolveFiles: async () => {}, dirty: async () => false,
+  notify: notifySync,
+} : {
   load: loadConfig, save: saveConfig,
   read: () => readShared(SYNC_DATA_PATH()),
   write: value => atomicJSON(SYNC_DATA_PATH(), value, path.join(STUDECK_DIR(), '.studeck/backups/writes')),
@@ -597,8 +606,51 @@ const syncService = createSyncService({
   conflicts: () => describeConflicts(STUDECK_DIR()),
   resolveFiles: choice => resolveConflicts(STUDECK_DIR(), choice),
   dirty: async () => { const r = await git(['status', '--porcelain'], STUDECK_DIR()); if (!r.ok) throw new Error('파일 상태 확인 실패'); return !!r.out.trim(); },
-  notify: status => { if (win && !win.isDestroyed()) win.webContents.send('sync-status', status); },
+  notify: notifySync,
 });
+// ---------- 실험실 서버 계정(가입·로그인·로그아웃). 비밀번호는 저장하지 않고 기기 토큰만 둔다. ----------
+const SERVER_ERRORS = { bad_username: '아이디는 영문 소문자·숫자·_ 3~24자입니다.', weak_password: '비밀번호는 8자 이상이어야 합니다.',
+  username_taken: '이미 있는 아이디입니다.', bad_credentials: '아이디 또는 비밀번호가 틀렸습니다.', not_approved: '운영진 승인 대기 중입니다.' };
+const serverError = (r, fallback) => SERVER_ERRORS[r.json.error] || r.json.message || fallback + ' (' + r.status + ')';
+async function serverTry(fn) {
+  try { return await fn(); }
+  catch (e) { return { ok: false, error: e.name === 'TimeoutError' || /fetch failed/.test(e.message) ? '서버에 연결할 수 없습니다(Tailscale 연결 확인).' : e.message }; }
+}
+ipcMain.handle('server-signup', (_e, { username, password, displayName } = {}) => serverTry(async () => {
+  if (!IS_LAB) return { ok: false, error: '실험실 앱 전용입니다.' };
+  const r = await serverCall(PROFILE.serverUrl, 'POST', '/auth/signup', { username, password, displayName });
+  if (r.status !== 201) return { ok: false, error: serverError(r, '가입 실패') };
+  return { ok: true, status: r.json.user.status };
+}));
+ipcMain.handle('server-login', (_e, { username, password } = {}) => serverTry(async () => {
+  if (!IS_LAB) return { ok: false, error: '실험실 앱 전용입니다.' };
+  if (syncService.isRunning()) return { ok: false, error: '진행 중인 동기화가 끝난 뒤 다시 시도해 주세요.' };
+  const r = await serverCall(PROFILE.serverUrl, 'POST', '/auth/login', { username, password, deviceName: require('os').hostname() + ' (' + process.platform + ')' });
+  if (r.status !== 200) return { ok: false, error: serverError(r, '로그인 실패') };
+  const c = loadConfig();
+  c.sync = { enabled: true, mode: 'server', url: PROFILE.serverUrl, username: r.json.user.username, displayName: r.json.user.displayName, token: r.json.token };
+  saveConfig(c);
+  return { ok: true, user: r.json.user };
+}));
+// 운영 앱 데이터를 실험실로 복사(운영 설정 파일은 읽기만 한다). 가져온 내용은 미전송 변경이 되어 서버로 올라간다.
+ipcMain.handle('import-prod-data', () => {
+  if (!IS_LAB) return { ok: false, error: '실험실 앱 전용입니다.' };
+  try {
+    const prodFile = path.join(app.getPath('appData'), 'everytime-widget', 'config.json');
+    const prod = JSON.parse(fs.readFileSync(prodFile, 'utf8'));
+    const patch = sharedSnapshot(prod);
+    saveConfig(trackChanges(loadConfig(), patch));
+    return { ok: true, todos: (patch.todos || []).length, events: (patch.events || []).length, courses: (patch.timetableFull || []).length };
+  } catch (e) { return { ok: false, error: '운영 앱 데이터를 읽지 못했습니다: ' + e.message }; }
+});
+ipcMain.handle('server-logout', () => serverTry(async () => {
+  if (syncService.isRunning()) return { ok: false, error: '동기화 중입니다.' };
+  const c = loadConfig(), s = c.sync || {};
+  if (s.token) await serverCall(s.url, 'POST', '/auth/logout', {}, s.token).catch(() => {});
+  c.sync = { enabled: false, mode: 'server', url: s.url || PROFILE.serverUrl, username: s.username || '', token: '' };
+  saveConfig(c);
+  return { ok: true };
+}));
 ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
   if (IS_LAB) return { ok: false, error: '실험실 앱은 GitHub 동기화를 쓰지 않습니다(실험실 서버로 동기화).' };
   if (syncService.isRunning()) return { ok: false, error: '진행 중인 동기화가 끝난 뒤 연결을 바꿔 주세요.' };
@@ -606,9 +658,10 @@ ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
   const c = loadConfig(); c.sync = { repo, token, enabled: true }; saveConfig(c);
   return { ok: true };
 });
-ipcMain.handle('git-sync', (_e, resolution) => IS_LAB ? { ok: false, error: '실험실 앱은 GitHub 동기화를 쓰지 않습니다.' } : syncService.run(resolution));
+ipcMain.handle('git-sync', (_e, resolution) => syncService.run(resolution)); // 실험실은 서버, 운영은 GitHub
 ipcMain.handle('git-sync-status', () => {
   const s = (loadConfig().sync) || {};
+  if (IS_LAB) return { ...syncService.status(), enabled: !!s.enabled, mode: 'server', server: PROFILE.serverUrl, username: s.username || '', displayName: s.displayName || '', hasToken: !!s.token };
   return { ...syncService.status(), enabled: !!s.enabled, repo: s.repo || '', hasToken: !!s.token, gitDir: fs.existsSync(path.join(STUDECK_DIR(), '.git')) };
 });
 ipcMain.handle('git-disconnect', () => { if (syncService.isRunning()) return { ok: false, error: '동기화 중입니다.' }; const c = loadConfig(); c.sync = { enabled: false, repo: c.sync?.repo || '', token: '' }; saveConfig(c); return { ok: true }; });
