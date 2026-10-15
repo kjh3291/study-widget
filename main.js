@@ -490,7 +490,7 @@ const serverStore = IS_LAB ? createServerStore({ file: path.join(app.getPath('us
 const syncService = createSyncService(IS_LAB ? {
   load: loadConfig, save: saveConfig,
   read: serverStore.read, write: serverStore.write, transport: serverStore.transport,
-  conflicts: async () => null, resolveFiles: async () => {}, dirty: async () => false,
+  conflicts: async () => null, resolveFiles: async () => {}, dirty: async () => false, autoResolve: 'local',
   notify: notifySync,
 } : {
   load: loadConfig, save: saveConfig,

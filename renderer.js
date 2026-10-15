@@ -356,6 +356,7 @@ function initSync(resolution) {
       }
     }
     showSyncStatus({ ...result.status, phase: result.pending ? 'pending' : 'synced' });
+    if (result.kept) showToast(`다른 기기에서도 고친 항목 ${result.kept}개는 이 기기의 최신 수정으로 맞췄어요 (이전 값은 서버 기록에 보관)`);
     if (result.pending) scheduleGitSync();
     return result;
   })().catch(error => { showSyncStatus({ phase: 'error', error: error.message }); return { ok: false, error: error.message }; })

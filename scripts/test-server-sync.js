@@ -27,7 +27,7 @@ async function device(name) {
   const service = createSyncService({
     load: () => JSON.parse(JSON.stringify(config)), save: c => { config = JSON.parse(JSON.stringify(c)); },
     read: store.read, write: store.write, transport: store.transport,
-    conflicts: async () => null, resolveFiles: async () => {}, dirty: async () => false,
+    conflicts: async () => null, resolveFiles: async () => {}, dirty: async () => false, autoResolve: 'local',
   });
   return {
     edit(patch) { config = trackChanges(config, patch); },
@@ -82,17 +82,15 @@ const PASS = m => console.log('PASS: ' + m);
   assert.ok(!B.get().todos.some(t => t.id === 't2')); assert.deepEqual(B.get().events, []);
   PASS('할 일·일정 삭제가 다른 기기에도 반영(마지막 일정 삭제 포함)');
 
-  // 5. 같은 항목을 양쪽에서 다르게 수정 → 충돌 선택, 선택한 값으로 정리
+  // 5. 같은 항목을 양쪽에서 다르게 수정 → 선택 창 없이 나중에 동기화한 기기의 수정으로 맞춤
   A.edit({ todos: A.get().todos.map(t => t.id === 't1' ? { ...t, text: 'A 제목' } : t) });
   B.edit({ todos: B.get().todos.map(t => t.id === 't1' ? { ...t, text: 'B 제목' } : t) });
   assert.ok((await A.sync()).ok);
   r = await B.sync();
-  assert.equal(r.ok, false); assert.equal(r.conflicts.kind, 'settings');
-  const choices = Object.fromEntries(r.conflicts.items.map(c => [c.id, 'local']));
-  r = await B.sync({ kind: 'settings', token: r.conflicts.token, choices }); assert.ok(r.ok, r.error);
+  assert.ok(r.ok, r.error); assert.equal(r.kept, 1, '덮어쓴 항목 수 알림');
   assert.ok((await A.sync()).ok);
   for (const d of [A, B]) assert.equal(d.get().todos.find(t => t.id === 't1').text, 'B 제목');
-  PASS('같은 할 일 동시 수정 → 충돌 선택창, 고른 값으로 양쪽 일치');
+  PASS('같은 할 일 동시 수정 → 선택 창 없이 최신 수정으로 양쪽 일치(이전 값은 서버 기록)');
 
   // 6. 오프라인(서버 연결 실패) 중 수정은 보관됐다가 재연결 후 전송
   B.setOffline(true);

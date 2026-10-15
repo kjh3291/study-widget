@@ -3,7 +3,9 @@ const { createHash } = require('node:crypto');
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 // Config is the durable outbox. Network failures never acknowledge local changes.
-function createSyncService({ load, save, read, write, transport, conflicts, resolveFiles, dirty, notify = () => {} }) {
+// autoResolve('local'): 같은 항목을 양쪽에서 고쳤을 때 선택 창 없이 이 기기의 최신 수정을 반영한다.
+// 덮어써진 상대 값은 서버가 기록(items_history)으로 보관한다(실험실 서버 동기화).
+function createSyncService({ load, save, read, write, transport, conflicts, resolveFiles, dirty, notify = () => {}, autoResolve = null }) {
   let running = null, status = { phase: 'idle' };
   const publish = patch => { status = { ...status, ...patch }; notify(status); return status; };
   function changed() { publish({ phase: 'pending', error: '', conflicts: null }); }
@@ -23,7 +25,12 @@ function createSyncService({ load, save, read, write, transport, conflicts, reso
       const sent = copy(load()), remote = read();
       const token = fingerprint([sent.syncRevision, sharedSnapshot(sent), sent.pendingShared, remote]);
       if (resolution?.kind === 'settings' && resolution.token !== token) throw new Error('비교 중 내용이 바뀌었습니다. 다시 동기화한 뒤 선택해 주세요.');
-      const merged = reconcile(sent, remote, resolution?.kind === 'settings' ? resolution.choices : {});
+      let merged = reconcile(sent, remote, resolution?.kind === 'settings' ? resolution.choices : {});
+      let kept = 0;
+      if (merged.conflicts.length && autoResolve) {
+        kept = merged.conflicts.length;
+        merged = reconcile(sent, remote, Object.fromEntries(merged.conflicts.map(c => [c.id, autoResolve])));
+      }
       if (merged.conflicts.length) return blocked({ kind: 'settings', token, items: merged.conflicts });
       if (!equal(merged.data, sharedSnapshot(remote))) {
         write({ ...merged.data, _syncedAt: Math.max(Date.now(), (Number(remote._syncedAt) || 0) + 1) });
@@ -42,8 +49,8 @@ function createSyncService({ load, save, read, write, transport, conflicts, reso
       save(next);
       const filesPending = await dirty();
       const pending = Object.keys(load().pendingShared || {}).length > 0 || filesPending;
-      publish({ phase: pending ? 'pending' : 'synced', lastSuccessfulAt: next.lastSuccessfulSync, error: '', conflicts: null });
-      return { ok: true, pending, snapshot: sharedSnapshot(confirmed), status };
+      publish({ phase: pending ? 'pending' : 'synced', lastSuccessfulAt: next.lastSuccessfulSync, error: '', conflicts: null, kept });
+      return { ok: true, pending, kept, snapshot: sharedSnapshot(confirmed), status };
     })().catch(error => {
       const result = { ok: false, error: error.message };
       publish({ phase: 'error', error: error.message, conflicts: null });
