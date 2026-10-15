@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session, dialog } = require('electron');
+const { CHANNEL, IS_LAB, PROFILE } = require('./channel'); // userData 분리를 위해 가장 먼저
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
@@ -139,7 +140,7 @@ function createWindow() {
     ...bounds,
     minWidth: 300,
     minHeight: 300,
-    icon: path.join(__dirname, 'icon.ico'),
+    icon: path.join(__dirname, PROFILE.icon),
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -155,7 +156,7 @@ function createWindow() {
   });
 
   win.setAlwaysOnTop(true, 'screen-saver');
-  win.loadFile(path.join(__dirname, 'index.html'));
+  win.loadFile(path.join(__dirname, 'index.html'), { query: { channel: CHANNEL } });
 
   const persist = () => {
     if (!win) return;
@@ -319,7 +320,7 @@ ipcMain.handle('lms-dump', async () => {
 });
 
 // ---------- 수업 자료 다운로드 / 폴더 (바탕화면\Studeck) ----------
-const STUDECK_DIR = () => path.join(app.getPath('desktop'), 'Studeck');
+const STUDECK_DIR = () => path.join(app.getPath('desktop'), PROFILE.studeckFolder);
 function safeName(s) {
   return String(s || '').normalize('NFC').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '기타';
 }
@@ -599,12 +600,13 @@ const syncService = createSyncService({
   notify: status => { if (win && !win.isDestroyed()) win.webContents.send('sync-status', status); },
 });
 ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
+  if (IS_LAB) return { ok: false, error: '실험실 앱은 GitHub 동기화를 쓰지 않습니다(실험실 서버로 동기화).' };
   if (syncService.isRunning()) return { ok: false, error: '진행 중인 동기화가 끝난 뒤 연결을 바꿔 주세요.' };
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || '') || !token) return { ok: false, error: '저장소(owner/repo)와 토큰을 확인해 주세요.' };
   const c = loadConfig(); c.sync = { repo, token, enabled: true }; saveConfig(c);
   return { ok: true };
 });
-ipcMain.handle('git-sync', (_e, resolution) => syncService.run(resolution));
+ipcMain.handle('git-sync', (_e, resolution) => IS_LAB ? { ok: false, error: '실험실 앱은 GitHub 동기화를 쓰지 않습니다.' } : syncService.run(resolution));
 ipcMain.handle('git-sync-status', () => {
   const s = (loadConfig().sync) || {};
   return { ...syncService.status(), enabled: !!s.enabled, repo: s.repo || '', hasToken: !!s.token, gitDir: fs.existsSync(path.join(STUDECK_DIR(), '.git')) };
@@ -648,7 +650,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    app.setAppUserModelId('cbnu.study.widget');
+    app.setAppUserModelId(PROFILE.appUserModelId);
     autoBackup();
     migrateFolders();
     try {

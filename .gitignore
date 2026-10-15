@@ -6,8 +6,9 @@ build/
 .DS_Store
 Thumbs.db
 
-# 실험용 빌드 자산(로컬)
-icon-dev.*
+# 실험실 빌드 산출물(아이콘 icon-dev.*은 Studeck Lab 빌드에 쓰므로 추적)
+dist-lab/
+channel.json
 
 # 서버 비밀값
 server/.env

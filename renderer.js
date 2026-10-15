@@ -1966,6 +1966,12 @@ function miniPrompt(title) {
 // =====================================================================
 // 초기화
 // =====================================================================
+// 실험실 앱 표시: 운영 앱과 헷갈리지 않게 헤더에 LAB 배지
+if (new URLSearchParams(location.search).get('channel') === 'lab') {
+  document.title = 'Studeck Lab';
+  document.querySelector('header .brand')?.insertAdjacentHTML('beforeend', '<span class="lab-badge">LAB</span>');
+}
+
 (async () => {
   const cfg = await window.api.loadConfig();
   state.syncEnabled = !!cfg.sync?.enabled;
