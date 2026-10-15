@@ -10,7 +10,7 @@ app.setPath('userData', temp); app.setPath('desktop', desktop);
 fs.writeFileSync(path.join(temp, 'config.json'), JSON.stringify({ lmsAuto: false, autoDownload: false, rolloverOverdue: false, assignFix1: true, materialsFix2: true }));
 const { serverCall } = require('../server-sync');
 const URL = 'http://100.96.247.43:8444';
-const user = 'test_' + crypto.randomBytes(5).toString('hex'), pw = crypto.randomBytes(12).toString('base64url');
+const user = '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0'), pw = crypto.randomBytes(12).toString('base64url');
 let verified = false;
 const timeout = setTimeout(() => { console.error('lab main test timed out'); app.exit(1); }, 40000);
 app.on('browser-window-created', (_e, win) => {

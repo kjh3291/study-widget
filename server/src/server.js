@@ -6,32 +6,36 @@ import { hashPassword, verifyPassword, issueToken, authenticate, requireAdmin } 
 const CHANNEL = process.env.STUDECK_CHANNEL || 'lab';
 const KINDS = new Set(['todo', 'event', 'course', 'setting', 'focus']);
 const MAX_CHANGES = 2000;
-const USERNAME_RE = /^[a-z0-9_]{3,24}$/;
+const USERNAME_RE = /^\d{8,10}$/; // 아이디 = 학번(운영진 ADMIN_USERNAME만 예외)
 const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || '').trim().toLowerCase();
-const AUTO_APPROVE = CHANNEL === 'lab' && process.env.AUTO_APPROVE === 'true';
+// 실험실 전용: 자동 테스트용 가짜 학번(예: 99로 시작)만 바로 승인한다. 운영에서는 무시된다.
+const AUTO_APPROVE_PREFIX = CHANNEL === 'lab' ? String(process.env.AUTO_APPROVE_PREFIX || '') : '';
+const autoApproved = (name) => !!AUTO_APPROVE_PREFIX && name.startsWith(AUTO_APPROVE_PREFIX);
 
 const app = Fastify({ logger: { level: 'info' }, bodyLimit: 5 * 1024 * 1024 });
 
-const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name, role: u.role, status: u.status });
+const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name, role: u.role, status: u.status, createdAt: u.created_at });
 
 app.get('/health', async () => {
   await pool.query('SELECT 1');
   return { ok: true, channel: CHANNEL, version: process.env.npm_package_version || '0.1.0' };
 });
 
-// 가입: ADMIN_USERNAME과 같은 아이디는 운영진으로 바로 승인, 나머지는 승인 대기.
-// AUTO_APPROVE=true(실험실 전용)면 모두 바로 승인한다.
+// 가입 신청: 아이디는 학번, 이름 필수. ADMIN_USERNAME은 운영진으로 바로 승인, 나머지는 승인 대기.
+// 실험실의 AUTO_APPROVE_PREFIX(자동 테스트용 가짜 학번)만 바로 승인한다.
 app.post('/auth/signup', async (req, reply) => {
   const { username, password, displayName } = req.body || {};
   const name = String(username || '').trim().toLowerCase();
-  if (!USERNAME_RE.test(name)) return reply.code(400).send({ error: 'bad_username', hint: '영문 소문자·숫자·_ 3~24자' });
-  if (typeof password !== 'string' || password.length < 8) return reply.code(400).send({ error: 'weak_password', hint: '8자 이상' });
   const admin = !!ADMIN_USERNAME && name === ADMIN_USERNAME;
+  const realName = String(displayName || '').trim();
+  if (!admin && !USERNAME_RE.test(name)) return reply.code(400).send({ error: 'bad_username', hint: '학번(숫자 8~10자리)' });
+  if (realName.length < 2 || realName.length > 20) return reply.code(400).send({ error: 'bad_name', hint: '이름 2~20자' });
+  if (typeof password !== 'string' || password.length < 8 || password.length > 128) return reply.code(400).send({ error: 'weak_password', hint: '8자 이상' });
   const { rows } = await pool.query(
     `INSERT INTO users (username, pw_hash, display_name, role, status) VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (username) DO NOTHING RETURNING *`,
-    [name, await hashPassword(password), String(displayName || name).slice(0, 40),
-      admin ? 'admin' : 'member', admin || AUTO_APPROVE ? 'approved' : 'pending']);
+    [name, await hashPassword(password), realName,
+      admin ? 'admin' : 'member', admin || autoApproved(name) ? 'approved' : 'pending']);
   if (!rows[0]) return reply.code(409).send({ error: 'username_taken' });
   return reply.code(201).send({ user: publicUser(rows[0]) });
 });
@@ -60,8 +64,16 @@ app.get('/admin/users', { preHandler: requireAdmin }, async () => {
   return { users: rows.map(publicUser) };
 });
 
+// 거절: 승인 대기 중인 신청만 삭제한다(다시 신청할 수 있게).
+app.post('/admin/users/:id/reject', { preHandler: requireAdmin }, async (req, reply) => {
+  const { rows } = await pool.query(`DELETE FROM users WHERE id = $1 AND status = 'pending' RETURNING *`, [Number(req.params.id)]);
+  if (!rows[0]) return reply.code(404).send({ error: 'not_found' });
+  return { user: publicUser(rows[0]) };
+});
+
 for (const [action, status] of [['approve', 'approved'], ['suspend', 'suspended']]) {
   app.post(`/admin/users/:id/${action}`, { preHandler: requireAdmin }, async (req, reply) => {
+    if (Number(req.params.id) === req.user.id) return reply.code(400).send({ error: 'self' });
     const { rows } = await pool.query('UPDATE users SET status = $1 WHERE id = $2 RETURNING *', [status, Number(req.params.id)]);
     if (!rows[0]) return reply.code(404).send({ error: 'not_found' });
     if (status === 'suspended') await pool.query('UPDATE devices SET revoked = true WHERE user_id = $1', [rows[0].id]);
@@ -120,4 +132,6 @@ app.post('/sync', { preHandler: authenticate }, async (req, reply) => {
 });
 
 await migrate();
+// 이미 가입된 계정도 ADMIN_USERNAME이면 운영진으로 올린다.
+if (ADMIN_USERNAME) await pool.query(`UPDATE users SET role = 'admin', status = 'approved' WHERE username = $1`, [ADMIN_USERNAME]);
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT) || 3000 });

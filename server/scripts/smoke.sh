@@ -4,20 +4,26 @@
 set -euo pipefail
 BASE=${1:?서버 주소}
 case "$BASE" in *:8443*) echo "운영 서버에는 실행하지 않습니다"; exit 1;; esac
-U="smoke_$RANDOM$RANDOM"; PW="smoke-pass-$RANDOM$RANDOM"
+# 실험실은 99로 시작하는 가짜 학번만 자동 승인한다(AUTO_APPROVE_PREFIX).
+U="99$(printf %08d $(( (RANDOM * 32768 + RANDOM) % 100000000 )))"; PW="smoke-pass-$RANDOM$RANDOM"
 j() { curl -sS -m 10 -H 'content-type: application/json' "$@"; }
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1: $2"; exit 1; }
 
 r=$(j "$BASE/health"); echo "$r" | grep -q '"ok":true' && pass health || fail health "$r"
 
+r=$(j -X POST "$BASE/auth/signup" -d "{\"username\":\"abc_x\",\"password\":\"$PW\",\"displayName\":\"테스트\"}")
+echo "$r" | grep -q bad_username && pass "학번이 아닌 아이디 거부" || fail "학번 검사" "$r"
 r=$(j -X POST "$BASE/auth/signup" -d "{\"username\":\"$U\",\"password\":\"$PW\"}")
+echo "$r" | grep -q bad_name && pass "이름 없는 가입 거부" || fail "이름 검사" "$r"
+
+r=$(j -X POST "$BASE/auth/signup" -d "{\"username\":\"$U\",\"password\":\"$PW\",\"displayName\":\"스모크\"}")
 status=$(echo "$r" | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p'); echo "  signup status=$status"
 
 r=$(j -X POST "$BASE/auth/login" -d "{\"username\":\"$U\",\"password\":\"$PW\",\"deviceName\":\"smoke\"}")
 if [ "$status" != approved ]; then
   echo "$r" | grep -q not_approved && pass "승인 전 로그인 거부" || fail "승인 전 거부" "$r"
-  echo "  (첫 가입자가 아니라 승인 대기 상태 — 동기화 검사는 운영진 승인 후 가능)"; exit 0
+  echo "  (승인 대기 상태 — 동기화 검사는 운영진 승인 후 가능)"; exit 0
 fi
 T=$(echo "$r" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p'); [ -n "$T" ] && pass login || fail login "$r"
 A=(-H "authorization: Bearer $T")

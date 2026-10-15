@@ -14,7 +14,7 @@ const URL = process.argv[2] || 'http://100.96.247.43:8444';
 if (/:8443\b/.test(URL)) { console.error('운영 서버에는 실행하지 않습니다.'); process.exit(1); }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'studeck-server-sync-'));
-const username = 'test_' + crypto.randomBytes(5).toString('hex');
+const username = '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0'); // 실험실 자동 승인용 가짜 학번
 const password = crypto.randomBytes(12).toString('base64url');
 
 async function device(name) {
@@ -42,9 +42,9 @@ const todo = (id, text, extra = {}) => ({ id, text, done: false, ...extra });
 const PASS = m => console.log('PASS: ' + m);
 
 (async () => {
-  const signup = await serverCall(URL, 'POST', '/auth/signup', { username, password });
+  const signup = await serverCall(URL, 'POST', '/auth/signup', { username, password, displayName: '테스트' });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
-  assert.equal(signup.json.user.status, 'approved', '실험실 서버는 AUTO_APPROVE여야 합니다');
+  assert.equal(signup.json.user.status, 'approved', '실험실 서버는 99 학번을 자동 승인해야 합니다');
 
   const A = await device('A'), B = await device('B');
 
@@ -107,8 +107,8 @@ const PASS = m => console.log('PASS: ' + m);
   PASS('연결 실패 시 변경 보관 → 재연결 후 다른 기기에 전달');
 
   // 7. 다른 계정은 내 데이터를 못 본다
-  const other = 'test_' + crypto.randomBytes(5).toString('hex');
-  await serverCall(URL, 'POST', '/auth/signup', { username: other, password });
+  const other = '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0');
+  await serverCall(URL, 'POST', '/auth/signup', { username: other, password, displayName: '다른 사람' });
   const ol = await serverCall(URL, 'POST', '/auth/login', { username: other, password, deviceName: 'X' });
   const res = await fetch(URL + '/sync?since=0', { headers: { authorization: 'Bearer ' + ol.json.token } }).then(x => x.json());
   assert.equal(res.changes.length, 0);
