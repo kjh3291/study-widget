@@ -46,6 +46,30 @@ CREATE TABLE IF NOT EXISTS items_history (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS items_history_item ON items_history (user_id, kind, id, recorded_at);
+-- 개인 파일(보조자료·과제): 현재 파일 1행 + 이전 버전들. 내용은 디스크에 sha256 이름으로 보관(같은 내용은 1번만).
+CREATE SEQUENCE IF NOT EXISTS file_rev;
+CREATE TABLE IF NOT EXISTS files (
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  path        TEXT NOT NULL,            -- '과목/보조자료/파일.pdf'
+  sha256      TEXT NOT NULL,
+  size        BIGINT NOT NULL,
+  updated_at  BIGINT NOT NULL,          -- 수정 시각(ms), 나중 것이 현재 파일
+  deleted     BOOLEAN NOT NULL DEFAULT false,
+  deleted_at  TIMESTAMPTZ,              -- 휴지통에 들어간 시각(30일 뒤 영구 삭제)
+  rev         BIGINT NOT NULL,
+  PRIMARY KEY (user_id, path)
+);
+CREATE INDEX IF NOT EXISTS files_user_rev ON files (user_id, rev);
+CREATE TABLE IF NOT EXISTS file_versions (
+  vid         SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  path        TEXT NOT NULL,
+  sha256      TEXT NOT NULL,
+  size        BIGINT NOT NULL,
+  updated_at  BIGINT NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS file_versions_path ON file_versions (user_id, path, recorded_at);
 `;
 
 export async function migrate() {

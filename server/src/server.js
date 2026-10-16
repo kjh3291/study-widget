@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import { pool, migrate } from './db.js';
 import { hashPassword, verifyPassword, issueToken, authenticate, requireAdmin } from './auth.js';
 import { clientIp, limits, tooMany, securityHeaders } from './guard.js';
+import { registerFiles, purgeFiles } from './files.js';
 
 const CHANNEL = process.env.STUDECK_CHANNEL || 'lab';
 const KINDS = new Set(['todo', 'event', 'course', 'setting', 'focus']);
@@ -15,6 +16,7 @@ const autoApproved = (name) => !!AUTO_APPROVE_PREFIX && name.startsWith(AUTO_APP
 
 const app = Fastify({ logger: { level: 'info' }, bodyLimit: 5 * 1024 * 1024 });
 securityHeaders(app);
+registerFiles(app);
 
 const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name, role: u.role, status: u.status, createdAt: u.created_at });
 
@@ -162,6 +164,8 @@ app.post('/sync', { preHandler: authenticate }, async (req, reply) => {
 await migrate();
 const pruneHistory = () => pool.query(`DELETE FROM items_history WHERE recorded_at < now() - interval '30 days'`).catch(e => app.log.error(e));
 pruneHistory(); setInterval(pruneHistory, 24 * 60 * 60 * 1000).unref();
+const purge = () => purgeFiles(app.log).catch(e => app.log.error(e));
+purge(); setInterval(purge, 24 * 60 * 60 * 1000).unref();
 // 이미 가입된 계정도 ADMIN_USERNAME이면 운영진으로 올린다.
 if (ADMIN_USERNAME) await pool.query(`UPDATE users SET role = 'admin', status = 'approved' WHERE username = $1`, [ADMIN_USERNAME]);
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT) || 3000 });
