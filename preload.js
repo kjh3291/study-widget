@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('api', {
   serverLogout: () => ipcRenderer.invoke('server-logout'),
   importProdData: () => ipcRenderer.invoke('import-prod-data'),
   serverRefreshMe: () => ipcRenderer.invoke('server-refresh-me'),
+  filesOverview: () => ipcRenderer.invoke('files-overview'),
+  filesVersions: (p) => ipcRenderer.invoke('files-versions', p),
+  filesRestore: (p) => ipcRenderer.invoke('files-restore', p),
+  filesRevert: (p, vid) => ipcRenderer.invoke('files-revert', { path: p, vid }),
   adminUsers: () => ipcRenderer.invoke('admin-users'),
   adminAction: (id, action) => ipcRenderer.invoke('admin-action', { id, action }),
 });

@@ -12,6 +12,7 @@ const { preserveMaterial, archiveGitChanges } = require('./material-history');
 const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
 const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
 const { createServerStore, serverCall } = require('./server-sync');
+const { createFileSync, scanLocal } = require('./file-sync');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -487,6 +488,8 @@ const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json')
 const notifySync = status => { if (win && !win.isDestroyed()) win.webContents.send('sync-status', status); };
 // 실험실 앱: 같은 병합 엔진에 전송부만 서버로 바꾼다(자료 파일은 아직 서버 동기화 대상 아님).
 const serverStore = IS_LAB ? createServerStore({ file: path.join(app.getPath('userData'), 'server-mirror.json') }) : null;
+// 실험실: 보조자료·과제 파일을 서버 개인 공간과 맞춘다(서버에서 지워진 파일은 기기 휴지통으로).
+const fileSync = IS_LAB ? createFileSync({ root: STUDECK_DIR, stateFile: path.join(app.getPath('userData'), 'file-sync.json'), trash: p => shell.trashItem(p) }) : null;
 const syncService = createSyncService(IS_LAB ? {
   load: loadConfig, save: saveConfig,
   read: serverStore.read, write: serverStore.write, transport: serverStore.transport,
@@ -561,7 +564,16 @@ ipcMain.handle('import-prod-data', () => {
     const prod = JSON.parse(fs.readFileSync(prodFile, 'utf8'));
     const patch = sharedSnapshot(prod);
     saveConfig(trackChanges(loadConfig(), patch));
-    return { ok: true, todos: (patch.todos || []).length, events: (patch.events || []).length, courses: (patch.timetableFull || []).length };
+    let copied = 0;
+    const prodDir = path.join(app.getPath('desktop'), 'Studeck');
+    for (const [rel, f] of Object.entries(scanLocal(prodDir, 50 * 1024 * 1024).files)) {
+      const dest = path.join(STUDECK_DIR(), ...rel.split('/'));
+      if (fs.existsSync(dest)) continue;
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(f.abs, dest); fs.utimesSync(dest, new Date(f.mtimeMs), new Date(f.mtimeMs));
+      copied++;
+    }
+    return { ok: true, todos: (patch.todos || []).length, events: (patch.events || []).length, courses: (patch.timetableFull || []).length, files: copied };
   } catch (e) { return { ok: false, error: '운영 앱 데이터를 읽지 못했습니다: ' + e.message }; }
 });
 ipcMain.handle('server-logout', () => serverTry(async () => {
@@ -579,7 +591,34 @@ ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
   const c = loadConfig(); c.sync = { repo, token, enabled: true }; saveConfig(c);
   return { ok: true };
 });
-ipcMain.handle('git-sync', (_e, resolution) => syncService.run(resolution)); // 실험실은 서버, 운영은 GitHub
+// 실험실은 서버(데이터 → 파일 순서), 운영은 GitHub
+ipcMain.handle('git-sync', async (_e, resolution) => {
+  const result = await syncService.run(resolution);
+  if (!IS_LAB || !result?.ok) return result;
+  const conn = loadConfig().sync || {};
+  if (!conn.enabled || !conn.token) return result;
+  const files = await fileSync.run(conn);
+  return { ...result, files };
+});
+// 실험실 서버 파일: 사용량·휴지통·복구·이전 버전·되돌리기(복구·되돌린 내용은 다음 동기화 때 기기에 받아진다)
+async function fileApi(method, url, body) {
+  const s = loadConfig().sync || {};
+  if (!IS_LAB || !s.token) throw new Error('로그인이 필요합니다.');
+  const res = await fetch(s.url + url, { method, headers: { authorization: 'Bearer ' + s.token, ...(body ? { 'content-type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error === 'not_found' ? '서버에 해당 파일이 없습니다.' : '파일 서버 오류(' + res.status + ')');
+  return json;
+}
+ipcMain.handle('files-overview', () => serverTry(async () => {
+  const [usage, trash] = await Promise.all([fileApi('GET', '/files/usage'), fileApi('GET', '/files/trash')]);
+  const current = Object.entries(fileSync.remoteFiles()).filter(([, f]) => !f.deleted).map(([p, f]) => ({ path: p, size: f.size, updatedAt: f.updatedAt }))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return { ok: true, usage, trash: trash.trash, current };
+}));
+ipcMain.handle('files-versions', (_e, p) => serverTry(async () => ({ ok: true, ...(await fileApi('GET', '/files/versions?path=' + encodeURIComponent(p))) })));
+ipcMain.handle('files-restore', (_e, p) => serverTry(async () => ({ ok: true, ...(await fileApi('POST', '/files/restore', { path: p })) })));
+ipcMain.handle('files-revert', (_e, { path: p, vid } = {}) => serverTry(async () => ({ ok: true, ...(await fileApi('POST', '/files/revert', { path: p, vid })) })));
 ipcMain.handle('git-sync-status', () => {
   const s = (loadConfig().sync) || {};
   if (IS_LAB) return { ...syncService.status(), enabled: !!s.enabled, mode: 'server', server: PROFILE.serverUrl, username: s.username || '', displayName: s.displayName || '', role: s.role || 'member', hasToken: !!s.token };

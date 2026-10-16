@@ -356,6 +356,7 @@ function initSync(resolution) {
       }
     }
     showSyncStatus({ ...result.status, phase: result.pending ? 'pending' : 'synced' });
+    reportFileSync(result.files);
     if (result.kept) showToast(`다른 기기에서도 고친 항목 ${result.kept}개는 이 기기의 최신 수정으로 맞췄어요 (이전 값은 서버 기록에 보관)`);
     if (result.pending) scheduleGitSync();
     return result;
@@ -1805,6 +1806,7 @@ async function refreshGitStatus() {
       state.serverRole = s?.role || 'member';
       $('admin-box').hidden = !(s?.enabled && s.role === 'admin');
       if (!$('admin-box').hidden) refreshAdminList();
+      if (s?.enabled) refreshFileUsage();
     }
     if (s && s.repo && $('inp-git-repo') && !$('inp-git-repo').value) $('inp-git-repo').value = s.repo;
     state.syncEnabled = !!s?.enabled;
@@ -1920,7 +1922,7 @@ if (IS_LAB) {
     if (!confirm('운영 앱(Studeck)의 할 일·일정·시간표·설정을 이 실험실 앱으로 복사합니다.\n운영 앱의 데이터는 바뀌지 않습니다. 계속할까요?')) return;
     const r = await window.api.importProdData();
     if (!r?.ok) return msg(r?.error || '가져오기 실패');
-    alert(`가져왔습니다: 할 일 ${r.todos}개, 일정 ${r.events}개, 시간표 ${r.courses}과목.\n화면을 새로 고친 뒤 서버로 올립니다.`);
+    alert(`가져왔습니다: 할 일 ${r.todos}개, 일정 ${r.events}개, 시간표 ${r.courses}과목, 보조자료·과제 파일 ${r.files}개.\n화면을 새로 고친 뒤 서버로 올립니다.`);
     location.reload();
   };
   $('btn-admin-refresh').onclick = () => refreshAdminList();
@@ -1937,6 +1939,75 @@ if (IS_LAB) {
   // 운영진: 5분마다 새 가입 신청 확인
   setInterval(() => { if (state.syncEnabled && !_quitting) refreshAdminList(true); }, 5 * 60 * 1000);
 }
+// 실험실: 서버 파일 사용량·휴지통·이전 버전
+const fmtSize = n => n >= 1024 * 1024 * 1024 ? (n / 1024 / 1024 / 1024).toFixed(2) + 'GB' : n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
+async function refreshFileUsage() {
+  if (!IS_LAB || !state.syncEnabled || !$('srv-usage')) return;
+  const r = await window.api.filesOverview();
+  $('srv-usage').textContent = r?.ok ? `보조자료·과제 파일 ${r.current.length}개 · ${fmtSize(r.usage.used)} / ${fmtSize(r.usage.limit)}` : (r?.error || '파일 정보를 불러오지 못했습니다');
+  return r;
+}
+// 동기화 결과 중 사용자가 알아야 할 것만 알림
+function reportFileSync(f) {
+  if (!IS_LAB || !f) return;
+  if (!f.ok) return showToast('파일 동기화 실패: ' + f.error);
+  if (f.quotaFull) showToast('서버 저장 공간(2GB)이 가득 차서 일부 파일을 올리지 못했어요');
+  else if (f.kept) showToast(`다른 기기에서도 고친 파일 ${f.kept}개는 최신 수정으로 맞췄어요 (이전 수정은 '이전 버전'에 보관)`);
+  else if (f.downloaded + f.trashedLocal > 0) showToast(`다른 기기의 파일 변경 ${f.downloaded + f.trashedLocal}건을 받았어요` + (f.trashedLocal ? ' (지워진 파일은 휴지통으로)' : ''));
+  if (f.uploaded + f.downloaded + f.removedRemote + f.trashedLocal) refreshFileUsage();
+}
+async function openFilesPanel() {
+  $('files-panel')?.remove();
+  const ov = document.createElement('div'); ov.id = 'files-panel'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '서버 파일');
+  ov.innerHTML = '<h2>서버 파일 · 휴지통 · 이전 버전</h2><div id="fp-body">불러오는 중…</div><button class="btn primary" id="fp-close">닫기</button>';
+  $('app').appendChild(ov);
+  ov.querySelector('#fp-close').onclick = () => ov.remove();
+  ov.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.isComposing) ov.remove(); });
+  const render = async () => {
+    const r = await refreshFileUsage();
+    const body = ov.querySelector('#fp-body');
+    if (!r?.ok) { body.textContent = r?.error || '불러오기 실패'; return; }
+    const when = t => new Date(t).toLocaleString();
+    body.innerHTML = `<div style="color:var(--muted)">사용량 ${fmtSize(r.usage.used)} / ${fmtSize(r.usage.limit)} · 파일 1개 최대 ${fmtSize(r.usage.fileMax)} · 휴지통과 이전 버전은 30일 보관</div>
+      <h3>휴지통 (${r.trash.length})</h3>
+      ${r.trash.length ? r.trash.map(t => `<div class="frow"><div class="top"><div class="name">${escapeHtml(t.path)}<small>${when(t.deletedAt)} 삭제 · ${fmtSize(t.size)}</small></div><button class="btn mini" data-restore="${escapeHtml(t.path)}">복구</button></div></div>`).join('')
+        : '<div style="color:var(--muted)">비어 있어요.</div>'}
+      <h3>서버에 있는 파일 (${r.current.length})</h3>
+      ${r.current.map(f => `<div class="frow" data-path="${escapeHtml(f.path)}"><div class="top"><div class="name">${escapeHtml(f.path)}<small>${when(f.updatedAt)} 수정 · ${fmtSize(f.size)}</small></div><button class="btn mini" data-versions>이전 버전</button></div></div>`).join('') || '<div style="color:var(--muted)">아직 없어요.</div>'}`;
+  };
+  ov.addEventListener('click', async e => {
+    const restore = e.target.closest('[data-restore]');
+    if (restore) {
+      restore.disabled = true;
+      const r = await window.api.filesRestore(restore.dataset.restore);
+      if (!r?.ok) { restore.disabled = false; return showToast(r?.error || '복구 실패'); }
+      showToast('복구했어요. 이 기기 폴더에도 다시 받아요'); await initSync(); return render();
+    }
+    const vbtn = e.target.closest('[data-versions]');
+    if (vbtn) {
+      const row = vbtn.closest('.frow'), p = row.dataset.path;
+      row.querySelectorAll('.vrow').forEach(x => x.remove());
+      vbtn.disabled = true;
+      const r = await window.api.filesVersions(p);
+      vbtn.disabled = false;
+      if (!r?.ok) return showToast(r?.error || '불러오기 실패');
+      if (!r.versions.length) return row.insertAdjacentHTML('beforeend', '<div class="vrow"><span>이전 버전이 없어요.</span></div>');
+      row.insertAdjacentHTML('beforeend', r.versions.map(v => `<div class="vrow"><span>${new Date(v.updatedAt).toLocaleString()} 수정본 · ${fmtSize(v.size)}</span><button class="btn mini" data-revert="${v.vid}">이걸로 되돌리기</button></div>`).join(''));
+      return;
+    }
+    const rv = e.target.closest('[data-revert]');
+    if (rv) {
+      const p = rv.closest('.frow').dataset.path;
+      if (!confirm(`'${p}'을(를) 이 버전으로 되돌릴까요?\n지금 파일은 이전 버전으로 남습니다.`)) return;
+      rv.disabled = true;
+      const r = await window.api.filesRevert(p, Number(rv.dataset.revert));
+      if (!r?.ok) { rv.disabled = false; return showToast(r?.error || '되돌리기 실패'); }
+      showToast('되돌렸어요. 이 기기 폴더에도 반영해요'); await initSync(); return render();
+    }
+  });
+  render();
+}
+if (IS_LAB) $('btn-srv-files').onclick = openFilesPanel;
 // 파일 변경 후 자동 동기화(디바운스) — 연결돼 있을 때만
 let _gitSyncT = null;
 function scheduleGitSync() {

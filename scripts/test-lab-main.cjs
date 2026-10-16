@@ -6,6 +6,11 @@ process.env.STUDECK_CHANNEL = 'lab';
 process.env.STUDECK_KEEP_USERDATA = '1';
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'studeck-lab-main-'));
 const desktop = path.join(temp, 'Desktop'); fs.mkdirSync(desktop);
+// 실험실 폴더의 보조자료 파일(로그인 후 서버로 올라가야 함)과 수업자료(올라가면 안 됨)
+fs.mkdirSync(path.join(desktop, 'Studeck-Lab', '테스트과목', '보조자료'), { recursive: true });
+fs.mkdirSync(path.join(desktop, 'Studeck-Lab', '테스트과목', '수업자료'), { recursive: true });
+fs.writeFileSync(path.join(desktop, 'Studeck-Lab', '테스트과목', '보조자료', '정리노트.txt'), '실험실 파일');
+fs.writeFileSync(path.join(desktop, 'Studeck-Lab', '테스트과목', '수업자료', '강의.pdf'), 'LMS 자료');
 app.setPath('userData', temp); app.setPath('desktop', desktop);
 fs.writeFileSync(path.join(temp, 'config.json'), JSON.stringify({ lmsAuto: false, autoDownload: false, rolloverOverdue: false, assignFix1: true, materialsFix2: true }));
 const { serverCall } = require('../server-sync');
@@ -47,6 +52,7 @@ app.on('browser-window-created', (_e, win) => {
         submit('gate-login');
         await until(() => $('auth-gate').hidden, '로그인 후 시작 화면 닫힘');
         await until(() => _syncStatus.phase === 'synced', '동기화 완료');
+        await until(() => !_syncInFlight, '파일 동기화 완료');
         const r = { ok: true };
         const cfg = await window.api.loadConfig();
         if (Object.keys(cfg.pendingShared || {}).length) throw new Error('미전송 남음: ' + Object.keys(cfg.pendingShared));
@@ -66,6 +72,9 @@ app.on('browser-window-created', (_e, win) => {
       const other = await serverCall(URL, 'POST', '/auth/login', { username: user, password: pw, deviceName: 'checker' });
       const pulled = await fetch(URL + '/sync?since=0', { headers: { authorization: 'Bearer ' + other.json.token } }).then(x => x.json());
       if (!pulled.changes.some(c => c.kind === 'todo' && c.id === 'lab-t1' && c.data.v.text === '실험실 앱에서 추가')) throw new Error('서버에 할 일이 없음');
+      const files = await fetch(URL + '/files?since=0', { headers: { authorization: 'Bearer ' + other.json.token } }).then(x => x.json());
+      const paths = files.files.map(f => f.path);
+      if (!paths.includes('테스트과목/보조자료/정리노트.txt') || paths.some(p => p.includes('수업자료'))) throw new Error('파일 동기화 오류: ' + JSON.stringify(paths));
       if (result.phase !== 'synced' || result.user !== user) throw new Error('상태 오류: ' + JSON.stringify(result));
       verified = true;
       app.quit();
@@ -75,7 +84,7 @@ app.on('browser-window-created', (_e, win) => {
 app.on('will-quit', () => {
   clearTimeout(timeout);
   if (!verified) process.exitCode = 1;
-  else console.log('PASS: 실험실 시작 화면(에타 없음) → 학번·비밀번호 확인 검사 → 가입 신청 → 로그인 → 할 일 서버 업로드 → 다른 기기에서 확인, 비밀번호 미저장, GitHub 차단, 로그아웃 시 시작 화면 복귀');
+  else console.log('PASS: 실험실 시작 화면(에타 없음) → 학번·비밀번호 확인 검사 → 가입 신청 → 로그인 → 할 일·보조자료 파일 서버 업로드(수업자료 제외) → 다른 기기에서 확인, 비밀번호 미저장, GitHub 차단, 로그아웃 시 시작 화면 복귀');
 });
 app.on('quit', () => { try { fs.rmSync(temp, { recursive: true, force: true }); } catch { /* temp cleanup */ } });
 require('../main');

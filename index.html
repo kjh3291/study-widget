@@ -596,6 +596,16 @@
   #gate-msg.err { color: #ff7b7b; }
   #gate-msg.ok { color: var(--ok, #57d6a0); }
   #auth-gate .hint { font-size: 10.5px; color: var(--muted); line-height: 1.6; }
+  /* 서버 파일: 휴지통·이전 버전 */
+  #files-panel { position: absolute; inset: 0; z-index: 30; background: var(--bg); padding: 18px; overflow: auto; display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
+  #files-panel h2 { font-size: 15px; }
+  #files-panel h3 { font-size: 12.5px; margin-top: 6px; }
+  #files-panel .frow { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  #files-panel .frow .top { display: flex; align-items: center; gap: 8px; }
+  #files-panel .frow .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  #files-panel .frow small { color: var(--muted); display: block; font-size: 10.5px; }
+  #files-panel .vrow { display: flex; align-items: center; gap: 8px; padding-left: 10px; font-size: 11px; color: var(--muted); }
+  #files-panel .vrow span { flex: 1; }
   #settings .row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
   #settings .btns { display: flex; gap: 8px; margin-top: auto; }
   #settings .btns button { flex: 1; }
@@ -758,6 +768,10 @@
           <button class="btn mini" id="btn-srv-logout" style="flex:1;">로그아웃</button>
         </div>
         <button class="btn mini" id="btn-srv-import">운영 앱 데이터 가져오기</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span id="srv-usage" style="font-size:11px;color:var(--muted);">보조자료·과제 파일: 확인 중…</span>
+          <button class="btn mini" id="btn-srv-files">휴지통·이전 버전</button>
+        </div>
       </div>
       <div id="admin-box" hidden style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--line);padding-top:9px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
