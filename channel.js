@@ -11,6 +11,9 @@ function readChannel() {
   catch { return 'prod'; }
 }
 
+// GitHub OAuth App "Cosmic_Studeck"(기기 인증) Client ID — 공개 값(비밀값 아님). 운영·실험실 공용.
+const GITHUB_CLIENT_ID = 'Ov23lilQstQXISBru9XL';
+
 const CHANNEL = readChannel() === 'lab' ? 'lab' : 'prod';
 const IS_LAB = CHANNEL === 'lab';
 
@@ -20,15 +23,14 @@ const PROFILE = IS_LAB ? {
   appUserModelId: 'cbnu.study.widget.lab',
   icon: 'icon-dev.ico',
   serverUrl: 'http://100.96.247.43:8444',
-  // GitHub OAuth App(기기 인증) Client ID: 공개해도 되는 값. 비어 있으면 GitHub 기능이 꺼진다.
-  githubClientId: process.env.STUDECK_GITHUB_CLIENT_ID || '',
+  githubClientId: process.env.STUDECK_GITHUB_CLIENT_ID || GITHUB_CLIENT_ID,
 } : {
   userDataName: null, // 기존 운영 경로(everytime-widget) 유지
   studeckFolder: 'Studeck',
   appUserModelId: 'cbnu.study.widget',
   icon: 'icon.ico',
   serverUrl: 'http://100.96.247.43:8443',
-  githubClientId: process.env.STUDECK_GITHUB_CLIENT_ID || '',
+  githubClientId: process.env.STUDECK_GITHUB_CLIENT_ID || GITHUB_CLIENT_ID,
 };
 
 // 테스트는 임시 프로필을 먼저 지정하고 STUDECK_KEEP_USERDATA=1로 실제 실험실 프로필을 건드리지 않는다.
