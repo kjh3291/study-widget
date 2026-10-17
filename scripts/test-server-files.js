@@ -12,7 +12,7 @@ const PASS = m => console.log('PASS: ' + m);
 
 async function account() {
   const u = id();
-  await serverCall(URL, 'POST', '/auth/signup', { username: u, password: pw, displayName: '파일시험' });
+  await serverCall(URL, 'POST', '/auth/signup', { username: u, password: pw, displayName: '파일시험', consent: '2026-10-v1' });
   const l = await serverCall(URL, 'POST', '/auth/login', { username: u, password: pw });
   assert.equal(l.status, 200);
   const auth = { authorization: 'Bearer ' + l.json.token };

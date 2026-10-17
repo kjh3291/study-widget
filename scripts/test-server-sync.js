@@ -42,7 +42,7 @@ const todo = (id, text, extra = {}) => ({ id, text, done: false, ...extra });
 const PASS = m => console.log('PASS: ' + m);
 
 (async () => {
-  const signup = await serverCall(URL, 'POST', '/auth/signup', { username, password, displayName: '테스트' });
+  const signup = await serverCall(URL, 'POST', '/auth/signup', { username, password, displayName: '테스트', consent: '2026-10-v1' });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
   assert.equal(signup.json.user.status, 'approved', '실험실 서버는 99 학번을 자동 승인해야 합니다');
 
@@ -106,7 +106,7 @@ const PASS = m => console.log('PASS: ' + m);
 
   // 7. 다른 계정은 내 데이터를 못 본다
   const other = '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0');
-  await serverCall(URL, 'POST', '/auth/signup', { username: other, password, displayName: '다른 사람' });
+  await serverCall(URL, 'POST', '/auth/signup', { username: other, password, displayName: '다른 사람', consent: '2026-10-v1' });
   const ol = await serverCall(URL, 'POST', '/auth/login', { username: other, password, deviceName: 'X' });
   const res = await fetch(URL + '/sync?since=0', { headers: { authorization: 'Bearer ' + ol.json.token } }).then(x => x.json());
   assert.equal(res.changes.length, 0);

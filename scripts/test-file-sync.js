@@ -30,7 +30,7 @@ async function device(name) {
 }
 
 (async () => {
-  await serverCall(URL, 'POST', '/auth/signup', { username: user, password, displayName: '파일동기화' });
+  await serverCall(URL, 'POST', '/auth/signup', { username: user, password, displayName: '파일동기화', consent: '2026-10-v1' });
   const A = await device('A'), B = await device('B');
   const NOTE = '자료구조/보조자료/정리노트.pdf', HW = '자료구조/과제/HW1.docx', DEEP = '선형대수학/보조자료/1단원/풀이.txt';
   A.write(NOTE, '노트 v1'); A.write(HW, '과제 v1'); A.write(DEEP, '풀이');

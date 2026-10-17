@@ -38,14 +38,18 @@ export async function authenticate(req, reply) {
      WHERE d.token_hash = $1 AND NOT d.revoked`, [sha256(m[1])]);
   const row = rows[0];
   if (!row) return reply.code(401).send({ error: 'unauthorized' });
-  if (row.status !== 'approved') return reply.code(403).send({ error: 'not_approved', status: row.status });
+  if (row.status !== 'approved') return reply.code(403).send({ error: statusError(row.status), status: row.status });
   await pool.query('UPDATE devices SET last_seen = now() WHERE id = $1', [row.device_id]);
-  req.user = { id: row.id, username: row.username, displayName: row.display_name, role: row.role };
+  req.user = { id: row.id, username: row.username, displayName: row.display_name, role: row.role, mustChangePassword: row.must_change_pw };
   req.deviceId = row.device_id;
 }
+
+// 역할 등급: 최고 관리자(owner) > 운영진(admin) > 회원(member)
+export const RANK = { owner: 3, admin: 2, member: 1 };
+export const statusError = s => (s === 'deleted' ? 'deleted' : s === 'suspended' ? 'suspended' : 'not_approved');
 
 export async function requireAdmin(req, reply) {
   await authenticate(req, reply);
   if (reply.sent) return;
-  if (req.user.role !== 'admin') return reply.code(403).send({ error: 'admin_only' });
+  if ((RANK[req.user.role] || 0) < RANK.admin) return reply.code(403).send({ error: 'admin_only' });
 }

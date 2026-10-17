@@ -4,6 +4,8 @@ import { pool, migrate } from './db.js';
 import { hashPassword, verifyPassword, issueToken, authenticate, requireAdmin } from './auth.js';
 import { clientIp, limits, tooMany, securityHeaders } from './guard.js';
 import { registerFiles, purgeFiles } from './files.js';
+import { registerAccounts, purgeAccounts, CONSENT_VERSION, publicUser } from './accounts.js';
+import { statusError } from './auth.js';
 
 const CHANNEL = process.env.STUDECK_CHANNEL || 'lab';
 const KINDS = new Set(['todo', 'event', 'course', 'setting', 'focus']);
@@ -17,8 +19,8 @@ const autoApproved = (name) => !!AUTO_APPROVE_PREFIX && name.startsWith(AUTO_APP
 const app = Fastify({ logger: { level: 'info' }, bodyLimit: 5 * 1024 * 1024 });
 securityHeaders(app);
 registerFiles(app);
+registerAccounts(app);
 
-const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name, role: u.role, status: u.status, createdAt: u.created_at });
 
 app.get('/health', async () => {
   await pool.query('SELECT 1');
@@ -39,11 +41,12 @@ app.post('/auth/signup', async (req, reply) => {
   if (!admin && !USERNAME_RE.test(name)) return reply.code(400).send({ error: 'bad_username', hint: '학번(숫자 8~10자리)' });
   if (realName.length < 2 || realName.length > 20) return reply.code(400).send({ error: 'bad_name', hint: '이름 2~20자' });
   if (typeof password !== 'string' || password.length < 8 || password.length > 128) return reply.code(400).send({ error: 'weak_password', hint: '8자 이상' });
+  if (!admin && req.body?.consent !== CONSENT_VERSION) return reply.code(400).send({ error: 'consent_required', version: CONSENT_VERSION });
   const { rows } = await pool.query(
-    `INSERT INTO users (username, pw_hash, display_name, role, status) VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO users (username, pw_hash, display_name, role, status, consent_version, consent_at) VALUES ($1, $2, $3, $4, $5, $6, now())
      ON CONFLICT (username) DO NOTHING RETURNING *`,
     [name, await hashPassword(password), realName,
-      admin ? 'admin' : 'member', admin || autoApproved(name) ? 'approved' : 'pending']);
+      admin ? 'owner' : 'member', admin || autoApproved(name) ? 'approved' : 'pending', CONSENT_VERSION]);
   if (!rows[0]) return reply.code(409).send({ error: 'username_taken' });
   return reply.code(201).send({ user: publicUser(rows[0]) });
 });
@@ -66,7 +69,7 @@ app.post('/auth/login', async (req, reply) => {
     return reply.code(401).send({ error: 'bad_credentials' });
   }
   limits.loginFail.reset(name);
-  if (u.status !== 'approved') return reply.code(403).send({ error: 'not_approved', status: u.status });
+  if (u.status !== 'approved') return reply.code(403).send({ error: statusError(u.status), status: u.status });
   return { token: await issueToken(u.id, deviceName), user: publicUser(u) };
 });
 
@@ -75,32 +78,6 @@ app.post('/auth/logout', { preHandler: authenticate }, async (req) => {
   return { ok: true };
 });
 
-app.get('/me', { preHandler: authenticate }, async (req) => ({ user: req.user }));
-
-// 운영진: 가입자 목록·승인·정지
-app.get('/admin/users', { preHandler: requireAdmin }, async () => {
-  const { rows } = await pool.query('SELECT * FROM users ORDER BY created_at');
-  return { users: rows.map(publicUser) };
-});
-
-// 거절: 승인 대기 중인 신청만 삭제한다(다시 신청할 수 있게).
-app.post('/admin/users/:id/reject', { preHandler: requireAdmin }, async (req, reply) => {
-  const { rows } = await pool.query(`DELETE FROM users WHERE id = $1 AND status = 'pending' RETURNING *`, [Number(req.params.id)]);
-  if (!rows[0]) return reply.code(404).send({ error: 'not_found' });
-  req.log.info({ admin: req.user.username, action: 'reject', target: rows[0].username }, 'admin action');
-  return { user: publicUser(rows[0]) };
-});
-
-for (const [action, status] of [['approve', 'approved'], ['suspend', 'suspended']]) {
-  app.post(`/admin/users/:id/${action}`, { preHandler: requireAdmin }, async (req, reply) => {
-    if (Number(req.params.id) === req.user.id) return reply.code(400).send({ error: 'self' });
-    const { rows } = await pool.query('UPDATE users SET status = $1 WHERE id = $2 RETURNING *', [status, Number(req.params.id)]);
-    if (!rows[0]) return reply.code(404).send({ error: 'not_found' });
-    if (status === 'suspended') await pool.query('UPDATE devices SET revoked = true WHERE user_id = $1', [rows[0].id]);
-    req.log.info({ admin: req.user.username, action, target: rows[0].username }, 'admin action');
-    return { user: publicUser(rows[0]) };
-  });
-}
 
 // 변경분 받기: since 이후 rev의 항목(삭제 포함)
 async function pull(userId, since) {
@@ -164,8 +141,8 @@ app.post('/sync', { preHandler: authenticate }, async (req, reply) => {
 await migrate();
 const pruneHistory = () => pool.query(`DELETE FROM items_history WHERE recorded_at < now() - interval '30 days'`).catch(e => app.log.error(e));
 pruneHistory(); setInterval(pruneHistory, 24 * 60 * 60 * 1000).unref();
-const purge = () => purgeFiles(app.log).catch(e => app.log.error(e));
+const purge = () => purgeAccounts(app.log).then(() => purgeFiles(app.log)).catch(e => app.log.error(e));
 purge(); setInterval(purge, 24 * 60 * 60 * 1000).unref();
 // 이미 가입된 계정도 ADMIN_USERNAME이면 운영진으로 올린다.
-if (ADMIN_USERNAME) await pool.query(`UPDATE users SET role = 'admin', status = 'approved' WHERE username = $1`, [ADMIN_USERNAME]);
+if (ADMIN_USERNAME) await pool.query(`UPDATE users SET role = 'owner', status = 'approved', deleted_at = NULL WHERE username = $1`, [ADMIN_USERNAME]);
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT) || 3000 });

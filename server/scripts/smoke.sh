@@ -16,8 +16,10 @@ r=$(j -X POST "$BASE/auth/signup" -d "{\"username\":\"abc_x\",\"password\":\"$PW
 echo "$r" | grep -q bad_username && pass "학번이 아닌 아이디 거부" || fail "학번 검사" "$r"
 r=$(j -X POST "$BASE/auth/signup" -d "{\"username\":\"$U\",\"password\":\"$PW\"}")
 echo "$r" | grep -q bad_name && pass "이름 없는 가입 거부" || fail "이름 검사" "$r"
-
 r=$(j -X POST "$BASE/auth/signup" -d "{\"username\":\"$U\",\"password\":\"$PW\",\"displayName\":\"스모크\"}")
+echo "$r" | grep -q consent_required && pass "동의 없는 가입 거부" || fail "동의 검사" "$r"
+
+r=$(j -X POST "$BASE/auth/signup" -d "{\"username\":\"$U\",\"password\":\"$PW\",\"displayName\":\"스모크\",\"consent\":\"2026-10-v1\"}")
 status=$(echo "$r" | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p'); echo "  signup status=$status"
 
 r=$(j -X POST "$BASE/auth/login" -d "{\"username\":\"$U\",\"password\":\"$PW\",\"deviceName\":\"smoke\"}")
@@ -41,7 +43,7 @@ r=$(j "${A[@]}" -X POST "$BASE/auth/logout" -d '{}'); r=$(j "${A[@]}" "$BASE/me"
 h=$(curl -sS -m 10 -D - -o /dev/null "$BASE/health"); echo "$h" | grep -qi '^x-content-type-options: nosniff' && echo "$h" | grep -qi '^x-frame-options: DENY' && pass "보안 헤더" || fail "보안 헤더" "$h"
 # 연속 실패 잠금: 별도 시험 계정으로 비밀번호 5번 틀리면 맞는 비밀번호도 잠시 거부
 L="99$(printf %08d $(( (RANDOM * 32768 + RANDOM) % 100000000 )))"
-j -X POST "$BASE/auth/signup" -d "{\"username\":\"$L\",\"password\":\"$PW\",\"displayName\":\"잠금시험\"}" >/dev/null
+j -X POST "$BASE/auth/signup" -d "{\"username\":\"$L\",\"password\":\"$PW\",\"displayName\":\"잠금시험\",\"consent\":\"2026-10-v1\"}" >/dev/null
 for _ in 1 2 3 4 5; do j -X POST "$BASE/auth/login" -d "{\"username\":\"$L\",\"password\":\"wrong-password\"}" >/dev/null; done
 r=$(j -X POST "$BASE/auth/login" -d "{\"username\":\"$L\",\"password\":\"$PW\"}")
 echo "$r" | grep -q '"locked"' && pass "비밀번호 5번 실패 → 일시 잠금" || fail "잠금" "$r"

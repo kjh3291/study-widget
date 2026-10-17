@@ -35,6 +35,14 @@ CREATE TABLE IF NOT EXISTS items (
   PRIMARY KEY (user_id, kind, id)
 );
 CREATE INDEX IF NOT EXISTS items_user_rev ON items (user_id, rev);
+-- 계정 확장: GitHub 연결·대표 메일, 가입 동의, 임시 비밀번호, 삭제(30일 보관)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS github_id BIGINT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS github_login TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_version TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_pw BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 -- 변경 기록: 덮어써진 값과 늦게 도착한 오래된 값을 30일 보관(되돌리기·확인용).
 CREATE TABLE IF NOT EXISTS items_history (
   user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
