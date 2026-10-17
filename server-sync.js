@@ -73,7 +73,7 @@ function createServerStore({ file, fetchImpl = fetch, now = Date.now }) {
     });
     const json = await res.json().catch(() => ({}));
     if (res.status === 401) throw new Error('서버 로그인이 만료됐습니다. 다시 로그인해 주세요.');
-    if (res.status === 403) throw new Error(json.error === 'not_approved' ? '운영진 승인 대기 중입니다.' : '서버 권한이 없습니다.');
+    if (res.status === 403) throw new Error({ not_approved: '운영진 승인 대기 중입니다.', suspended: '정지된 계정입니다. 서버 권한이 없습니다.', deleted: '삭제된 계정입니다. 서버 권한이 없습니다.' }[json.error] || '서버 권한이 없습니다.');
     if (!res.ok) throw new Error('서버 오류(' + res.status + '): ' + (json.error || json.message || ''));
     return json;
   }

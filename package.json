@@ -11,7 +11,7 @@
     "dist": "electron-builder",
     "pack": "electron-builder --dir",
     "dist:lab": "node scripts/build-lab.js",
-    "test:server": "node scripts/test-server-sync.js && node scripts/test-server-files.js && node scripts/test-file-sync.js && electron scripts/test-lab-main.cjs",
+    "test:server": "node scripts/test-server-sync.js && node scripts/test-server-files.js && node scripts/test-file-sync.js && node scripts/test-server-accounts.js && electron scripts/test-lab-main.cjs && electron scripts/test-lab-accounts.cjs && node scripts/lab-cleanup.js",
     "test": "node scripts/test-timetable-sync.js && node scripts/test-deleted-files.js && node scripts/test-sync-reliability.js && node scripts/test-git-sync.js && node scripts/test-shared-settings.js && node scripts/test-input-downloads.js && node scripts/test-syllabus.js",
     "test:ui": "electron scripts/test-sync-ui.cjs && electron scripts/test-sync-main.cjs && electron scripts/test-syllabus-ui.cjs"
   },

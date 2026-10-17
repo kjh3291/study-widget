@@ -42,6 +42,9 @@ app.on('browser-window-created', (_e, win) => {
         submit('gate-signup'); await wait(50);
         if (!$('gate-msg').textContent.includes('일치')) throw new Error('비밀번호 확인 검사 없음');
         $('gate-s-pw2').value = ${JSON.stringify(pw)};
+        submit('gate-signup'); await wait(50);
+        if (!$('gate-msg').textContent.includes('동의')) throw new Error('동의 검사 없음');
+        $('gate-s-consent').checked = true;
         submit('gate-signup');
         await until(() => !$('gate-login').hidden && $('gate-msg').className === 'ok', '가입 신청');
         if ($('gate-l-id').value !== ${JSON.stringify(user)}) throw new Error('로그인 칸에 학번 미입력');
@@ -84,7 +87,7 @@ app.on('browser-window-created', (_e, win) => {
 app.on('will-quit', () => {
   clearTimeout(timeout);
   if (!verified) process.exitCode = 1;
-  else console.log('PASS: 실험실 시작 화면(에타 없음) → 학번·비밀번호 확인 검사 → 가입 신청 → 로그인 → 할 일·보조자료 파일 서버 업로드(수업자료 제외) → 다른 기기에서 확인, 비밀번호 미저장, GitHub 차단, 로그아웃 시 시작 화면 복귀');
+  else console.log('PASS: 실험실 시작 화면(에타 없음) → 학번·비밀번호 확인·동의 검사 → 가입 신청 → 로그인 → 할 일·보조자료 파일 서버 업로드(수업자료 제외) → 다른 기기에서 확인, 비밀번호 미저장, GitHub 차단, 로그아웃 시 시작 화면 복귀');
 });
 app.on('quit', () => { try { fs.rmSync(temp, { recursive: true, force: true }); } catch { /* temp cleanup */ } });
 require('../main');

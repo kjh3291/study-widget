@@ -507,15 +507,21 @@ const syncService = createSyncService(IS_LAB ? {
 });
 // ---------- 실험실 서버 계정(가입·로그인·로그아웃). 비밀번호는 저장하지 않고 기기 토큰만 둔다. ----------
 const SERVER_ERRORS = { bad_username: '아이디는 학번(숫자 8~10자리)입니다.', bad_name: '이름을 2~20자로 입력해 주세요.', weak_password: '비밀번호는 8자 이상이어야 합니다.',
-  username_taken: '이미 있는 아이디입니다.', bad_credentials: '아이디 또는 비밀번호가 틀렸습니다.', not_approved: '운영진 승인 대기 중입니다.' };
+  username_taken: '이미 있는 아이디입니다.', bad_credentials: '아이디 또는 비밀번호가 틀렸습니다.', not_approved: '운영진 승인 대기 중입니다.',
+  suspended: '정지된 계정입니다. 운영진에게 문의하세요.', deleted: '삭제(탈퇴)된 계정입니다. 30일 안에는 운영진이 복구할 수 있습니다.',
+  consent_required: '이용 안내에 동의해야 가입할 수 있습니다.', locked: '비밀번호를 여러 번 틀려 잠시 잠겼습니다. 15분 뒤 다시 시도하세요.',
+  too_many: '시도가 너무 많습니다. 잠시 뒤 다시 시도하세요.', github_mismatch: '이 학번에 연결된 GitHub 계정과 다릅니다(또는 GitHub이 연결되지 않은 계정).',
+  github_failed: 'GitHub 정보를 확인하지 못했습니다.', github_taken: '이 GitHub 계정은 다른 회원에게 이미 연결돼 있습니다.',
+  owner_cannot_withdraw: '최고 관리자는 탈퇴할 수 없습니다.', outranked: '같거나 높은 등급의 회원은 바꿀 수 없습니다.', self: '자기 자신은 바꿀 수 없습니다.',
+  owner_only: '최고 관리자만 할 수 있습니다.', bad_state: '지금 상태에서는 할 수 없는 작업입니다.' };
 const serverError = (r, fallback) => SERVER_ERRORS[r.json.error] || r.json.message || fallback + ' (' + r.status + ')';
 async function serverTry(fn) {
   try { return await fn(); }
   catch (e) { return { ok: false, error: e.name === 'TimeoutError' || /fetch failed/.test(e.message) ? '서버에 연결할 수 없습니다(Tailscale 연결 확인).' : e.message }; }
 }
-ipcMain.handle('server-signup', (_e, { username, password, displayName } = {}) => serverTry(async () => {
+ipcMain.handle('server-signup', (_e, { username, password, displayName, consent } = {}) => serverTry(async () => {
   if (!IS_LAB) return { ok: false, error: '실험실 앱 전용입니다.' };
-  const r = await serverCall(PROFILE.serverUrl, 'POST', '/auth/signup', { username, password, displayName });
+  const r = await serverCall(PROFILE.serverUrl, 'POST', '/auth/signup', { username, password, displayName, consent });
   if (r.status !== 201) return { ok: false, error: serverError(r, '가입 실패') };
   return { ok: true, status: r.json.user.status };
 }));
@@ -537,7 +543,7 @@ ipcMain.handle('server-refresh-me', () => serverTry(async () => {
   if (!res.ok) return { ok: false, status: res.status };
   const { user } = await res.json();
   if (user.role !== s.role || user.displayName !== s.displayName) { c.sync = { ...s, role: user.role, displayName: user.displayName }; saveConfig(c); }
-  return { ok: true, role: user.role };
+  return { ok: true, role: user.role, mustChangePassword: !!user.mustChangePassword };
 }));
 // 운영진: 가입 신청 목록·승인·거절(로그인한 기기 토큰으로 호출)
 ipcMain.handle('admin-users', () => serverTry(async () => {
@@ -549,12 +555,54 @@ ipcMain.handle('admin-users', () => serverTry(async () => {
   if (!res.ok) return { ok: false, error: '목록을 불러오지 못했습니다 (' + res.status + ')' };
   return { ok: true, users: json.users };
 }));
-ipcMain.handle('admin-action', (_e, { id, action } = {}) => serverTry(async () => {
+ipcMain.handle('admin-action', (_e, { id, action, role } = {}) => serverTry(async () => {
   const s = loadConfig().sync || {};
-  if (!IS_LAB || !s.token || !['approve', 'reject', 'suspend'].includes(action)) return { ok: false, error: '잘못된 요청입니다.' };
-  const r = await serverCall(s.url, 'POST', '/admin/users/' + Number(id) + '/' + action, {}, s.token);
-  if (r.status !== 200) return { ok: false, error: r.json.error === 'self' ? '자기 자신은 바꿀 수 없습니다.' : '처리 실패 (' + r.status + ')' };
-  return { ok: true, user: r.json.user };
+  if (!IS_LAB || !s.token || !['approve', 'reject', 'suspend', 'delete', 'restore', 'temp-password', 'role'].includes(action)) return { ok: false, error: '잘못된 요청입니다.' };
+  const r = await serverCall(s.url, 'POST', '/admin/users/' + Number(id) + '/' + action, action === 'role' ? { role } : {}, s.token);
+  if (r.status !== 200) return { ok: false, error: serverError(r, '처리 실패') };
+  return { ok: true, user: r.json.user, tempPassword: r.json.tempPassword };
+}));
+// ---------- 내 계정 ----------
+async function accountCall(method, url, body) {
+  const s = loadConfig().sync || {};
+  if (!IS_LAB || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
+  const r = method === 'GET'
+    ? await fetch(s.url + url, { headers: { authorization: 'Bearer ' + s.token }, signal: AbortSignal.timeout(15000) }).then(async x => ({ status: x.status, json: await x.json().catch(() => ({})) }))
+    : await serverCall(s.url, method, url, body, s.token);
+  if (r.status !== 200) return { ok: false, error: serverError(r, '처리 실패') };
+  return { ok: true, ...r.json };
+}
+ipcMain.handle('account-me', () => serverTry(() => accountCall('GET', '/me')));
+ipcMain.handle('account-password', (_e, { current, next } = {}) => serverTry(() => accountCall('POST', '/me/password', { current, next })));
+ipcMain.handle('account-withdraw', (_e, { password } = {}) => serverTry(async () => {
+  const r = await accountCall('POST', '/me/withdraw', { password });
+  if (r.ok) { const c = loadConfig(); c.sync = { ...(c.sync || {}), enabled: false, token: '' }; saveConfig(c); }
+  return r;
+}));
+ipcMain.handle('account-github-link', (_e, accessToken) => serverTry(() => accountCall('POST', '/me/github', { accessToken })));
+ipcMain.handle('account-github-unlink', () => serverTry(() => accountCall('DELETE', '/me/github', {})));
+ipcMain.handle('github-reset', (_e, { username, accessToken, newPassword } = {}) => serverTry(async () => {
+  const r = await serverCall(PROFILE.serverUrl, 'POST', '/auth/github-reset', { username, accessToken, newPassword });
+  if (r.status !== 200) return { ok: false, error: serverError(r, '비밀번호 찾기 실패') };
+  return { ok: true };
+}));
+// GitHub 기기 인증(device flow): 앱에 코드가 뜨면 github.com/login/device에서 입력. 받은 토큰은 서버 확인에만 쓰고 저장하지 않는다.
+ipcMain.handle('github-device-start', () => serverTry(async () => {
+  if (!PROFILE.githubClientId) return { ok: false, error: 'GitHub 연결이 아직 준비되지 않았습니다(Client ID 미설정).' };
+  const res = await fetch('https://github.com/login/device/code', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ client_id: PROFILE.githubClientId, scope: 'read:user user:email' }), signal: AbortSignal.timeout(15000) });
+  const j = await res.json();
+  if (!j.device_code) return { ok: false, error: 'GitHub 인증을 시작하지 못했습니다: ' + (j.error_description || j.error || res.status) };
+  shell.openExternal(j.verification_uri);
+  return { ok: true, userCode: j.user_code, verificationUri: j.verification_uri, deviceCode: j.device_code, interval: j.interval || 5, expiresIn: j.expires_in };
+}));
+ipcMain.handle('github-device-poll', (_e, deviceCode) => serverTry(async () => {
+  const res = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ client_id: PROFILE.githubClientId, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }), signal: AbortSignal.timeout(15000) });
+  const j = await res.json();
+  if (j.access_token) return { ok: true, accessToken: j.access_token };
+  if (j.error === 'authorization_pending' || j.error === 'slow_down') return { ok: false, pending: true, slowDown: j.error === 'slow_down' };
+  return { ok: false, error: j.error === 'expired_token' ? '시간이 지나 코드가 만료됐습니다. 다시 시도하세요.' : j.error === 'access_denied' ? 'GitHub에서 거부했습니다.' : 'GitHub 인증 실패: ' + (j.error || res.status) };
 }));
 // 운영 앱 데이터를 실험실로 복사(운영 설정 파일은 읽기만 한다). 가져온 내용은 미전송 변경이 되어 서버로 올라간다.
 ipcMain.handle('import-prod-data', () => {

@@ -596,6 +596,21 @@
   #gate-msg.err { color: #ff7b7b; }
   #gate-msg.ok { color: var(--ok, #57d6a0); }
   #auth-gate .hint { font-size: 10.5px; color: var(--muted); line-height: 1.6; }
+  #auth-gate .consent { border: 1px solid var(--line2); border-radius: 9px; padding: 9px 11px; font-size: 11.5px; line-height: 1.6; display: flex; flex-direction: column; gap: 4px; }
+  #auth-gate .consent ol { padding-left: 17px; color: var(--muted); }
+  #auth-gate .consent label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-weight: 700; }
+  #auth-gate .consent input { width: auto; padding: 0; }
+  .linkish { background: none; border: none; color: var(--muted); font-size: 11.5px; text-decoration: underline; cursor: pointer; align-self: center; -webkit-app-region: no-drag; }
+  /* GitHub 기기 인증 코드 / 계정·회원 관리 화면 */
+  .panel-ov { position: absolute; inset: 0; z-index: 50; background: var(--bg); padding: 18px; overflow: auto; display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
+  .panel-ov h2 { font-size: 15px; }
+  .panel-ov h3 { font-size: 12.5px; margin-top: 6px; }
+  .panel-ov input[type=password], .panel-ov input[type=text] { width: 100%; }
+  .gh-code { font-size: 30px; font-weight: 800; letter-spacing: 4px; text-align: center; padding: 14px; border: 1px dashed var(--accent); border-radius: 12px; user-select: all; }
+  .mrow { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .mrow .who small { color: var(--muted); display: block; font-size: 10.5px; }
+  .mrow .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .role-tag { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 5px; background: var(--surface); border: 1px solid var(--line2); margin-left: 4px; }
   /* 서버 파일: 휴지통·이전 버전 */
   #files-panel { position: absolute; inset: 0; z-index: 30; background: var(--bg); padding: 18px; overflow: auto; display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
   #files-panel h2 { font-size: 15px; }
@@ -737,8 +752,31 @@
         <input type="text" id="gate-s-name" placeholder="이름" />
         <input type="password" id="gate-s-pw" placeholder="비밀번호 (8자 이상)" />
         <input type="password" id="gate-s-pw2" placeholder="비밀번호 확인" />
+        <div class="consent">
+          <b>이용 안내 (필수)</b>
+          <ol>
+            <li>동아리 안에서 공유된 자료·채팅·공지를 외부에 임의로 배포하지 않습니다.</li>
+            <li>탈퇴하거나 운영진이 계정을 삭제하면 내 데이터와 파일은 30일 뒤 완전히 삭제됩니다.</li>
+          </ol>
+          <label><input type="checkbox" id="gate-s-consent" /> 위 내용을 확인했고 동의합니다</label>
+        </div>
         <button type="submit" class="btn primary" id="gate-s-btn">가입 신청</button>
       </form>
+      <form id="gate-reset" hidden autocomplete="off">
+        <div class="sub" style="margin:0">학번에 연결해 둔 GitHub 계정으로 본인 확인 후 새 비밀번호를 정합니다.</div>
+        <input type="text" id="gate-r-id" inputmode="numeric" placeholder="학번" />
+        <input type="password" id="gate-r-pw" placeholder="새 비밀번호 (8자 이상)" />
+        <input type="password" id="gate-r-pw2" placeholder="새 비밀번호 확인" />
+        <button type="submit" class="btn primary" id="gate-r-btn">GitHub로 본인 확인</button>
+        <div class="hint">GitHub을 연결하지 않았다면 운영진에게 임시 비밀번호를 요청하세요.</div>
+      </form>
+      <form id="gate-change" hidden autocomplete="off">
+        <div class="sub" style="margin:0">임시 비밀번호로 로그인했습니다. 새 비밀번호를 정해 주세요.</div>
+        <input type="password" id="gate-c-pw" placeholder="새 비밀번호 (8자 이상)" />
+        <input type="password" id="gate-c-pw2" placeholder="새 비밀번호 확인" />
+        <button type="submit" class="btn primary" id="gate-c-btn">비밀번호 바꾸고 시작</button>
+      </form>
+      <button type="button" class="linkish" id="gate-forgot">비밀번호를 잊었나요?</button>
       <div id="gate-msg" role="status" aria-live="polite"></div>
       <div class="hint">가입 신청 후 운영진이 승인하면 로그인할 수 있습니다.<br/>비밀번호는 이 기기에 저장되지 않습니다. 동아리 Tailscale에 연결돼 있어야 합니다.</div>
     </div>
@@ -762,7 +800,10 @@
     <div class="row" id="server-box" hidden style="flex-direction:column;align-items:stretch;gap:6px;border-top:1px solid var(--line);padding-top:11px;">
       <span style="font-weight:700;font-size:12px;">서버 동기화 <span style="color:var(--muted);font-weight:600;">(실험실 서버)</span></span>
       <div id="server-in" style="display:flex;flex-direction:column;gap:6px;">
-        <span id="srv-who" style="font-size:12px;"></span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span id="srv-who" style="font-size:12px;"></span>
+          <button class="btn mini" id="btn-account">내 계정</button>
+        </div>
         <div style="display:flex;gap:8px;">
           <button class="btn primary mini" id="btn-srv-sync" style="flex:1;">지금 동기화</button>
           <button class="btn mini" id="btn-srv-logout" style="flex:1;">로그아웃</button>
@@ -776,7 +817,7 @@
       <div id="admin-box" hidden style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--line);padding-top:9px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="font-weight:700;font-size:12px;">가입 신청 승인 <span style="color:var(--muted);font-weight:600;">(운영진)</span> <span id="admin-count" class="admin-count"></span></span>
-          <button class="btn mini" id="btn-admin-refresh">새로고침</button>
+          <span style="display:flex;gap:6px;"><button class="btn mini" id="btn-admin-refresh">새로고침</button><button class="btn mini" id="btn-members">회원 관리</button></span>
         </div>
         <div id="admin-list" style="display:flex;flex-direction:column;gap:6px;"></div>
       </div>
