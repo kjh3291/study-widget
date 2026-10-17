@@ -29,7 +29,7 @@ const PROFILE = IS_LAB ? {
   studeckFolder: 'Studeck',
   appUserModelId: 'cbnu.study.widget',
   icon: 'icon.ico',
-  serverUrl: 'http://100.96.247.43:8443',
+  serverUrl: 'https://cosmicsevertest.tailcb1558.ts.net', // 운영: Tailscale Funnel 공개 주소(HTTPS)
   githubClientId: process.env.STUDECK_GITHUB_CLIENT_ID || GITHUB_CLIENT_ID,
 };
 
