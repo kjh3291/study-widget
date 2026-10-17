@@ -4,6 +4,7 @@ import { pool, migrate } from './db.js';
 import { hashPassword, verifyPassword, issueToken, authenticate, requireAdmin } from './auth.js';
 import { clientIp, limits, tooMany, securityHeaders } from './guard.js';
 import { registerFiles, purgeFiles } from './files.js';
+import { registerSite } from './site.js';
 import { registerAccounts, purgeAccounts, CONSENT_VERSION, publicUser } from './accounts.js';
 import { statusError } from './auth.js';
 
@@ -19,6 +20,7 @@ const autoApproved = (name) => !!AUTO_APPROVE_PREFIX && name.startsWith(AUTO_APP
 const app = Fastify({ logger: { level: 'info' }, bodyLimit: 5 * 1024 * 1024 });
 securityHeaders(app);
 registerFiles(app);
+registerSite(app);
 registerAccounts(app);
 
 

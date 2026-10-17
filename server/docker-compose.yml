@@ -32,6 +32,7 @@ services:
       FILES_DIR: /data/files
       FILE_MAX_MB: ${FILE_MAX_MB:-50}
       QUOTA_MB: ${QUOTA_MB:-2048}
+      DOWNLOAD_MIN_VERSION: ${DOWNLOAD_MIN_VERSION:-}
       PORT: "3000"
     volumes:
       - filedata:/data/files
