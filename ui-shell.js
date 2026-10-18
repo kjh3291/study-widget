@@ -6,7 +6,7 @@
     { tab: 'lms', ico: 'graduation-cap', name: 'LMS', desc: '과목 공지·과제 마감·수업자료' },
     { tab: 'attend', ico: 'clipboard-check', name: '출석', desc: '과목 × 주차 출석 기록' },
     { view: 'records', ico: 'chart-no-axes-column', name: '집중 기록', desc: '일·주·월 공부 시간과 세션' },
-    { tab: 'stats', ico: 'circle-check', name: '기록', desc: '할 일 완료와 연속 달성' },
+    { view: 'review', ico: 'circle-check', name: '기록', desc: '이번 주 회고 · 밀린 일 정리 · 과목 리포트' },
   ];
   const SETTINGS = [
     { cat: 'screen', ico: 'palette', name: '화면과 위젯', desc: '테마 · 시계 · 창 표시' },
@@ -16,7 +16,7 @@
     { cat: 'account', ico: 'shield-check', name: '계정과 보안', desc: '내 정보 · GitHub · 비밀번호', server: true },
   ];
   const ico = n => `<span class="ico-${n}" aria-hidden="true"></span>`;
-  const VIEWS = ['view-study', 'view-club', 'view-more', 'view-focus', 'view-records', 'view-together'];
+  const VIEWS = ['view-study', 'view-club', 'view-more', 'view-focus', 'view-records', 'view-together', 'view-review'];
   let nav = 'today';
 
   if (!SERVER_MODE) document.querySelectorAll('.srv-only').forEach(e => e.remove());
@@ -92,6 +92,7 @@
   }
   $('view-study').addEventListener('click', e => {
     if (e.target.closest('[data-study-view="records"]')) return window.Focus.openRecords();
+    if (e.target.closest('[data-study-view="review"]')) return window.Review.open();
     const b = e.target.closest('[data-study]'); if (b) switchTab(b.dataset.study);
   });
 

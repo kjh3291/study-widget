@@ -215,3 +215,5 @@ header .btn-more .more-badge { position: absolute; top: 1px; right: 0; min-width
 header .btn-more .more-badge:not([hidden]) ~ .sync-dot, header .btn-more:has(.more-badge:not([hidden])) .sync-dot { display: none; }
 #app.mini header .btn-more { display: none; }
 header button .sd-ico { width: 16px; height: 16px; }
+/* 좁은 창(300px대): 제목 표시줄에서 '/ COSMIC'·LAB을 숨겨 버튼이 잘리지 않게 */
+@container (max-width: 359px) { header .brand-sub, header .lab-badge { display: none; } header .term { margin-left: 2px; } }

@@ -92,7 +92,7 @@
       return {
         name, todos: { done: todos.filter(t => t.done).length, total: todos.length },
         lms: { submitted: lms.filter(a => a.submitted).length, total: lms.length, missed: missed.length },
-        attendance: { weeks: att.length, present: count('출석'), late: count('지각'), absent: count('결석'), excused: count('공결') + count('병결') },
+        attendance: { weeks: att.length, present: count('출석'), late: count('지각'), absent: count('결석'), excused: count('공결'), sick: count('병결') },
         studySec, reasons, attention: reasons.length > 0,
       };
     }).sort((a, b) => (b.attention - a.attention) || (b.studySec - a.studySec) || a.name.localeCompare(b.name));
@@ -114,6 +114,9 @@
     return { year, month, firstWeekday: (new Date(year, month, 1).getDay() + 6) % 7, days };
   }
 
-  const api = { week, cleanup, courses, heatmap, completions, util: { fmt, parse, addDays, mondayOf } };
+  // 탭 숫자 배지: 0이면 숨김(null), 1~9 그대로, 10 이상 '9+'. 정수 0 이상만 받는다
+  const badgeLabel = n => (!Number.isInteger(n) || n < 0 ? undefined : n === 0 ? null : n > 9 ? '9+' : String(n));
+
+  const api = { week, cleanup, courses, heatmap, completions, badgeLabel, util: { fmt, parse, addDays, mondayOf } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.ReviewCalc = api;
 })(typeof window !== 'undefined' ? window : globalThis);

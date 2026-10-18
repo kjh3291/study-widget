@@ -62,3 +62,7 @@ const d18 = h.days.find(d => d.date === today);
 assert.equal(d18.done, 1); assert.equal(d18.studySec, 1800); assert.equal(d18.level, 2, '완료 1(30분)+공부 30분 = 60분');
 assert.equal(h.days.find(d => d.date === '2026-10-01').level, 0);
 console.log('PASS: 통합 잔디 — 날마다 완료+공부 시간, 진하기 0~4, 그날 한 일');
+
+assert.deepEqual([0, 1, 9, 10, 99, 10000].map(R.badgeLabel), [null, '1', '9', '9+', '9+', '9+']);
+assert.equal(R.badgeLabel(1.5), undefined); assert.equal(R.badgeLabel(NaN), undefined);
+console.log('PASS: 탭 배지 숫자 — 0 숨김, 1~9, 10 이상 9+, 소수·NaN은 오류');

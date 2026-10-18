@@ -54,6 +54,7 @@
       "styles/**",
       "review.js",
       "focus.js",
+      "review-ui.js",
       "ui-kit.js",
       "icons.css",
       "fonts/**"
