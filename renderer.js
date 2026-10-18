@@ -811,34 +811,68 @@ function updateDoneButton() {
   b.querySelector('span:last-child').textContent = n ? `오늘 완료 ${n}` : '완료한 일';
   b.setAttribute('aria-label', `완료한 일 보기, 오늘 완료 ${n}개`);
 }
-function openDoneSheet() {
-  const since = Date.now() - 14 * 86400000;
-  const list = state.todos.filter((t) => t.done && t.doneAt && t.doneAt >= since).sort((a, b) => b.doneAt - a.doneAt).slice(0, 80);
+// 완료한 일 시트
+//  - 오늘 제목 옆: 최근 3일 완료만, 위에 '전체' + 완료가 있는 과목 칩
+//  - 과목 리포트: { subject } 로 열면 그 과목에서 지금까지 완료한 일 전체(칩 없음)
+// 체크를 풀면 그 자리에서 바로 빠지고 할 일 목록으로 돌아간다(실행 취소 가능). 3일 제한은 보여 주는 범위일 뿐, 기록 데이터는 지우지 않는다(돌아보기 계산에 씀)
+const DONE_DAYS = 3;
+const NO_SUBJECT = '과목 없음';
+function openDoneSheet(opts = {}) {
+  const fixed = opts.subject || null;
+  let filter = '전체';
+  const inRange = (t) => {
+    if (!t.done || !t.doneAt || t.skipped) return false;
+    if (fixed) return (t.subject || NO_SUBJECT) === fixed;
+    return fmtD(new Date(t.doneAt)) >= addDaysStr(todayStr(), -(DONE_DAYS - 1));   // 오늘·어제·그제
+  };
   const dayLabel = (ts) => { const d = fmtD(new Date(ts)), today = todayStr(); if (d === today) return '오늘'; if (d === addDaysStr(today, -1)) return '어제';
     const x = new Date(ts); return `${x.getMonth() + 1}월 ${x.getDate()}일 ${'일월화수목금토'[x.getDay()]}요일`; };
-  let html = '', last = '';
-  for (const t of list) {
-    const g = dayLabel(t.doneAt);
-    if (g !== last) { html += `<h3 class="done-day">${g}</h3>`; last = g; }
-    html += `<div class="done-row" data-id="${t.id}"><label class="sd-check"><input type="checkbox" class="check" checked data-undone="${t.id}"><span class="done-text">${escapeHtml(t.text)}</span></label>
-      <span class="done-meta">${t.subject ? `<span class="sd-badge">${escapeHtml(t.subject)}</span>` : ''}<span class="sd-muted">${new Date(t.doneAt).toTimeString().slice(0, 5)}</span></span></div>`;
+  const s = UI.sheet(fixed ? `${fixed} · 완료한 일` : '완료한 일', '<div class="done-body"></div>');
+  const body = s.el.querySelector('.done-body');
+  function render() {
+    const all = state.todos.filter(inRange).sort((a, b) => b.doneAt - a.doneAt);
+    // 칩: 완료가 있는 과목만(많은 순). 고른 과목이 비면 전체로
+    const counts = {};
+    all.forEach((t) => { const k = t.subject || NO_SUBJECT; counts[k] = (counts[k] || 0) + 1; });
+    const subjects = Object.keys(counts).sort((a, b) => (a === NO_SUBJECT) - (b === NO_SUBJECT) || counts[b] - counts[a] || a.localeCompare(b));
+    if (filter !== '전체' && !counts[filter]) filter = '전체';
+    const list = filter === '전체' ? all : all.filter((t) => (t.subject || NO_SUBJECT) === filter);
+    if (!all.length) {
+      body.innerHTML = `<div class="sd-empty"><span class="sd-ico" data-icon="circle-check" aria-hidden="true"></span>
+        <h3>${fixed ? '이 과목에서 완료한 일이 아직 없어요.' : '최근 완료한 일이 없어요.'}</h3><p>할 일을 체크하면 여기 모여요.</p></div>`;
+      return;
+    }
+    let rows = '', last = '';
+    for (const t of list) {
+      const g = dayLabel(t.doneAt);
+      if (g !== last) { rows += `<h3 class="done-day">${g}</h3>`; last = g; }
+      rows += `<div class="done-row" data-id="${t.id}"><label class="sd-check"><input type="checkbox" class="check" checked data-undone="${t.id}" aria-label="${escapeHtml(t.text)} 완료 취소"><span class="done-text">${escapeHtml(t.text)}</span></label>
+        <span class="done-meta">${!fixed && filter === '전체' && t.subject ? `<span class="sd-badge">${escapeHtml(t.subject)}</span>` : ''}<span class="sd-muted">${new Date(t.doneAt).toTimeString().slice(0, 5)}</span></span></div>`;
+    }
+    body.innerHTML = `<p class="sd-muted">체크를 풀면 완료가 취소되고 할 일 목록으로 돌아가요.${fixed ? ` 지금까지 완료한 ${all.length}개예요.` : ` 최근 ${DONE_DAYS}일까지 보여요. 과목별 전체는 학습 › 기록 › 과목에서 볼 수 있어요.`}</p>
+      ${!fixed && subjects.length > 1 ? `<div class="sd-chip-row" role="group" aria-label="과목으로 거르기">${['전체', ...subjects].map((k) =>
+        `<button type="button" class="sd-chip" data-filter="${escapeHtml(k)}" aria-pressed="${filter === k}">${escapeHtml(k)} <span>${k === '전체' ? all.length : counts[k]}</span></button>`).join('')}</div>` : ''}
+      <div class="done-list">${rows}</div>`;
   }
-  const s = UI.sheet('완료한 일', list.length ? `<p class="sd-muted">체크를 풀면 완료가 취소되고 할 일 목록으로 돌아가요. 최근 14일까지 보여요.</p><div class="done-list">${html}</div>`
-    : '<div class="sd-empty"><span class="sd-ico" data-icon="circle-check" aria-hidden="true"></span><h3>최근 완료한 일이 없어요.</h3><p>할 일을 체크하면 여기 모여요.</p></div>');
+  s.el.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-filter]'); if (!c) return;
+    filter = c.dataset.filter; render();
+    s.el.querySelector(`[data-filter="${CSS.escape(filter)}"]`)?.focus({ preventScroll: true });
+  });
   s.el.addEventListener('change', (e) => {
-    const box = e.target.closest('[data-undone]'); if (!box) return;
+    const box = e.target.closest('[data-undone]'); if (!box || box.checked) return;
     const t = state.todos.find((x) => x.id === box.dataset.undone); if (!t) return;
-    if (box.checked) return;
     const before = { done: t.done, doneAt: t.doneAt, origDue: t.origDue };
     const twin = removeSpawnedRepeat(t);
     t.done = false; t.doneAt = null;
     saveTodos(); rerenderTodoAreas();
-    const row = box.closest('.done-row'); row.classList.add('undone');
+    render();   // 바로 목록에서 빠짐(마지막이면 빈 화면, 그 과목 완료가 없어지면 칩도 사라짐)
     showToast(`'${t.text.length > 18 ? t.text.slice(0, 18) + '…' : t.text}' 완료를 취소했어요`, '실행 취소', () => {
       Object.assign(t, before); if (twin) state.todos.push(twin);
-      saveTodos(); rerenderTodoAreas(); if (row.isConnected) { row.classList.remove('undone'); box.checked = true; }
+      saveTodos(); rerenderTodoAreas(); if (body.isConnected) render();
     });
   });
+  render();
 }
 function rerenderTodoAreas() {
   if (currentTab === 'todos') renderTodos();
