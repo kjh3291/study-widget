@@ -35,7 +35,7 @@ app.on('browser-window-created', (_e, win) => {
         const submit = id => $(id).dispatchEvent(new Event('submit', { cancelable: true }));
         // 가입 신청: 학번 형식 검사 → 정상 신청(99 가짜 학번은 실험실에서 자동 승인)
         $('gate-tab-signup').click();
-        $('gate-s-id').value = 'abc'; $('gate-s-name').value = '테스트'; $('gate-s-pw').value = ${JSON.stringify(pw)}; $('gate-s-pw2').value = ${JSON.stringify(pw)};
+        $('gate-s-id').value = '12ab'; $('gate-s-name').value = '테스트'; $('gate-s-pw').value = ${JSON.stringify(pw)}; $('gate-s-pw2').value = ${JSON.stringify(pw)};
         submit('gate-signup'); await wait(50);
         if (!$('gate-msg').textContent.includes('학번')) throw new Error('학번 검사 없음');
         $('gate-s-id').value = ${JSON.stringify(user)}; $('gate-s-pw2').value = 'mismatch';

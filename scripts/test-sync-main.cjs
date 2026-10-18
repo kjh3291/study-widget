@@ -38,4 +38,5 @@ app.on('will-quit', () => {
 // Windows can retain Chromium file locks through will-quit. Cleanup must never
 // raise an uncaught exception/native error dialog and prevent the tested quit.
 app.on('quit', () => { try { fs.rmSync(temp, { recursive: true, force: true }); } catch { /* CI/temp cleanup after process exit. */ } });
+process.env.STUDECK_SERVER_SYNC = '0'; // 예전 GitHub 동기화 경로 회귀 테스트
 require('../main');

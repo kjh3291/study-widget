@@ -5,10 +5,15 @@ const PX_PER_HOUR = 52;
 const $ = (id) => document.getElementById(id);
 // 운영(prod)/실험실(lab) 채널: 실험실은 GitHub 대신 실험실 서버로 동기화한다.
 const IS_LAB = new URLSearchParams(location.search).get('channel') === 'lab';
-const SYNC_NAME = IS_LAB ? '서버' : 'GitHub';
-$(IS_LAB ? 'git-box' : 'server-box')?.remove();
-if (!IS_LAB) $('auth-gate')?.remove();
-if (IS_LAB) { $('server-box').hidden = false; $('studeck-folder-label').textContent = '바탕화면\\Studeck-Lab 폴더'; }
+// 서버 모드: 학번 로그인·서버 동기화·파일·커뮤니티. 꺼져 있으면 예전 GitHub 동기화 화면.
+const SERVER_MODE = new URLSearchParams(location.search).get('server') === '1';
+const SYNC_NAME = SERVER_MODE ? '서버' : 'GitHub';
+$(SERVER_MODE ? 'git-box' : 'server-box')?.remove();
+if (!SERVER_MODE) $('auth-gate')?.remove();
+if (SERVER_MODE) $('server-box').hidden = false;
+if (!IS_LAB) document.querySelectorAll('#auth-gate .lab-badge').forEach(e => e.remove()); // 시작 화면 로고의 LAB 표시는 실험실만
+if (IS_LAB) $('studeck-folder-label').textContent = '바탕화면\\Studeck-Lab 폴더';
+else $('btn-srv-import')?.remove(); // 운영 앱 데이터 가져오기는 실험실 전용
 
 // ---------- 상태 ----------
 const state = {
@@ -1801,7 +1806,7 @@ $('btn-open-studeck').onclick = () => window.api.openStudeckFolder('root');
 async function refreshGitStatus() {
   try {
     const s = await window.api.gitSyncStatus();
-    if (IS_LAB) {
+    if (SERVER_MODE) {
       $('srv-who').textContent = s?.enabled ? `로그인: ${s.displayName || s.username} (${s.username})${s.role === 'owner' ? ' · 최고 관리자' : s.role === 'admin' ? ' · 운영진' : ''}` : '';
       state.serverRole = s?.role || 'member';
       $('admin-box').hidden = !(s?.enabled && (s.role === 'admin' || s.role === 'owner'));
@@ -1829,9 +1834,9 @@ if ($('btn-git-sync')) $('btn-git-sync').onclick = async () => {
   if (!r?.ok) $('git-sync-msg').textContent = r?.error || '동기화 실패';
 };
 // 실험실: 시작 화면(로그인·가입 신청) + 설정의 서버 계정·운영진 승인. 비밀번호는 저장하지 않는다.
-const STUDENT_ID_RE = /^\d{8,10}$/;
+const STUDENT_ID_RE = /^(\d{8,10}|[a-z][a-z0-9_]{2,23})$/; // 학번(운영진 계정 아이디는 서버가 따로 허용·확인)
 function showGate(on, message = '', tone = '') {
-  if (!IS_LAB) return;
+  if (!SERVER_MODE) return;
   $('auth-gate').hidden = !on;
   gateMsg(message, tone);
   if (on) setTimeout(() => ($('gate-login').hidden ? $('gate-s-id') : ($('gate-l-id').value ? $('gate-l-pw') : $('gate-l-id'))).focus(), 50);
@@ -1849,7 +1854,7 @@ const CONSENT_VERSION = '2026-10-v1';
 let _tempPassword = null; // 임시 비밀번호로 로그인한 직후 새 비밀번호를 정할 때만 잠깐 기억
 // 로그인 만료·정지 등으로 서버가 거부하면 로그아웃 처리하고 시작 화면으로 돌아간다.
 async function handleAuthLost(error) {
-  if (!IS_LAB || !/로그인이 만료|승인 대기|권한이 없습니다/.test(error || '')) return false;
+  if (!SERVER_MODE || !/로그인이 만료|승인 대기|권한이 없습니다/.test(error || '')) return false;
   await window.api.serverLogout();
   state.syncEnabled = false;
   showGate(true, error, 'err');
@@ -1857,7 +1862,7 @@ async function handleAuthLost(error) {
 }
 let _adminSeen = -1;
 async function refreshAdminList(notify = false) {
-  if (!IS_LAB || !['admin', 'owner'].includes(state.serverRole)) return;
+  if (!SERVER_MODE || !['admin', 'owner'].includes(state.serverRole)) return;
   const r = await window.api.adminUsers();
   if (!r?.ok) { $('admin-list').textContent = r?.error || '불러오기 실패'; return; }
   const pending = r.users.filter(u => u.status === 'pending');
@@ -1871,7 +1876,7 @@ async function refreshAdminList(notify = false) {
   }
   _adminSeen = pending.length;
 }
-if (IS_LAB) {
+if (SERVER_MODE) {
   const msg = t => { $('git-sync-msg').textContent = t; };
   $('gate-tab-login').onclick = () => gateTab('login');
   $('gate-tab-signup').onclick = () => gateTab('signup');
@@ -1958,7 +1963,7 @@ if (IS_LAB) {
     $('settings').classList.add('hidden');
     showGate(true, '로그아웃했습니다.');
   };
-  $('btn-srv-import').onclick = async () => {
+  if ($('btn-srv-import')) $('btn-srv-import').onclick = async () => {
     if (!confirm('운영 앱(Studeck)의 할 일·일정·시간표·설정을 이 실험실 앱으로 복사합니다.\n운영 앱의 데이터는 바뀌지 않습니다. 계속할까요?')) return;
     const r = await window.api.importProdData();
     if (!r?.ok) return msg(r?.error || '가져오기 실패');
@@ -1982,14 +1987,14 @@ if (IS_LAB) {
 // 실험실: 서버 파일 사용량·휴지통·이전 버전
 const fmtSize = n => n >= 1024 * 1024 * 1024 ? (n / 1024 / 1024 / 1024).toFixed(2) + 'GB' : n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
 async function refreshFileUsage() {
-  if (!IS_LAB || !state.syncEnabled || !$('srv-usage')) return;
+  if (!SERVER_MODE || !state.syncEnabled || !$('srv-usage')) return;
   const r = await window.api.filesOverview();
   $('srv-usage').textContent = r?.ok ? `보조자료·과제 파일 ${r.current.length}개 · ${fmtSize(r.usage.used)} / ${fmtSize(r.usage.limit)}` : (r?.error || '파일 정보를 불러오지 못했습니다');
   return r;
 }
 // 동기화 결과 중 사용자가 알아야 할 것만 알림
 function reportFileSync(f) {
-  if (!IS_LAB || !f) return;
+  if (!SERVER_MODE || !f) return;
   if (!f.ok) return showToast('파일 동기화 실패: ' + f.error);
   if (f.quotaFull) showToast('서버 저장 공간(2GB)이 가득 차서 일부 파일을 올리지 못했어요');
   else if (f.kept) showToast(`다른 기기에서도 고친 파일 ${f.kept}개는 최신 수정으로 맞췄어요 (이전 수정은 '이전 버전'에 보관)`);
@@ -2047,7 +2052,7 @@ async function openFilesPanel() {
   });
   render();
 }
-if (IS_LAB) $('btn-srv-files').onclick = openFilesPanel;
+if (SERVER_MODE) $('btn-srv-files').onclick = openFilesPanel;
 // 실험실: GitHub 기기 인증 · 내 계정 · 회원 관리
 // GitHub 기기 인증: 코드를 보여 주고 github.com/login/device에서 입력할 때까지 기다린다. 토큰을 돌려주거나 취소 시 null.
 function githubDeviceFlow() {
@@ -2178,7 +2183,7 @@ async function openMembersPanel() {
   });
   render();
 }
-if (IS_LAB) { $('btn-account').onclick = openAccountPanel; $('btn-members').onclick = openMembersPanel; }
+if (SERVER_MODE) { $('btn-account').onclick = openAccountPanel; $('btn-members').onclick = openMembersPanel; }
 // 파일 변경 후 자동 동기화(디바운스) — 연결돼 있을 때만
 let _gitSyncT = null;
 function scheduleGitSync() {
@@ -2318,7 +2323,7 @@ if (IS_LAB) {
   const cfg = await window.api.loadConfig();
   state.syncEnabled = !!cfg.sync?.enabled;
   state.serverRole = cfg.sync?.role || 'member';
-  if (IS_LAB && !state.syncEnabled) showGate(true); // 실험실: 로그인 전에는 시작 화면만
+  if (SERVER_MODE && !state.syncEnabled) showGate(true); // 서버 모드: 로그인 전에는 시작 화면만
   state.opacity = typeof cfg.opacity === 'number' ? cfg.opacity : 100;
   state.alwaysOnTop = cfg.alwaysOnTop !== false;
   if (cfg.opacity) { $('inp-opacity').value = cfg.opacity; window.api.setOpacity(cfg.opacity / 100); }
@@ -2372,7 +2377,7 @@ if (IS_LAB) {
   }
   // 시작 시 GitHub에서 최신 자료·개인데이터 받아오기(+로컬 변경 올리기)
   const firstSync = await initSync();
-  if (IS_LAB && state.syncEnabled && !(firstSync?.ok === false && await handleAuthLost(firstSync.error))) {
+  if (SERVER_MODE && state.syncEnabled && !(firstSync?.ok === false && await handleAuthLost(firstSync.error))) {
     const me = await window.api.serverRefreshMe();
     if (me?.ok) state.serverRole = me.role;
     // 임시 비밀번호를 아직 안 바꿨으면 다시 로그인해서 바꾸게 한다.

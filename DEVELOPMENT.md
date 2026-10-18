@@ -16,10 +16,27 @@
 4. **한 번에 한 기기에서만** 코드 수정. 양쪽에서 동시에 고치고 push하면 충돌 남.
    - 다른 기기로 넘어가기 전 반드시 이 기기 것을 push, 새 기기에선 pull부터.
 
+## 운영 / 실험실 (2026-10 ~)
+- **실험실**: `lab` 브랜치 · 실험실 서버(tailnet 전용) · **Studeck Lab** 앱(`npm run dist:lab`, 별도 설정·`Studeck-Lab` 폴더). 새 기능·수정은 **항상 여기서 먼저** 구현·테스트한다.
+- **운영**: `main` 브랜치 · 운영 서버(`https://cosmicsevertest.tailcb1558.ts.net`, Tailscale Funnel) · **Studeck** 앱. 실험실에서 테스트를 통과하고 사용자가 확인한 것만 `lab → main`(fast-forward)으로 옮긴다. 운영 서버·운영 DB는 직접 실험하지 않는다.
+- 테스트: `npm test` · `npm run test:ui` · `npm run test:server`(실험실 서버·SSH 필요, 끝나면 시험 계정 자동 정리) · `node scripts/test-prod-switch.js`(운영 앱으로 전환 리허설).
+- 서버 배포: 서버에서 `~/studeck/<lab|prod>`에서 `git pull` 후 `server/`에서 `docker compose up -d --build`. 운영 배포 전 `server/scripts/backup.sh ~/studeck/prod`.
+- 서버 모드(`channel.js`의 `serverSync`): 학번 로그인·서버 동기화·파일·커뮤니티. `STUDECK_SERVER_SYNC=0`이면 예전 GitHub 동기화(회귀 테스트용).
+
+## 운영 전환 절차 (v1.4.0, GitHub 동기화 → 서버)
+1. 실험실에서 위 테스트 모두 통과, `node scripts/test-prod-switch.js` 통과.
+2. 운영 서버 백업 → `main` ← `lab` fast-forward → 운영 서버 `git pull` + `docker compose up -d --build`.
+3. `package.json` 버전 `1.4.0` → 커밋 → `git tag v1.4.0 && git push origin v1.4.0` → CI 빌드 → 릴리스 Publish.
+4. **윈도우를 먼저**: 옛 앱 완전 종료 → v1.4.0 설치·실행 → 시작 화면에서 운영진 아이디(`kjh3291`)로 가입(최고 관리자로 바로 승인) → 로그인. 서버가 비어 있으므로 윈도우의 할 일·일정·시간표·보조자료·과제가 서버로 올라간다. 예전 GitHub 토큰은 설정에서 지워진다.
+5. 서버 데이터 확인(할 일·일정·시간표·파일 개수가 윈도우와 같은지).
+6. **맥은 그다음**: v1.4.0 설치 → 같은 계정 로그인 → 서버 데이터로 시작한다(맥의 옛 데이터는 올리지 않음). 서버와 다르거나 맥에만 있던 파일은 맥의 `Studeck/.studeck/서버 전환 전 보관/`에 남는다.
+7. 다운로드 페이지는 운영 서버 `.env`의 `DOWNLOAD_MIN_VERSION`보다 높은 릴리스가 있어야 열린다. 동아리 오픈 날까지는 높게 두었다가 오픈 때 `1.4.0`으로 낮추고 `docker compose up -d`.
+8. 1주일 문제가 없으면 GitHub 동기화 코드 제거, `studeck-data` 저장소는 보관.
+
 ## 커밋 메시지
 - 형식: 한 줄 요약 + 필요시 세부. 끝에 항상:
   ```
-  Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+  Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
   ```
 - **OS 전용 변경**이면 앞에 태그: `[mac] ...`, `[win] ...`. (예: `[mac] CI 애드혹 서명 추가`)
 - 공통 변경(대부분)은 태그 없이.

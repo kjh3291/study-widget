@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session, dialog } = require('electron');
 const { CHANNEL, IS_LAB, PROFILE } = require('./channel'); // userData 분리를 위해 가장 먼저
+const SERVER_MODE = !!PROFILE.serverSync; // 서버 동기화(계정·데이터·파일·커뮤니티). 꺼져 있으면 예전 GitHub 동기화
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -61,7 +62,7 @@ function createWindow() {
   });
 
   win.setAlwaysOnTop(true, 'screen-saver');
-  win.loadFile(path.join(__dirname, 'index.html'), { query: { channel: CHANNEL } });
+  win.loadFile(path.join(__dirname, 'index.html'), { query: { channel: CHANNEL, server: SERVER_MODE ? '1' : '0' } });
 
   const persist = () => {
     if (!win) return;
@@ -486,11 +487,11 @@ function gitSync(dir, repo, token) {
 }
 const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json');
 const notifySync = status => { if (win && !win.isDestroyed()) win.webContents.send('sync-status', status); };
-// 실험실 앱: 같은 병합 엔진에 전송부만 서버로 바꾼다(자료 파일은 아직 서버 동기화 대상 아님).
-const serverStore = IS_LAB ? createServerStore({ file: path.join(app.getPath('userData'), 'server-mirror.json') }) : null;
-// 실험실: 보조자료·과제 파일을 서버 개인 공간과 맞춘다(서버에서 지워진 파일은 기기 휴지통으로).
-const fileSync = IS_LAB ? createFileSync({ root: STUDECK_DIR, stateFile: path.join(app.getPath('userData'), 'file-sync.json'), trash: p => shell.trashItem(p) }) : null;
-const syncService = createSyncService(IS_LAB ? {
+// 서버 모드: 같은 병합 엔진에 전송부만 서버로 바꾼다(보조자료·과제 파일은 fileSync가 따로 맞춤).
+const serverStore = SERVER_MODE ? createServerStore({ file: path.join(app.getPath('userData'), 'server-mirror.json') }) : null;
+// 서버 모드: 보조자료·과제 파일을 서버 개인 공간과 맞춘다(서버에서 지워진 파일은 기기 휴지통으로).
+const fileSync = SERVER_MODE ? createFileSync({ root: STUDECK_DIR, stateFile: path.join(app.getPath('userData'), 'file-sync.json'), trash: p => shell.trashItem(p) }) : null;
+const syncService = createSyncService(SERVER_MODE ? {
   load: loadConfig, save: saveConfig,
   read: serverStore.read, write: serverStore.write, transport: serverStore.transport,
   conflicts: async () => null, resolveFiles: async () => {}, dirty: async () => false, autoResolve: 'local',
@@ -520,13 +521,13 @@ async function serverTry(fn) {
   catch (e) { return { ok: false, error: e.name === 'TimeoutError' || /fetch failed/.test(e.message) ? '서버에 연결할 수 없습니다(Tailscale 연결 확인).' : e.message }; }
 }
 ipcMain.handle('server-signup', (_e, { username, password, displayName, consent } = {}) => serverTry(async () => {
-  if (!IS_LAB) return { ok: false, error: '실험실 앱 전용입니다.' };
+  if (!SERVER_MODE) return { ok: false, error: '서버 동기화를 쓰지 않는 버전입니다.' };
   const r = await serverCall(PROFILE.serverUrl, 'POST', '/auth/signup', { username, password, displayName, consent });
   if (r.status !== 201) return { ok: false, error: serverError(r, '가입 실패') };
   return { ok: true, status: r.json.user.status };
 }));
 ipcMain.handle('server-login', (_e, { username, password } = {}) => serverTry(async () => {
-  if (!IS_LAB) return { ok: false, error: '실험실 앱 전용입니다.' };
+  if (!SERVER_MODE) return { ok: false, error: '서버 동기화를 쓰지 않는 버전입니다.' };
   if (syncService.isRunning()) return { ok: false, error: '진행 중인 동기화가 끝난 뒤 다시 시도해 주세요.' };
   const r = await serverCall(PROFILE.serverUrl, 'POST', '/auth/login', { username, password, deviceName: require('os').hostname() + ' (' + process.platform + ')' });
   if (r.status !== 200) return { ok: false, error: serverError(r, '로그인 실패') };
@@ -538,7 +539,7 @@ ipcMain.handle('server-login', (_e, { username, password } = {}) => serverTry(as
 // 서버에서 내 역할(운영진 여부)을 다시 받아 저장한다(역할이 바뀌었거나 예전 로그인일 때).
 ipcMain.handle('server-refresh-me', () => serverTry(async () => {
   const c = loadConfig(), s = c.sync || {};
-  if (!IS_LAB || !s.token) return { ok: false };
+  if (!SERVER_MODE || !s.token) return { ok: false };
   const res = await fetch(s.url + '/me', { headers: { authorization: 'Bearer ' + s.token }, signal: AbortSignal.timeout(15000) });
   if (!res.ok) return { ok: false, status: res.status };
   const { user } = await res.json();
@@ -548,7 +549,7 @@ ipcMain.handle('server-refresh-me', () => serverTry(async () => {
 // 운영진: 가입 신청 목록·승인·거절(로그인한 기기 토큰으로 호출)
 ipcMain.handle('admin-users', () => serverTry(async () => {
   const s = loadConfig().sync || {};
-  if (!IS_LAB || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
+  if (!SERVER_MODE || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
   const res = await fetch(s.url + '/admin/users', { headers: { authorization: 'Bearer ' + s.token }, signal: AbortSignal.timeout(15000) });
   const json = await res.json().catch(() => ({}));
   if (res.status === 403) return { ok: false, error: '운영진만 볼 수 있습니다.', notAdmin: true };
@@ -557,7 +558,7 @@ ipcMain.handle('admin-users', () => serverTry(async () => {
 }));
 ipcMain.handle('admin-action', (_e, { id, action, role } = {}) => serverTry(async () => {
   const s = loadConfig().sync || {};
-  if (!IS_LAB || !s.token || !['approve', 'reject', 'suspend', 'delete', 'restore', 'temp-password', 'role'].includes(action)) return { ok: false, error: '잘못된 요청입니다.' };
+  if (!SERVER_MODE || !s.token || !['approve', 'reject', 'suspend', 'delete', 'restore', 'temp-password', 'role'].includes(action)) return { ok: false, error: '잘못된 요청입니다.' };
   const r = await serverCall(s.url, 'POST', '/admin/users/' + Number(id) + '/' + action, action === 'role' ? { role } : {}, s.token);
   if (r.status !== 200) return { ok: false, error: serverError(r, '처리 실패') };
   return { ok: true, user: r.json.user, tempPassword: r.json.tempPassword };
@@ -565,7 +566,7 @@ ipcMain.handle('admin-action', (_e, { id, action, role } = {}) => serverTry(asyn
 // ---------- 내 계정 ----------
 async function accountCall(method, url, body) {
   const s = loadConfig().sync || {};
-  if (!IS_LAB || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
+  if (!SERVER_MODE || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
   const r = method === 'GET'
     ? await fetch(s.url + url, { headers: { authorization: 'Bearer ' + s.token }, signal: AbortSignal.timeout(15000) }).then(async x => ({ status: x.status, json: await x.json().catch(() => ({})) }))
     : await serverCall(s.url, method, url, body, s.token);
@@ -613,12 +614,12 @@ ipcMain.handle('community-call', (_e, { method, path: p, body } = {}) => serverT
 }));
 ipcMain.handle('community-socket-info', () => {
   const s = loadConfig().sync || {};
-  if (!IS_LAB || !s.enabled || !s.token) return { ok: false };
+  if (!SERVER_MODE || !s.enabled || !s.token) return { ok: false };
   return { ok: true, wsUrl: s.url.replace(/^http/, 'ws') + '/ws', token: s.token };
 });
 ipcMain.handle('community-upload', (_e, bytes) => serverTry(async () => {
   const s = loadConfig().sync || {};
-  if (!IS_LAB || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
+  if (!SERVER_MODE || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
   const res = await fetch(s.url + '/media', { method: 'POST', headers: { authorization: 'Bearer ' + s.token, 'content-type': 'application/octet-stream' },
     body: Buffer.from(bytes), signal: AbortSignal.timeout(60000) });
   const json = await res.json().catch(() => ({}));
@@ -671,7 +672,7 @@ ipcMain.handle('server-logout', () => serverTry(async () => {
   return { ok: true };
 }));
 ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
-  if (IS_LAB) return { ok: false, error: '실험실 앱은 GitHub 동기화를 쓰지 않습니다(실험실 서버로 동기화).' };
+  if (SERVER_MODE) return { ok: false, error: '이 버전은 GitHub 동기화 대신 Studeck 서버로 동기화합니다.' };
   if (syncService.isRunning()) return { ok: false, error: '진행 중인 동기화가 끝난 뒤 연결을 바꿔 주세요.' };
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || '') || !token) return { ok: false, error: '저장소(owner/repo)와 토큰을 확인해 주세요.' };
   const c = loadConfig(); c.sync = { repo, token, enabled: true }; saveConfig(c);
@@ -679,8 +680,19 @@ ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
 });
 // 실험실은 서버(데이터 → 파일 순서), 운영은 GitHub
 ipcMain.handle('git-sync', async (_e, resolution) => {
+  // 처음 서버와 맞추는 기기: 서버가 비어 있으면 이 기기 데이터를 올리고(첫 기기),
+  // 이미 데이터가 있으면 서버 데이터로 시작한다(다른 기기의 옛 데이터로 덮어쓰지 않음).
+  const pre = loadConfig().sync || {};
+  if (SERVER_MODE && pre.enabled && pre.token && serverStore.isFresh(pre) && !syncService.isRunning()) {
+    const first = await serverStore.transport(pre);
+    if (!first.ok) return { ok: false, error: first.error };
+    if (Object.keys(serverStore.read()).length) {
+      const c = loadConfig(); c.pendingShared = {}; saveConfig(c);
+      notifySync({ phase: 'syncing', error: '', conflicts: null, adopted: true });
+    }
+  }
   const result = await syncService.run(resolution);
-  if (!IS_LAB || !result?.ok) return result;
+  if (!SERVER_MODE || !result?.ok) return result;
   const conn = loadConfig().sync || {};
   if (!conn.enabled || !conn.token) return result;
   const files = await fileSync.run(conn);
@@ -689,7 +701,7 @@ ipcMain.handle('git-sync', async (_e, resolution) => {
 // 실험실 서버 파일: 사용량·휴지통·복구·이전 버전·되돌리기(복구·되돌린 내용은 다음 동기화 때 기기에 받아진다)
 async function fileApi(method, url, body) {
   const s = loadConfig().sync || {};
-  if (!IS_LAB || !s.token) throw new Error('로그인이 필요합니다.');
+  if (!SERVER_MODE || !s.token) throw new Error('로그인이 필요합니다.');
   const res = await fetch(s.url + url, { method, headers: { authorization: 'Bearer ' + s.token, ...(body ? { 'content-type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) });
   const json = await res.json().catch(() => ({}));
@@ -707,7 +719,7 @@ ipcMain.handle('files-restore', (_e, p) => serverTry(async () => ({ ok: true, ..
 ipcMain.handle('files-revert', (_e, { path: p, vid } = {}) => serverTry(async () => ({ ok: true, ...(await fileApi('POST', '/files/revert', { path: p, vid })) })));
 ipcMain.handle('git-sync-status', () => {
   const s = (loadConfig().sync) || {};
-  if (IS_LAB) return { ...syncService.status(), enabled: !!s.enabled, mode: 'server', server: PROFILE.serverUrl, username: s.username || '', displayName: s.displayName || '', role: s.role || 'member', hasToken: !!s.token };
+  if (SERVER_MODE) return { ...syncService.status(), enabled: !!s.enabled, mode: 'server', server: PROFILE.serverUrl, username: s.username || '', displayName: s.displayName || '', role: s.role || 'member', hasToken: !!s.token };
   return { ...syncService.status(), enabled: !!s.enabled, repo: s.repo || '', hasToken: !!s.token, gitDir: fs.existsSync(path.join(STUDECK_DIR(), '.git')) };
 });
 ipcMain.handle('git-disconnect', () => { if (syncService.isRunning()) return { ok: false, error: '동기화 중입니다.' }; const c = loadConfig(); c.sync = { enabled: false, repo: c.sync?.repo || '', token: '' }; saveConfig(c); return { ok: true }; });
@@ -758,6 +770,13 @@ if (!gotLock) {
         let baseline = {};
         try { baseline = readShared(SYNC_DATA_PATH()); } catch { /* Keep legacy local data pending until the conflict is resolved. */ }
         saveConfig(initializeOutbox(cfg, baseline));
+      }
+      // 서버 모드로 처음 켜졌는데 예전 GitHub 동기화 설정이 있으면: 로그인 전 상태로 바꾸고 GitHub 토큰은 지운다.
+      // 할 일·일정·시간표 등 데이터는 그대로 두었다가 로그인하면 서버로 올라간다(서버가 비어 있을 때).
+      const now = loadConfig();
+      if (SERVER_MODE && now.sync && now.sync.mode !== 'server') {
+        now.sync = { enabled: false, mode: 'server', url: PROFILE.serverUrl, username: '', token: '', migratedFromGithub: !!now.sync.repo };
+        saveConfig(now);
       }
       createWindow();
     }

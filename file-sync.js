@@ -62,7 +62,8 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
     const dir = root();
     let st = load();
     const owner = conn.url + '|' + conn.username;
-    if (st.owner !== owner) st = empty(owner);
+    const fresh = st.owner !== owner;
+    if (fresh) st = empty(owner);
     const save = () => atomicJSON(stateFile, st);
     try {
       // 1. 서버 변경분 받기
@@ -73,6 +74,19 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
         if (!page.more) break;
       }
       save();
+      // 처음 맞추는 기기인데 서버에 이미 파일이 있으면 "서버 데이터로 시작":
+      // 서버와 내용이 다르거나 서버에 없는 이 기기 파일은 올리지 않고 .studeck/서버 전환 전 보관/ 으로 옮겨 둔다.
+      if (fresh && Object.values(st.remote).some(f => !f.deleted)) {
+        const keep = path.join(dir, '.studeck', '서버 전환 전 보관');
+        for (const [p, f] of Object.entries(scanLocal(dir, Infinity).files)) {
+          const r = st.remote[p];
+          if (r && !r.deleted && r.size === f.size && sha256File(f.abs) === r.sha) continue;
+          const dest = path.join(keep, ...p.split('/'));
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          fs.renameSync(f.abs, fs.existsSync(dest) ? dest + '-' + Date.now() : dest);
+          stats.setAside = (stats.setAside || 0) + 1;
+        }
+      }
       // 2. 이 기기 파일 훑기(크기·시각이 같으면 지난번 해시 재사용)
       const { files: local, skipped } = scanLocal(dir, fileMax);
       stats.skipped = skipped;

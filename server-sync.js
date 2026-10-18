@@ -130,7 +130,9 @@ function createServerStore({ file, fetchImpl = fetch, now = Date.now }) {
     persist();
   }
 
-  return { transport, read, write, reset: () => { mirror = empty(''); persist(); } };
+  // 이 기기가 이 서버·계정과 처음 맞추는지(거울이 없거나 다른 계정 것)
+  const isFresh = conn => load().owner !== conn.url + '|' + conn.username || !load().cursor;
+  return { transport, read, write, isFresh, reset: () => { mirror = empty(''); persist(); } };
 }
 
 // 로그인 전 단계(가입·로그인·로그아웃)는 토큰 없이 직접 호출한다.
