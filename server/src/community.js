@@ -6,14 +6,19 @@ import crypto from 'node:crypto';
 import websocket from '@fastify/websocket';
 import { pool } from './db.js';
 import { authenticate, requireAdmin, sha256 } from './auth.js';
+import { registerRooms, ensureAllRoom } from './rooms.js';
 
 const MEDIA_DIR = path.join(process.env.FILES_DIR || '/data/files', 'media');
 const IMAGE_MAX = 10 * 1024 * 1024;
-const MSG_MAX = 4000;
 
 // ---------- 실시간 연결 ----------
 const sockets = new Map(); // socket → { userId }
-function broadcast(event) {
+// 특정 회원들에게만(방 멤버 등)
+export function sendTo(userIds, event) {
+  const ids = new Set(userIds.map(Number)), data = JSON.stringify(event);
+  for (const [ws, info] of sockets) if (info.userId && ids.has(info.userId) && ws.readyState === 1) ws.send(data);
+}
+export function broadcast(event) {
   const data = JSON.stringify(event);
   for (const [ws, info] of sockets) if (info.userId && ws.readyState === 1) ws.send(data);
 }
@@ -28,19 +33,8 @@ function imageMime(buf) {
   return null;
 }
 
-// 메시지 보내기 제한: 10초에 20개
-const sendHits = new Map();
-function tooFast(uid) {
-  const now = Date.now(), list = (sendHits.get(uid) || []).filter(t => now - t < 10000);
-  list.push(now); sendHits.set(uid, list);
-  return list.length > 20;
-}
 
 const memberName = r => r.nickname || r.display_name;
-const messageRow = r => ({ id: Number(r.id), roomId: r.room_id, userId: r.user_id, author: r.user_id ? memberName(r) : '(탈퇴한 회원)',
-  avatar: r.avatar_sha || null, body: r.deleted ? '' : r.body, image: r.deleted ? null : r.image, createdAt: r.created_at, editedAt: r.edited_at, deleted: r.deleted });
-const MSG_SELECT = `SELECT m.*, u.display_name, p.nickname, p.avatar_sha FROM messages m
-  LEFT JOIN users u ON u.id = m.user_id LEFT JOIN profiles p ON p.user_id = m.user_id`;
 const noticeRow = r => ({ id: r.id, title: r.title, body: r.body, pinned: r.pinned, author: r.author_id ? memberName(r) : '(탈퇴한 회원)', createdAt: r.created_at, updatedAt: r.updated_at });
 
 // 프로필 공개 항목: 오늘 공부 시간·시간표는 본인이 켰을 때만
@@ -76,6 +70,7 @@ export function registerCommunity(app) {
             WHERE d.token_hash = $1 AND NOT d.revoked AND u.status = 'approved'`, [sha256(String(msg.token || ''))]);
           if (!rows[0]) return socket.close(4003, 'unauthorized');
           clearTimeout(timer);
+          await ensureAllRoom(rows[0].id);
           const wasOnline = onlineIds().has(rows[0].id);
           sockets.set(socket, { userId: rows[0].id });
           socket.send(JSON.stringify({ type: 'ready', online: [...onlineIds()] }));
@@ -169,58 +164,5 @@ export function registerCommunity(app) {
     return { ok: true };
   });
 
-  // ---------- 채팅방·메시지 ----------
-  app.get('/rooms', { preHandler: authenticate }, async () => {
-    const { rows } = await pool.query(`SELECT r.*, (SELECT max(id) FROM messages m WHERE m.room_id = r.id) AS last_id FROM rooms r WHERE NOT archived ORDER BY r.id`);
-    return { rooms: rows.map(r => ({ id: r.id, name: r.name, topic: r.topic, lastMessageId: r.last_id ? Number(r.last_id) : 0 })) };
-  });
-  app.post('/rooms', { preHandler: requireAdmin }, async (req, reply) => {
-    const name = String(req.body?.name || '').trim().slice(0, 30), topic = String(req.body?.topic || '').trim().slice(0, 100);
-    if (!name) return reply.code(400).send({ error: 'empty' });
-    const { rows: [r] } = await pool.query('INSERT INTO rooms (name, topic, created_by) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING RETURNING *', [name, topic, req.user.id]);
-    if (!r) return reply.code(409).send({ error: 'room_exists' });
-    const room = { id: r.id, name: r.name, topic: r.topic, lastMessageId: 0 };
-    broadcast({ type: 'room', action: 'new', room });
-    return { room };
-  });
-  app.delete('/rooms/:id', { preHandler: requireAdmin }, async (req, reply) => {
-    const r = await pool.query(`UPDATE rooms SET archived = true WHERE id = $1 AND name <> '전체' AND NOT archived`, [Number(req.params.id)]);
-    if (!r.rowCount) return reply.code(404).send({ error: 'not_found' });
-    broadcast({ type: 'room', action: 'archive', id: Number(req.params.id) });
-    return { ok: true };
-  });
-
-  app.get('/rooms/:id/messages', { preHandler: authenticate }, async req => {
-    const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER, limit = Math.min(100, Number(req.query.limit) || 50);
-    const { rows } = await pool.query(`${MSG_SELECT} WHERE m.room_id = $1 AND m.id < $2 ORDER BY m.id DESC LIMIT $3`, [Number(req.params.id), before, limit]);
-    return { messages: rows.reverse().map(messageRow) };
-  });
-  app.post('/rooms/:id/messages', { preHandler: authenticate }, async (req, reply) => {
-    if (tooFast(req.user.id)) return reply.code(429).send({ error: 'too_many' });
-    const roomId = Number(req.params.id), body = String(req.body?.body || '').trim().slice(0, MSG_MAX);
-    const room = await pool.query('SELECT 1 FROM rooms WHERE id = $1 AND NOT archived', [roomId]);
-    if (!room.rowCount) return reply.code(404).send({ error: 'not_found' });
-    let image = null;
-    if (req.body?.image) {
-      const m = await knownImage(req.body.image.sha);
-      if (!m) return reply.code(400).send({ error: 'bad_image' });
-      image = { sha: req.body.image.sha, mime: m.mime, size: Number(m.size), width: Number(req.body.image.width) || null, height: Number(req.body.image.height) || null };
-    }
-    if (!body && !image) return reply.code(400).send({ error: 'empty' });
-    const { rows: [{ id }] } = await pool.query('INSERT INTO messages (room_id, user_id, body, image) VALUES ($1, $2, $3, $4) RETURNING id', [roomId, req.user.id, body, image]);
-    const { rows: [row] } = await pool.query(`${MSG_SELECT} WHERE m.id = $1`, [id]);
-    const message = messageRow(row);
-    broadcast({ type: 'message', action: 'new', message });
-    return { message };
-  });
-  // 메시지 삭제: 본인 또는 운영진
-  app.delete('/messages/:id', { preHandler: authenticate }, async (req, reply) => {
-    const admin = ['admin', 'owner'].includes(req.user.role);
-    const { rows: [m] } = await pool.query(`UPDATE messages SET deleted = true WHERE id = $1 AND NOT deleted AND (user_id = $2 OR $3) RETURNING room_id`,
-      [Number(req.params.id), req.user.id, admin]);
-    if (!m) return reply.code(404).send({ error: 'not_found' });
-    broadcast({ type: 'message', action: 'delete', id: Number(req.params.id), roomId: m.room_id });
-    if (admin) req.log.info({ admin: req.user.username, action: 'delete-message', id: Number(req.params.id) }, 'admin action');
-    return { ok: true };
-  });
+  registerRooms(app, { broadcast, sendTo, onlineIds });
 }

@@ -65,7 +65,7 @@ function tinyPng() {
     PASS('공지: 운영진만 작성, 고정, 회원에게 실시간 알림');
 
     // 채팅: 전체방에 메시지 → 상대에게 실시간, 기록 조회
-    const rooms = (await B.get('/rooms')).json.rooms; const all = rooms.find(r => r.name === '전체'); assert.ok(all);
+    const rooms = (await B.get('/rooms')).json.rooms; const all = rooms.find(r => r.kind === 'all'); assert.ok(all && all.pinned);
     const msg = await B.send('POST', `/rooms/${all.id}/messages`, { body: '안녕하세요!' });
     assert.equal(msg.status, 200);
     const got = await la.waitFor(e => e.type === 'message' && e.action === 'new' && e.message.body === '안녕하세요!', '메시지');
@@ -73,12 +73,12 @@ function tinyPng() {
     const hist = await A.get(`/rooms/${all.id}/messages?limit=5`); assert.ok(hist.json.messages.some(m => m.body === '안녕하세요!'));
     PASS('채팅: 전체방 메시지 실시간 전달·기록 조회');
 
-    // 방 만들기는 운영진만
-    assert.equal((await B.send('POST', '/rooms', { name: '회원방' })).status, 403);
+    // 친목방은 누구나 바로 만들 수 있음(방 정책 상세는 test-server-rooms)
     const roomName = '스터디-' + crypto.randomInt(0, 1e6);
-    const room = await A.send('POST', '/rooms', { name: roomName, topic: '자료구조 스터디' });
-    await lb.waitFor(e => e.type === 'room' && e.room?.name === roomName, '새 방 알림');
-    PASS('주제방은 운영진만 생성, 생성 알림');
+    const room = await A.send('POST', '/rooms', { name: roomName, kind: 'social' });
+    assert.equal(room.json.room.status, 'active');
+    await B.send('POST', `/rooms/${room.json.room.id}/join`);
+    PASS('친목방 만들기·참여');
 
     // 사진: 이미지가 아니면 거부, PNG 업로드 후 메시지 첨부·내려받기
     assert.equal((await B.upload(Buffer.from('not an image'))).status, 415);

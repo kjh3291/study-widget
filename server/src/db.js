@@ -106,7 +106,27 @@ CREATE TABLE IF NOT EXISTS rooms (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   archived    BOOLEAN NOT NULL DEFAULT false
 );
-INSERT INTO rooms (name, topic) VALUES ('전체', '동아리 전체 채팅') ON CONFLICT (name) DO NOTHING;
+-- 방: 종류(all=전체방, social=친목, study=스터디, event=이벤트), 공개/비공개, 상태(active/pending 승인 대기/rejected/archived)
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'social';
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS owner_id INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMPTZ;
+ALTER TABLE rooms DROP CONSTRAINT IF EXISTS rooms_name_key;   -- 같은 이름의 방을 여러 개 허용
+UPDATE rooms SET kind = 'all' WHERE name = '전체' AND kind <> 'all';
+INSERT INTO rooms (name, topic, kind) SELECT 'COSMIC 전체', '동아리 전체 채팅', 'all' WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE kind = 'all');
+UPDATE rooms SET name = 'COSMIC 전체' WHERE kind = 'all' AND name = '전체';
+CREATE TABLE IF NOT EXISTS room_members (
+  room_id      INT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  user_id      INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role         TEXT NOT NULL DEFAULT 'member',   -- owner(방장) | member
+  last_read_id BIGINT NOT NULL DEFAULT 0,        -- 여기까지 읽음(방별 안 읽은 수 계산)
+  joined_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (room_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS room_members_user ON room_members (user_id);
+-- 전체방: 승인된 회원은 모두 자동 참여
+INSERT INTO room_members (room_id, user_id) SELECT r.id, u.id FROM rooms r, users u WHERE r.kind = 'all' AND u.status = 'approved' ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS messages (
   id          BIGSERIAL PRIMARY KEY,
   room_id     INT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,

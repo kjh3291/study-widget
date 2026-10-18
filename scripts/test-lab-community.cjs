@@ -26,7 +26,7 @@ app.on('browser-window-created', (_e, win) => {
         window.__got=[]; Community.on('message', e=>window.__got.push(e)); Community.start();
         await until(()=>Community.state.connected,'실시간 연결');`);
       const rooms = await fetch(URL + '/rooms', { headers: { authorization: 'Bearer ' + ot } }).then(r => r.json());
-      const all = rooms.rooms.find(r => r.name === '전체');
+      const all = rooms.rooms.find(r => r.kind === 'all');
       await serverCall(URL, 'POST', `/rooms/${all.id}/messages`, { body: '앱에서 보이나요?' }, ot);
       const result = await js(`await until(()=>window.__got.some(e=>e.message?.body==='앱에서 보이나요?'),'다른 회원 메시지 수신');
         const sent = await Community.send(${all.id}, '네 잘 보여요');
