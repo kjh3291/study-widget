@@ -13,7 +13,9 @@ const MSG_MAX = 4000;
 const isAdmin = u => ['admin', 'owner'].includes(u.role);
 
 export async function ensureAllRoom(uid) {
-  await pool.query(`INSERT INTO room_members (room_id, user_id) SELECT id, $1 FROM rooms WHERE kind = 'all' ON CONFLICT DO NOTHING`, [uid]);
+  // 새로 들어온 사람에게 지난 대화 전체가 '안 읽음'으로 쌓이지 않게 지금까지는 읽은 것으로 시작
+  await pool.query(`INSERT INTO room_members (room_id, user_id, last_read_id)
+    SELECT r.id, $1, (SELECT coalesce(max(m.id), 0) FROM messages m WHERE m.room_id = r.id) FROM rooms r WHERE r.kind = 'all' ON CONFLICT DO NOTHING`, [uid]);
 }
 
 const memberName = r => r.nickname || r.display_name;
@@ -109,7 +111,7 @@ export function registerRooms(app, { sendTo }) {
     const id = Number(req.params.id), ids = (req.body?.userIds || []).map(Number).filter(Boolean).slice(0, 50);
     const { rows: [r] } = await pool.query(`SELECT r.*, rm.role FROM rooms r LEFT JOIN room_members rm ON rm.room_id = r.id AND rm.user_id = $2 WHERE r.id = $1 AND r.status = 'active' AND r.kind <> 'all'`, [id, req.user.id]);
     if (!r) return reply.code(404).send({ error: 'not_found' });
-    if (r.role !== 'owner' && !isAdmin(req.user)) return reply.code(403).send({ error: 'owner_only' });
+    if (r.role !== 'owner' && !isAdmin(req.user)) return reply.code(403).send({ error: 'room_owner_only' });
     const { rows } = await pool.query(`INSERT INTO room_members (room_id, user_id, last_read_id)
       SELECT $1, u.id, (SELECT coalesce(max(id), 0) FROM messages WHERE room_id = $1) FROM users u WHERE u.id = ANY($2) AND u.status = 'approved'
       ON CONFLICT DO NOTHING RETURNING user_id`, [id, ids]);
@@ -132,7 +134,7 @@ export function registerRooms(app, { sendTo }) {
     const id = Number(req.params.id);
     const { rows: [r] } = await pool.query(`SELECT r.kind, rm.role FROM rooms r LEFT JOIN room_members rm ON rm.room_id = r.id AND rm.user_id = $2 WHERE r.id = $1 AND NOT r.archived`, [id, req.user.id]);
     if (!r || r.kind === 'all') return reply.code(404).send({ error: 'not_found' });
-    if (r.role !== 'owner' && !isAdmin(req.user)) return reply.code(403).send({ error: 'owner_only' });
+    if (r.role !== 'owner' && !isAdmin(req.user)) return reply.code(403).send({ error: 'room_owner_only' });
     const ids = await memberIds(id);
     await pool.query(`UPDATE rooms SET status = 'archived', archived = true WHERE id = $1`, [id]);
     sendTo(ids, { type: 'room', action: 'archive', roomId: id });

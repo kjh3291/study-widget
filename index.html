@@ -3,51 +3,66 @@
 <head>
 <meta charset="UTF-8" />
 <title>Studeck</title>
+<link rel="stylesheet" href="icons.css" />
 <style>
+  @font-face { font-family: "Pretendard"; src: url("fonts/PretendardVariable.woff2") format("woff2-variations"); font-weight: 45 920; font-display: swap; }
   :root {
-    /* Notion Calendar풍 미니멀 — 거의 검정 + 여백 + 색은 강조에만 */
-    --bg: #0c0c0e;
-    --surface: #141416;        /* 아주 옅은 표면(팝오버/카드 최소) */
-    --surface2: #1b1b1f;
-    --line: rgba(255,255,255,0.075);
-    --line2: rgba(255,255,255,0.14);
-    --text: #ededef;
-    --muted: #7f7f87;
-    --accent: #5b9dff;         /* 은은한 블루 = 날짜/활성/강조 */
-    --accent-soft: rgba(91,157,255,0.13);
-    --info: #5b9dff;
-    --info-soft: rgba(91,157,255,0.13);
-    --danger: #ff6b81;
-    --danger-soft: rgba(255,107,129,0.14);
-    --warn: #f0b866;
-    --ok: #57d6a0;
-    --ok-soft: rgba(87,214,160,0.14);
-    --on-accent: #05101f;      /* 파란 배경 위 텍스트/체크 */
-    --hover: rgba(255,255,255,0.03);
+    /* COSMIC 다크(기본) — 동아리 로고의 우주 네이비·청록. 색은 강조에만 */
+    --bg: #080F1C;
+    --surface: #101B2C;
+    --surface2: #19283C;
+    --line: #24374D;
+    --line2: #34495F;
+    --control: #71859C;
+    --text: #F0F6FC;
+    --sub: #B4C5D8;
+    --muted: #90A6BE;
+    --accent: #65D8EB;          /* 강조 글자·아이콘 */
+    --accent-fill: #137C98;     /* 강조 채움(주 버튼·체크·배지) */
+    --accent-soft: #12313F;
+    --info: #9EBFF5;
+    --info-soft: #1A2947;
+    --danger: #FF939E;
+    --danger-fill: #B52D42;
+    --danger-soft: rgba(255,147,158,0.14);
+    --warn: #EBC16A;
+    --ok: #72D6A0;
+    --ok-soft: rgba(114,214,160,0.14);
+    --on-accent: #FFFFFF;
+    --hover: rgba(255,255,255,0.04);
+    --glow-a: rgba(15,174,201,0.14);
+    --glow-b: rgba(34,84,184,0.17);
     --shadow: none;
-    --shadow-lift: 0 8px 28px rgba(0,0,0,0.55);
+    --shadow-lift: 0 8px 24px rgba(0,0,0,0.4);
   }
   :root[data-theme="light"] {
-    --bg: #ffffff;
-    --surface: #f6f6f4;
-    --surface2: #ececea;
-    --line: rgba(0,0,0,0.09);
-    --line2: rgba(0,0,0,0.15);
-    --text: #1d1d1f;
-    --muted: #86868b;
-    --accent: #2f7cf6;
-    --accent-soft: rgba(47,124,246,0.12);
-    --info: #2f7cf6;
-    --info-soft: rgba(47,124,246,0.12);
-    --danger: #e5484d;
-    --danger-soft: rgba(229,72,77,0.12);
-    --warn: #b8860b;
-    --ok: #189a6a;
-    --ok-soft: rgba(24,154,106,0.14);
-    --on-accent: #ffffff;
-    --hover: rgba(0,0,0,0.035);
-    --shadow-lift: 0 8px 28px rgba(0,0,0,0.18);
+    --bg: #F3F7FC;
+    --surface: #FFFFFF;
+    --surface2: #E7EEF7;
+    --line: #D4DFEA;
+    --line2: #BFCDDC;
+    --control: #73859B;
+    --text: #14253A;
+    --sub: #4D647C;
+    --muted: #617890;
+    --accent: #086A83;
+    --accent-fill: #0B718D;
+    --accent-soft: #DDF2F6;
+    --info: #355B91;
+    --info-soft: #E8EEF9;
+    --danger: #B52D42;
+    --danger-fill: #B52D42;
+    --danger-soft: rgba(181,45,66,0.10);
+    --warn: #865B09;
+    --ok: #207447;
+    --ok-soft: rgba(32,116,71,0.12);
+    --on-accent: #FFFFFF;
+    --hover: rgba(20,37,58,0.04);
+    --glow-a: rgba(15,174,201,0.10);
+    --glow-b: rgba(34,84,184,0.07);
+    --shadow-lift: 0 8px 24px rgba(20,37,58,0.10);
   }
+  :root[data-theme="gray"], :root[data-theme="baekjoon"] { --accent-fill: var(--accent); --sub: var(--muted); --control: var(--line2); --danger-fill: var(--danger); --glow-a: transparent; --glow-b: transparent; }
   :root[data-theme="gray"] {
     /* 메모장(윈도우 메모)풍 — 부드러운 중간 회색 */
     --bg: #2b2b2d;
@@ -93,31 +108,18 @@
     --shadow-lift: 0 8px 28px rgba(0,0,0,0.18);
   }
   :root[data-theme="cbnu"] {
-    /* 충북대학교 — CBNU Red(머룬, PANTONE 7425C #B72654) 시그니처 다크 */
-    --bg: #150a0e;
-    --surface: #1d0f14;
-    --surface2: #27151c;
-    --line: rgba(255,255,255,0.08);
-    --line2: rgba(255,255,255,0.15);
-    --text: #f3e9ec;
-    --muted: #ab8c95;
-    --accent: #d23c6c;
-    --accent-soft: rgba(210,60,108,0.17);
-    --info: #d23c6c;
-    --info-soft: rgba(210,60,108,0.17);
-    --danger: #ff6b81;
-    --danger-soft: rgba(255,107,129,0.15);
-    --warn: #f0b866;
-    --ok: #57d6a0;
-    --ok-soft: rgba(87,214,160,0.14);
-    --on-accent: #ffffff;
-    --hover: rgba(255,255,255,0.04);
-    --shadow-lift: 0 8px 28px rgba(0,0,0,0.55);
+    /* 충북대 — COSMIC 다크 바탕 + CBNU 머룬(#B72654) 포인트 */
+    --accent: #F08AA9;
+    --accent-fill: #B72654;
+    --accent-soft: #38232F;
+    --glow-a: rgba(183,38,84,0.10);
+    --glow-b: rgba(183,38,84,0.05);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
-    font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
     background: transparent; color: var(--text); overflow: hidden; user-select: none;
     font-variant-numeric: tabular-nums;
   }
@@ -208,7 +210,7 @@
     font-family: inherit; transition: filter .15s, background .15s, border-color .15s;
   }
   .btn:hover { background: var(--surface); border-color: var(--muted); }
-  .btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .btn.primary { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
   .btn.primary:hover { filter: brightness(1.07); }
   .btn.mini { padding: 5px 10px; font-size: 11px; border-radius: 8px; }
 
@@ -628,37 +630,286 @@
   #settings .err { color: #ff7b7b; font-size: 11.5px; min-height: 14px; }
   input[type=range] { -webkit-app-region: no-drag; flex: 1; accent-color: var(--accent); }
   input[type=checkbox]:not(.check) { -webkit-app-region: no-drag; accent-color: var(--accent); width: 15px; height: 15px; }
+  /* ===================== COSMIC 셸(제목 표시줄·하단 메뉴·페이지) ===================== */
+  #app { border-color: var(--line); }
+  header {
+    -webkit-app-region: drag; display: flex; align-items: center; gap: 6px;
+    height: 42px; flex: none; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); background: var(--bg);
+  }
+  header .brand, #auth-gate .brand { display: flex; align-items: center; gap: 8px; }
+  .logomark { width: 16px; height: 16px; border: 2px dashed var(--accent); border-radius: 50%; position: relative; flex: none; }
+  .logomark::after { content: ''; position: absolute; width: 4px; height: 4px; border-radius: 50%; right: -3px; top: 0; background: var(--text); box-shadow: 0 0 6px var(--accent); }
+  header .title, #auth-gate .title { font-size: 13.5px; font-weight: 700; letter-spacing: -0.2px; color: var(--text); }
+  .brand-sub { font-size: 9.5px; letter-spacing: 1.3px; color: var(--muted); }
+  header .term { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  header .spacer { flex: 1; }
+  header button {
+    -webkit-app-region: no-drag; width: 32px; height: 32px; border: none; border-radius: 9px;
+    background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background var(--dur, .14s), color var(--dur, .14s);
+  }
+  header button [class^="ico-"] { width: 16px; height: 16px; }
+  header button:hover { background: var(--surface2); color: var(--text); }
+  header button.close:hover { background: var(--danger-fill); color: #fff; }
+  .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); margin-right: 6px; -webkit-app-region: no-drag; }
+  .sync-dot.ok { background: var(--ok); } .sync-dot.busy { background: var(--accent); } .sync-dot.err { background: var(--danger); } .sync-dot.pending { background: var(--warn); }
+
+  /* 하단 메뉴 */
+  #nav { height: 58px; flex: none; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); background: var(--surface); padding: 4px 8px; }
+  #nav button { -webkit-app-region: no-drag; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    border: none; background: none; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; border-radius: 10px; }
+  #nav button:hover { color: var(--text); background: var(--hover); }
+  #nav button.active { color: var(--accent); }
+  #nav button.active::before { content: ''; position: absolute; top: -5px; width: 20px; height: 2px; border-radius: 2px; background: var(--accent); }
+  .nav-badge { position: absolute; top: 4px; left: calc(50% + 6px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent-fill); color: var(--on-accent); font-size: 10px; font-style: normal; display: grid; place-items: center; }
+  .nav-badge[hidden] { display: none; }
+  #app.no-nav #nav { display: none; }
+
+  /* 페이지 머리·하위 화면 뒤로 */
+  .page-head { padding: 20px 22px 4px; background: radial-gradient(ellipse 260px 140px at 100% 0%, var(--glow-a), transparent), radial-gradient(ellipse 200px 120px at 55% 0%, var(--glow-b), transparent); }
+  .page-head h1, .sub-title { font-size: 24px; line-height: 32px; letter-spacing: -0.8px; font-weight: 700; color: var(--text); }
+  .eyebrow { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .page-head .summary { padding: 4px 0 0; border: none; background: none; font-size: 12.5px; color: var(--sub); min-height: 0; }
+  .subhead { display: flex; align-items: center; gap: 8px; padding: 14px 18px 0; }
+  .back { display: inline-flex; align-items: center; gap: 2px; border: none; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 4px 6px 4px 0; border-radius: 8px; -webkit-app-region: no-drag; }
+  .back:hover { color: var(--text); }
+  .back [class^="ico-"] { width: 16px; height: 16px; }
+  .sub-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 22px 8px; }
+  .pad { padding: 8px 22px 18px; }
+  @media (max-width: 359px) { .pad, .page-head, .sub-title-row { padding-left: 14px; padding-right: 14px; } }
+
+  /* 메뉴형 목록(학습·더보기·설정 카테고리) */
+  .menu-list { padding: 6px 14px 16px; display: flex; flex-direction: column; }
+  .menu-row { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 12px; padding: 14px 8px; border: none; border-bottom: 1px solid var(--line);
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; border-radius: 0; width: 100%; }
+  .menu-row:last-child { border-bottom: none; }
+  .menu-row:hover { background: var(--hover); }
+  .menu-row .mi { width: 36px; height: 36px; border-radius: 10px; background: var(--surface); color: var(--sub); display: grid; place-items: center; flex: none; }
+  .menu-row .mt { flex: 1; min-width: 0; }
+  .menu-row .mt b { display: block; font-weight: 600; font-size: 14px; }
+  .menu-row .mt small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-row .chev { color: var(--muted); width: 16px; height: 16px; }
+  .menu-row .pill { font-size: 11px; color: var(--on-accent); background: var(--accent-fill); border-radius: 9px; padding: 1px 7px; }
+  .account-card { display: flex; align-items: center; gap: 12px; margin: 14px 22px 6px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 600; font-size: 13px; flex: none; overflow: hidden; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* 오늘: 집중 카드 */
+  .focus-card { margin: 4px 22px 18px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 14px;
+    background: radial-gradient(ellipse at 0% 0%, var(--glow-a), transparent 80%), var(--surface); }
+  .focus-card:empty { display: none; }
+  .orbit { width: 38px; height: 38px; border: 2px dashed var(--accent); border-radius: 50%; display: grid; place-items: center; color: var(--accent); position: relative; flex: none; }
+  .orbit::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; right: -2px; top: 4px; background: var(--text); }
+  .focus-card .ft { flex: 1; min-width: 0; } .focus-card .ft b { font-size: 13px; font-weight: 600; display: block; } .focus-card .ft small { color: var(--muted); font-size: 12px; }
+
+  /* 설정(카테고리 하위 화면) */
+  #settings { padding: 0 0 18px; gap: 0; }
+  #settings h2 { font-size: 22px; letter-spacing: -0.6px; padding: 4px 22px 10px; }
+  #settings .set-cat { padding: 0 22px; display: flex; flex-direction: column; }
+  #settings .set-cat > .row, #settings .set-block { padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  #settings .set-block { display: flex; flex-direction: column; gap: 8px; }
+  #settings .set-cat[hidden] { display: none; }
+  .set-label { font-size: 12px; font-weight: 600; color: var(--sub); }
+  .set-hint { font-size: 11.5px; color: var(--muted); line-height: 1.55; }
+  #settings .btns { padding: 14px 22px 0; }
+  #settings .subhead { padding-top: 12px; }
+  .srv-only[hidden] { display: none; }
+
+  /* 공통: 포커스·모션 */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  /* ===================== 동아리(방 목록·대화·공지·멤버) ===================== */
+  #app.mini #nav { display: none; }
+  .tool { -webkit-app-region: no-drag; width: 34px; height: 34px; border: none; border-radius: 10px; background: var(--surface); color: var(--sub); display: grid; place-items: center; cursor: pointer; flex: none; }
+  .tool:hover, .tool[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+  .tool [class^="ico-"] { width: 17px; height: 17px; }
+  .btn.wide { width: 100%; min-height: 42px; margin-top: 18px; }
+  .pill.soft { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 500; color: var(--accent); background: var(--accent-soft); border-radius: 9px; padding: 1px 7px; vertical-align: 1px; }
+  .pill.soft [class^="ico-"] { width: 11px; height: 11px; }
+  .room-empty { padding: 38px 12px; text-align: center; font-size: 13px; color: var(--muted); }
+
+  .club-head { padding: 20px 22px 0; background: radial-gradient(ellipse 260px 140px at 100% 0%, var(--glow-a), transparent), radial-gradient(ellipse 200px 120px at 55% 0%, var(--glow-b), transparent); }
+  .club-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+  .club-title-row h1 { font-size: 24px; line-height: 32px; letter-spacing: -0.8px; font-weight: 700; }
+  .club-tools { display: flex; gap: 8px; padding-bottom: 2px; }
+  .club-tabs { display: flex; gap: 22px; margin-top: 16px; border-bottom: 1px solid var(--line); }
+  .club-tabs button { border: none; background: none; font: inherit; font-size: 13px; color: var(--muted); padding: 0 0 11px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .club-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+  .room-search { padding: 14px 22px 0; }
+  .room-search input { width: 100%; }
+  .room-filters { display: flex; gap: 6px; padding: 14px 22px 8px; flex-wrap: wrap; }
+  .room-filters button { border: none; font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 20px; color: var(--sub); background: var(--surface); cursor: pointer; min-height: 28px; }
+  .room-filters button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .room-list { padding: 0 12px 14px; }
+  .room { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 13px 10px; border: none; border-radius: 12px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+  button.room:hover { background: var(--surface); }
+  .room.discover { cursor: default; }
+  .roompic { width: 44px; height: 44px; border-radius: 15px; background: var(--surface2); color: var(--sub); display: grid; place-items: center; }
+  .roompic.official { background: var(--accent-soft); color: var(--accent); }
+  .roompic.official span { width: 26px; height: 26px; border: 2px dashed var(--accent); border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; position: relative; }
+  .roompic.official span::after { content: ''; position: absolute; width: 4px; height: 4px; border-radius: 50%; right: -3px; top: 1px; background: var(--text); }
+  .room-copy { min-width: 0; }
+  .room-name { display: flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; min-width: 0; }
+  .room-name > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .room-name [class^="ico-"] { width: 12px; height: 12px; color: var(--muted); }
+  .room-count { font-size: 11px; color: var(--muted); font-weight: 400; flex: none; }
+  .room-preview { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .room-badge { display: inline-block; font-size: 10.5px; color: var(--accent); margin-top: 4px; }
+  .room-right { align-self: start; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding-top: 2px; }
+  .room.discover .room-right { align-self: center; padding: 0; }
+  .room-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .unread { background: var(--accent-fill); color: var(--on-accent); font-size: 11px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; display: grid; place-items: center; font-weight: 600; }
+  .room-section { font-size: 12px; font-weight: 600; color: var(--sub); padding: 18px 10px 4px; border-top: 1px solid var(--line); margin-top: 8px; }
+
+  /* 새 방·공지·프로필 폼 */
+  .club-new label:not(.choice-item):not(.row) { display: block; margin: 16px 0 7px; font-size: 12.5px; color: var(--sub); }
+  .club-new input:not([type=radio]):not([type=checkbox]), .club-new textarea { width: 100%; }
+  .club-new textarea { resize: vertical; font: inherit; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; }
+  .club-new label.row { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: var(--text); }
+  .choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+  .choice-item { cursor: pointer; }
+  .choice-item input { position: absolute; opacity: 0; pointer-events: none; }
+  .choice-item > span { display: flex; flex-direction: column; gap: 3px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); min-height: 74px; }
+  .choice-item > span [class^="ico-"] { color: var(--muted); width: 17px; height: 17px; margin-bottom: 2px; }
+  .choice-item b { font-size: 13px; font-weight: 600; }
+  .choice-item small { font-size: 11px; color: var(--muted); }
+  .choice-item input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+  .choice-item input:checked + span [class^="ico-"] { color: var(--accent); }
+  .choice-item input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* 대화 화면 */
+  #view-club.club-room { display: flex; flex-direction: column; overflow: hidden; }
+  .chat-head { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 14px 10px 10px; border-bottom: 1px solid var(--line); background: radial-gradient(ellipse at top right, var(--glow-a), transparent 75%); flex: none; }
+  .chat-head .back { padding: 6px; }
+  .chat-head .back [class^="ico-"] { width: 20px; height: 20px; }
+  .chat-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .chat-title b { font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-title small { font-size: 11.5px; color: var(--muted); }
+  .room-menu { position: absolute; right: 12px; top: 50px; z-index: 5; min-width: 160px; background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 5px; box-shadow: 0 10px 30px #0006; display: flex; flex-direction: column; }
+  .room-menu[hidden] { display: none; }
+  .room-menu button { display: flex; align-items: center; gap: 9px; border: none; background: none; color: var(--text); font: inherit; font-size: 13px; padding: 9px 10px; border-radius: 8px; cursor: pointer; text-align: left; }
+  .room-menu button:hover { background: var(--hover); }
+  .room-menu button.danger { color: var(--danger); }
+  .room-menu [class^="ico-"] { width: 15px; height: 15px; }
+  .chat-topic { display: flex; align-items: center; gap: 8px; margin: 10px 14px 0; padding: 9px 12px; background: var(--surface); border-radius: 10px; color: var(--sub); font-size: 12px; flex: none; }
+  .chat-topic [class^="ico-"] { width: 14px; height: 14px; color: var(--accent); }
+  .chat-topic span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-log { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 8px; }
+  .chat-date { text-align: center; color: var(--muted); font-size: 11px; margin: 10px 0 16px; }
+  .chat-unread-line { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 11px; margin: 12px 0; }
+  .chat-unread-line::before, .chat-unread-line::after { content: ''; flex: 1; height: 1px; background: var(--accent); opacity: .4; }
+  .msg { display: flex; gap: 9px; margin-top: 14px; align-items: flex-start; }
+  .msg.grouped { margin-top: 4px; padding-left: 39px; }
+  .msg.mine { justify-content: flex-end; padding-left: 40px; }
+  .msg.mine.grouped { padding-left: 40px; }
+  .avatar.sm { width: 30px; height: 30px; font-size: 11px; }
+  .avatar.lg { width: 72px; height: 72px; font-size: 20px; }
+  .msg-body { min-width: 0; max-width: 100%; }
+  .msg-name { font-size: 11.5px; color: var(--sub); margin-bottom: 4px; }
+  .msg-line { display: flex; align-items: flex-end; gap: 6px; }
+  .msg.mine .msg-line { flex-direction: row-reverse; }
+  .bubble { padding: 9px 12px; border-radius: 4px 14px 14px 14px; background: var(--surface2); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; max-width: 260px; display: flex; flex-direction: column; gap: 6px; }
+  .msg.mine .bubble { background: var(--accent-soft); border-radius: 14px 4px 14px 14px; }
+  .msg.grouped .bubble { border-radius: 14px; }
+  .bubble a { color: var(--accent); }
+  .bubble .deleted { color: var(--muted); font-style: italic; }
+  .chat-img { border: none; padding: 0; background: var(--surface); border-radius: 10px; overflow: hidden; width: 220px; max-width: 100%; min-height: 60px; cursor: zoom-in; color: var(--muted); font-size: 11px; }
+  .chat-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .msg-time { font-size: 10px; color: var(--muted); flex: none; padding-bottom: 2px; }
+  .msg-del { opacity: 0; border: none; background: none; color: var(--muted); cursor: pointer; padding: 2px; border-radius: 6px; }
+  .msg-del [class^="ico-"] { width: 13px; height: 13px; }
+  .msg:hover .msg-del, .msg-del:focus-visible { opacity: 1; }
+  .msg-del:hover { color: var(--danger); }
+  .new-msg { position: absolute; left: 50%; transform: translateX(-50%); bottom: 74px; border: none; border-radius: 16px; padding: 7px 14px; background: var(--accent-fill); color: var(--on-accent); font: inherit; font-size: 12px; cursor: pointer; box-shadow: 0 6px 18px #0005; z-index: 3; }
+  .new-msg[hidden] { display: none; }
+  .compose { flex: none; display: flex; align-items: center; gap: 8px; margin: 6px 12px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px; }
+  .compose:focus-within { border-color: var(--accent); }
+  .compose input:not([type=file]) { flex: 1; min-width: 0; border: none !important; background: none !important; color: var(--text); font: inherit; font-size: 13px; outline: none; padding: 6px 2px; box-shadow: none !important; }
+  .compose .tool { background: none; width: 32px; height: 32px; }
+  .compose .send { width: 34px; height: 34px; border: none; border-radius: 10px; background: var(--accent-fill); color: var(--on-accent); display: grid; place-items: center; cursor: pointer; flex: none; }
+  .compose .send [class^="ico-"] { width: 16px; height: 16px; }
+
+  /* 공지 */
+  .notice-list { padding: 12px 22px 18px; display: flex; flex-direction: column; gap: 10px; }
+  .notice { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+  .notice.pinned { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: radial-gradient(ellipse at 100% 0%, var(--glow-a), transparent 70%), var(--surface); }
+  .notice-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .notice-top b { font-size: 14px; font-weight: 700; }
+  .notice-body { margin-top: 8px; font-size: 13px; color: var(--sub); line-height: 1.6; overflow-wrap: anywhere; }
+  .notice-body a { color: var(--accent); }
+  .notice-meta { margin-top: 10px; font-size: 11px; color: var(--muted); }
+  .link { border: none; background: none; padding: 0; font: inherit; color: var(--sub); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .link.danger { color: var(--danger); }
+
+  /* 멤버 */
+  .member-sum { padding: 14px 22px 4px; font-size: 12px; color: var(--muted); }
+  .member-list { padding: 0 12px 16px; }
+  .person { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border: none; border-radius: 12px; background: none; color: var(--text); font: inherit; text-align: left; }
+  button.person { cursor: pointer; } button.person:hover { background: var(--surface); }
+  label.person { cursor: pointer; }
+  .person .mt { flex: 1; min-width: 0; }
+  .person .mt b { display: block; font-size: 13.5px; font-weight: 600; }
+  .person .mt small { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .online-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
+  .online-dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+
+  /* 아래 시트 */
+  .sheet-back { position: absolute; inset: 0; z-index: 40; background: #0008; display: flex; align-items: flex-end; animation: sheet-fade .15s ease-out; }
+  .sheet { width: 100%; max-height: 86%; background: var(--bg); border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; display: flex; flex-direction: column; animation: sheet-up .18s ease-out; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px 22px; }
+  .sheet-head b { font-size: 16px; font-weight: 700; }
+  .sheet-head .tool { background: none; }
+  .sheet-body { overflow: auto; padding: 0 22px 20px; }
+  .sheet-list { display: flex; flex-direction: column; margin: 0 -10px; }
+  .sheet-img { display: block; max-width: 100%; border-radius: 10px; margin: 0 auto; }
+  .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .sheet-actions .btn { min-height: 40px; padding: 0 16px; }
+  .profile-card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 10px; text-align: center; }
+  .profile-card b { font-size: 16px; margin-top: 6px; }
+  .profile-card small { color: var(--muted); font-size: 12px; }
+  .profile-card p { color: var(--sub); font-size: 13px; margin-top: 6px; }
+  .avatar-edit { border: none; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  @keyframes sheet-up { from { transform: translateY(24px); opacity: .6; } }
+  @keyframes sheet-fade { from { opacity: 0; } }
+  /* 다듬기 */
+  .brand-sub { white-space: nowrap; }
+  header .brand { white-space: nowrap; flex: none; }
+  .mini .brand-sub, .mini header .lab-badge { display: none; }
+  #settings { top: 43px; bottom: 58px; height: auto; }
+  #app.no-nav #settings, #app.mini #settings { bottom: 0; }
+  #settings > .btns { display: none; }
+  .account-card.menu-row { width: auto; display: flex; border-bottom: 1px solid var(--line); border-radius: 14px; }
+  .account-card.menu-row:hover { background: var(--surface2); }
+  .club-new input:not([type=radio]):not([type=checkbox]):not([type=file]), .compose input#compose-in, .room-search input {
+    -webkit-app-region: no-drag; padding: 10px 12px; border-radius: 9px; font-size: 13px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-family: inherit; }
+  .room-search input:focus, .club-new input:focus, .club-new textarea:focus { outline: none; border-color: var(--accent); }
+  #server-box > .btn { align-self: flex-start; }
+  /* 할 일 행: 마우스를 올렸을 때만 보이는 버튼은 자리를 차지하지 않고 오른쪽 위에 떠서 행이 두 줄로 늘어나지 않게 */
+  .todo { position: relative; gap: 9px; padding: 12px 4px; }
+  .todo > .play, .todo > .x { position: absolute; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 8px; background: var(--surface2); display: none; align-items: center; justify-content: center; opacity: 1; z-index: 1; }
+  .todo > .x { right: 4px; } .todo > .play:not(.addsub) { right: 34px; } .todo > .play.addsub { right: 64px; }
+  .todo:hover > .play, .todo:hover > .x, .todo > .play:focus-visible, .todo > .x:focus-visible { display: flex; }
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <span class="brand"><span class="dot"></span><span class="title">Stu<span class="title-accent">deck</span></span></span>
+    <span class="brand"><span class="logomark" aria-hidden="true"></span><span class="title">Studeck</span><span class="brand-sub">/ COSMIC</span></span>
     <span class="term" id="term"></span>
     <span class="spacer"></span>
-    <button id="btn-mini" title="미니 모드">⊟</button>
-    <button id="btn-settings" title="설정">⚙</button>
-    <button id="btn-min" title="최소화">—</button>
-    <button id="btn-close" class="close" title="닫기">×</button>
+    <span id="sync-dot" class="sync-dot" role="img" aria-label="동기화 상태"></span>
+    <button id="btn-mini" title="미니 모드" aria-label="미니 모드"><span class="ico-mini" aria-hidden="true"></span></button>
+    <button id="btn-settings" title="설정" aria-label="설정" hidden></button>
+    <button id="btn-min" title="최소화" aria-label="최소화"><span class="ico-min" aria-hidden="true"></span></button>
+    <button id="btn-close" class="close" title="닫기" aria-label="닫기"><span class="ico-x" aria-hidden="true"></span></button>
   </header>
+  <div class="tabs" hidden></div>
 
-  <div class="tabs">
-    <button data-tab="timetable" class="active">시간표</button>
-    <button data-tab="todos">할 일</button>
-    <button data-tab="schedule">일정</button>
-    <button data-tab="lms">LMS</button>
-    <button data-tab="stats">기록</button>
-    <button data-tab="attend">출석</button>
-  </div>
-
-  <div id="summary" class="summary"></div>
-
-  <div id="sync-bar" class="summary" style="gap:6px;flex-wrap:wrap" role="status">
-    <span id="sync-label" style="flex:1;min-width:140px">기기에 저장됨</span>
-    <button id="sync-now" class="btn mini">지금 동기화</button>
-    <button id="sync-resolve" class="btn mini" hidden>충돌 확인</button>
-  </div>
   <div id="body">
+    <div id="view-study" class="view hidden"></div>
+    <div id="view-club" class="view hidden"></div>
+    <div id="view-more" class="view hidden"></div>
     <div id="view-timetable" class="view">
       <div class="pad"><button id="btn-syllabus" class="btn mini">강의계획서 PDF 가져오기</button> <button id="btn-manual-timetable" class="btn mini">시간 직접 입력</button><div id="syllabus-msg" style="font-size:11px;color:var(--muted);margin-top:6px" aria-live="polite"></div></div>
       <div id="empty">
@@ -669,6 +920,11 @@
     </div>
 
     <div id="view-todos" class="view hidden">
+      <div class="page-head">
+        <div class="eyebrow" id="today-date"></div>
+        <h1>오늘</h1>
+        <div id="summary" class="summary"></div>
+      </div>
       <div class="pad">
         <div class="add-box">
           <input type="text" id="td-text" placeholder="할 일을 적고 Enter…" autocomplete="off" />
@@ -683,6 +939,7 @@
         <input type="text" id="td-search" class="td-search" placeholder="할 일 검색…" autocomplete="off" />
         <div id="todo-list"></div>
       </div>
+      <div id="focus-card" class="focus-card"></div>
     </div>
 
     <div id="view-schedule" class="view hidden">
@@ -726,6 +983,13 @@
     </div>
   </div>
 
+  <nav id="nav" aria-label="주 메뉴">
+    <button data-nav="today" class="active"><span class="ico-home" aria-hidden="true"></span><span>오늘</span></button>
+    <button data-nav="study"><span class="ico-book" aria-hidden="true"></span><span>학습</span></button>
+    <button data-nav="club"><span class="ico-chat" aria-hidden="true"></span><span>동아리</span><i class="nav-badge" id="club-badge" hidden></i></button>
+    <button data-nav="more"><span class="ico-more" aria-hidden="true"></span><span>더보기</span></button>
+  </nav>
+
   <div id="focus-view" class="hidden"></div>
 
   <div id="toast"></div>
@@ -733,7 +997,7 @@
   <!-- 실험실 시작 화면: 로그인하기 전에는 기능 대신 이 화면만 보인다 -->
   <div id="auth-gate" hidden role="dialog" aria-label="로그인">
     <div class="gate-bar">
-      <span class="brand"><span class="dot"></span><span class="title">Stu<span class="title-accent">deck</span></span><span class="lab-badge">LAB</span></span>
+      <span class="brand"><span class="logomark" aria-hidden="true"></span><span class="title">Studeck</span><span class="lab-badge">LAB</span></span>
       <span class="spacer" style="flex:1"></span>
       <button id="gate-min" title="최소화">—</button>
       <button id="gate-close" title="닫기">×</button>
@@ -782,65 +1046,86 @@
     </div>
   </div>
 
-  <div id="settings" class="hidden">
-    <h2>설정</h2>
+  <div id="settings" class="hidden" role="dialog" aria-labelledby="set-title">
+    <div class="subhead"><button class="back" id="set-back" aria-label="더보기로 돌아가기"><span class="ico-back" aria-hidden="true"></span>더보기</button></div>
+    <h2 id="set-title">설정</h2>
     <div class="err" id="settings-err"></div>
-    <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">어둡게</button><button id="theme-light">밝게</button><button id="theme-cbnu">충북대</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
-    <div class="row" style="justify-content:space-between;"><span>헤더 시계</span><span class="seg"><button id="clk-h">시</button><button id="clk-hm">시:분</button><button id="clk-hms">시:분:초</button></span></div>
-    <div class="row" style="justify-content:space-between;"><span>하루 집중 목표(시간)</span><input type="number" id="inp-focus-goal" min="0.5" max="16" step="0.5" value="2" style="width:80px;" /></div>
-    <div class="row"><span>투명도</span><input type="range" id="inp-opacity" min="30" max="100" value="100" /></div>
-    <div class="row"><input type="checkbox" id="inp-top" checked /><label for="inp-top" style="cursor:pointer;">항상 맨 위에 표시</label></div>
-    <div class="row"><input type="checkbox" id="inp-autostart" /><label for="inp-autostart" style="cursor:pointer;">윈도우 시작 시 자동 실행</label></div>
-    <div class="row"><input type="checkbox" id="inp-lms-auto" checked /><label for="inp-lms-auto" style="cursor:pointer;">LMS 자동 새로고침 (3시간마다)</label></div>
-    <div class="row" style="justify-content:space-between;"><span>아침 요약 시각</span><input type="time" id="inp-morning" value="08:00" style="width:110px;color-scheme:dark;" /></div>
-    <div class="row"><input type="checkbox" id="inp-deadline" checked /><label for="inp-deadline" style="cursor:pointer;">마감 임박 알림</label></div>
-    <div class="row"><input type="checkbox" id="inp-rollover" checked /><label for="inp-rollover" style="cursor:pointer;">지난 할 일 자동으로 오늘로 이월</label></div>
-    <div class="row"><input type="checkbox" id="inp-autodl" checked /><label for="inp-autodl" style="cursor:pointer;">LMS 수업 자료 자동 다운로드</label></div>
-    <div class="row" style="justify-content:space-between;"><span id="studeck-folder-label">바탕화면\Studeck 폴더</span><button class="btn" id="btn-open-studeck">폴더 열기</button></div>
-    <div class="row" id="server-box" hidden style="flex-direction:column;align-items:stretch;gap:6px;border-top:1px solid var(--line);padding-top:11px;">
-      <span style="font-weight:700;font-size:12px;">서버 동기화 <span style="color:var(--muted);font-weight:600;">(실험실 서버)</span></span>
-      <div id="server-in" style="display:flex;flex-direction:column;gap:6px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span id="srv-who" style="font-size:12px;"></span>
-          <button class="btn mini" id="btn-account">내 계정</button>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn primary mini" id="btn-srv-sync" style="flex:1;">지금 동기화</button>
-          <button class="btn mini" id="btn-srv-logout" style="flex:1;">로그아웃</button>
-        </div>
-        <button class="btn mini" id="btn-srv-import">운영 앱 데이터 가져오기</button>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span id="srv-usage" style="font-size:11px;color:var(--muted);">보조자료·과제 파일: 확인 중…</span>
-          <button class="btn mini" id="btn-srv-files">휴지통·이전 버전</button>
-        </div>
+
+    <section class="set-cat" data-cat="screen">
+      <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">COSMIC</button><button id="theme-light">밝게</button><button id="theme-cbnu">충북대</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
+      <div class="row" style="justify-content:space-between;"><span>헤더 시계</span><span class="seg"><button id="clk-h">시</button><button id="clk-hm">시:분</button><button id="clk-hms">시:분:초</button></span></div>
+      <div class="row"><span>투명도</span><input type="range" id="inp-opacity" min="30" max="100" value="100" aria-label="투명도" /></div>
+      <div class="row"><input type="checkbox" id="inp-top" checked /><label for="inp-top">항상 맨 위에 표시</label></div>
+      <div class="row"><input type="checkbox" id="inp-autostart" /><label for="inp-autostart">컴퓨터 시작 시 자동 실행</label></div>
+    </section>
+
+    <section class="set-cat" data-cat="study">
+      <div class="row" style="justify-content:space-between;"><label for="inp-focus-goal">하루 집중 목표(시간)</label><input type="number" id="inp-focus-goal" min="0.5" max="16" step="0.5" value="2" style="width:80px;" /></div>
+      <div class="row" style="justify-content:space-between;"><label for="inp-morning">아침 요약 시각</label><input type="time" id="inp-morning" value="08:00" style="width:110px;" /></div>
+      <div class="row"><input type="checkbox" id="inp-deadline" checked /><label for="inp-deadline">마감 임박 알림</label></div>
+      <div class="row"><input type="checkbox" id="inp-rollover" checked /><label for="inp-rollover">지난 할 일 자동으로 오늘로 이월</label></div>
+    </section>
+
+    <section class="set-cat" data-cat="lms">
+      <div class="row"><input type="checkbox" id="inp-lms-auto" checked /><label for="inp-lms-auto">LMS 자동 새로고침 (3시간마다)</label></div>
+      <div class="row"><input type="checkbox" id="inp-autodl" checked /><label for="inp-autodl">LMS 수업 자료 자동 다운로드</label></div>
+      <div id="sync-bar" class="set-block" role="status">
+        <div class="set-label">동기화</div>
+        <div class="row" style="justify-content:space-between;"><span id="sync-label">기기에 저장됨</span><span style="display:flex;gap:6px"><button id="sync-now" class="btn mini">지금 동기화</button><button id="sync-resolve" class="btn mini" hidden>충돌 확인</button></span></div>
       </div>
-      <div id="admin-box" hidden style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--line);padding-top:9px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-weight:700;font-size:12px;">가입 신청 승인 <span style="color:var(--muted);font-weight:600;">(운영진)</span> <span id="admin-count" class="admin-count"></span></span>
+      <div id="server-box" hidden class="set-block">
+        <button class="btn mini srv-only" id="btn-srv-sync" hidden>지금 동기화</button>
+        <button class="btn mini" id="btn-srv-import">운영 앱 데이터 가져오기</button>
+        <span id="git-sync-msg" class="set-hint"></span>
+        <span class="set-hint">비밀번호는 저장하지 않고 이 기기 전용 접속 키만 보관해요.</span>
+      </div>
+      <div class="row set-block" id="git-box" style="flex-direction:column;align-items:stretch;gap:6px;">
+        <span class="set-label">GitHub 동기화 <span style="color:var(--muted)">(맥↔윈도우 자료 공유)</span></span>
+        <input type="text" id="inp-git-repo" placeholder="예: kjh3291/studeck-data" autocomplete="off" />
+        <input type="password" id="inp-git-token" placeholder="GitHub 토큰 붙여넣기" autocomplete="off" />
+        <div style="display:flex;gap:8px;">
+          <button class="btn primary mini" id="btn-git-connect" style="flex:1;">연결</button>
+          <button class="btn mini" id="btn-git-sync" style="flex:1;">지금 동기화</button>
+        </div>
+        <span id="git-sync-msg" class="set-hint"></span>
+      </div>
+      <div class="row" style="justify-content:space-between;">
+        <button id="btn-lms-dump" class="btn mini">LMS 디버그 저장</button>
+        <span id="lms-dump-msg" class="set-hint" style="flex:1;text-align:right;"></span>
+      </div>
+    </section>
+
+    <section class="set-cat" data-cat="files">
+      <div class="row" style="justify-content:space-between;"><span id="studeck-folder-label">바탕화면\Studeck 폴더</span><button class="btn mini" id="btn-open-studeck">폴더 열기</button></div>
+      <div class="row srv-only" style="justify-content:space-between;align-items:center;gap:8px;">
+        <span id="srv-usage" class="set-hint">보조자료·과제 파일: 확인 중…</span>
+        <button class="btn mini" id="btn-srv-files">휴지통·이전 버전</button>
+      </div>
+      <span class="set-hint srv-only">보조자료·과제 파일은 서버의 내 공간에 저장되고, 지운 파일과 이전 버전은 30일 보관돼요. 수업자료는 각 기기가 LMS에서 받아요.</span>
+    </section>
+
+    <section class="set-cat srv-only" data-cat="account">
+      <div id="server-in" class="row" style="justify-content:space-between;align-items:center;gap:8px;">
+        <span id="srv-who"></span>
+        <button class="btn mini" id="btn-account">내 계정</button>
+      </div>
+      <div class="row"><button class="btn mini" id="btn-srv-logout">로그아웃</button></div>
+    </section>
+
+    <section class="set-cat srv-only" data-cat="admin">
+      <div id="admin-box" hidden class="set-block">
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <span class="set-label">가입 신청 승인 <span id="admin-count" class="admin-count"></span></span>
           <span style="display:flex;gap:6px;"><button class="btn mini" id="btn-admin-refresh">새로고침</button><button class="btn mini" id="btn-members">회원 관리</button></span>
         </div>
         <div id="admin-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <div class="set-label" style="margin-top:10px">방 승인 대기 <span id="room-admin-count" class="admin-count"></span></div>
+        <div id="room-admin-list" style="display:flex;flex-direction:column;gap:6px;"></div>
       </div>
-      <span id="git-sync-msg" style="font-size:11px;color:var(--muted);min-height:14px;"></span>
-      <span class="hint" style="font-size:10.5px;">비밀번호는 저장하지 않고 이 기기 전용 접속 키만 보관합니다. Tailscale(동아리 tailnet)에 연결돼 있어야 합니다. 수업·보조 자료 파일은 아직 서버로 동기화되지 않습니다.</span>
-    </div>
-    <div class="row" id="git-box" style="flex-direction:column;align-items:stretch;gap:6px;border-top:1px solid var(--line);padding-top:11px;">
-      <span style="font-weight:700;font-size:12px;">GitHub 동기화 <span style="color:var(--muted);font-weight:600;">(맥↔윈도우 자료 공유)</span></span>
-      <input type="text" id="inp-git-repo" placeholder="예: kjh3291/studeck-data" autocomplete="off" />
-      <input type="password" id="inp-git-token" placeholder="GitHub 토큰 붙여넣기" autocomplete="off" />
-      <div style="display:flex;gap:8px;">
-        <button class="btn primary mini" id="btn-git-connect" style="flex:1;">연결</button>
-        <button class="btn mini" id="btn-git-sync" style="flex:1;">지금 동기화</button>
-      </div>
-      <span id="git-sync-msg" style="font-size:11px;color:var(--muted);min-height:14px;"></span>
-      <span class="hint" style="font-size:10.5px;">비공개 저장소(studeck-data)를 만들고 Contents 읽기/쓰기 토큰으로 연결하세요. 토큰은 이 PC에만 저장됩니다. 자료 폴더가 양쪽 기기에서 자동 동기화됩니다.</span>
-    </div>
-    <div class="row" style="justify-content:space-between;">
-      <button id="btn-lms-dump" class="btn mini">LMS 디버그 저장</button>
-      <span id="lms-dump-msg" style="font-size:10.5px;color:var(--muted);flex:1;text-align:right;"></span>
-    </div>
+    </section>
+
     <div class="btns">
-      <button class="btn primary" id="btn-cancel">닫기</button>
+      <button class="btn" id="btn-cancel">닫기</button>
     </div>
   </div>
 </div>
@@ -850,5 +1135,7 @@
 <script src="syllabus.js"></script>
 <script src="community-client.js"></script>
 <script src="renderer.js"></script>
+<script src="ui-shell.js"></script>
+<script src="club.js"></script>
 </body>
 </html>

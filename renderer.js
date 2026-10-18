@@ -1960,6 +1960,7 @@ if (SERVER_MODE) {
     const r = await window.api.serverLogout();
     if (!r?.ok) return msg(r?.error || '로그아웃 실패');
     state.syncEnabled = false; state.serverRole = 'member';
+    window.Club?.reset();
     $('settings').classList.add('hidden');
     showGate(true, '로그아웃했습니다.');
   };

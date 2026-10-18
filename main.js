@@ -514,7 +514,9 @@ const SERVER_ERRORS = { bad_username: '아이디는 학번(숫자 8~10자리)입
   too_many: '시도가 너무 많습니다. 잠시 뒤 다시 시도하세요.', github_mismatch: '이 학번에 연결된 GitHub 계정과 다릅니다(또는 GitHub이 연결되지 않은 계정).',
   github_failed: 'GitHub 정보를 확인하지 못했습니다.', github_taken: '이 GitHub 계정은 다른 회원에게 이미 연결돼 있습니다.',
   owner_cannot_withdraw: '최고 관리자는 탈퇴할 수 없습니다.', outranked: '같거나 높은 등급의 회원은 바꿀 수 없습니다.', self: '자기 자신은 바꿀 수 없습니다.',
-  owner_only: '최고 관리자만 할 수 있습니다.', bad_state: '지금 상태에서는 할 수 없는 작업입니다.' };
+  owner_only: '최고 관리자만 할 수 있습니다.', bad_state: '지금 상태에서는 할 수 없는 작업입니다.',
+  room_owner_only: '방장(또는 운영진)만 할 수 있어요.', cannot_leave_all: '전체방은 나갈 수 없어요.', not_found: '찾을 수 없어요(삭제됐거나 권한이 없어요).',
+  empty: '내용을 입력하세요.', bad_kind: '방 종류를 골라 주세요.', bad_image: '사진을 다시 올려 주세요.', bad_avatar: '프로필 사진을 다시 올려 주세요.' };
 const serverError = (r, fallback) => SERVER_ERRORS[r.json.error] || r.json.message || fallback + ' (' + r.status + ')';
 async function serverTry(fn) {
   try { return await fn(); }
@@ -607,7 +609,7 @@ ipcMain.handle('github-device-poll', (_e, deviceCode) => serverTry(async () => {
 }));
 // ---------- 커뮤니티(공지·채팅·프로필) ----------
 // 허용된 경로만 대신 호출한다(토큰은 main에서 붙임).
-const COMMUNITY_PATH = /^\/(notices|rooms|messages|profiles|me\/profile)(\/[\w-]+)*(\/messages)?(\?[\w=&-]*)?$/;
+const COMMUNITY_PATH = /^\/(?:(?:notices|rooms|messages|profiles|admin\/rooms)(?:\/[\w-]+)*|me|me\/profile)(\?[\w=&-]*)?$/;
 ipcMain.handle('community-call', (_e, { method, path: p, body } = {}) => serverTry(async () => {
   if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || !COMMUNITY_PATH.test(String(p))) return { ok: false, error: '잘못된 요청입니다.' };
   return accountCall(method, p, body || {});
