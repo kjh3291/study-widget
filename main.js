@@ -609,7 +609,7 @@ ipcMain.handle('github-device-poll', (_e, deviceCode) => serverTry(async () => {
 }));
 // ---------- 커뮤니티(공지·채팅·프로필) ----------
 // 허용된 경로만 대신 호출한다(토큰은 main에서 붙임).
-const COMMUNITY_PATH = /^\/(?:(?:notices|rooms|messages|profiles|admin\/rooms)(?:\/[\w-]+)*|me|me\/profile)(\?[\w=&-]*)?$/;
+const COMMUNITY_PATH = /^\/(?:(?:notices|rooms|messages|profiles|focus|admin\/rooms)(?:\/[\w-]+)*|me|me\/profile)(\?[\w=&-]*)?$/;
 ipcMain.handle('community-call', (_e, { method, path: p, body } = {}) => serverTry(async () => {
   if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || !COMMUNITY_PATH.test(String(p))) return { ok: false, error: '잘못된 요청입니다.' };
   return accountCall(method, p, body || {});

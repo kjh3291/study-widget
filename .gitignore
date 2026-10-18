@@ -12,3 +12,4 @@ channel.json
 
 # 서버 비밀값
 server/.env
+design-request/

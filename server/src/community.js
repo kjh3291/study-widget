@@ -7,6 +7,7 @@ import websocket from '@fastify/websocket';
 import { pool } from './db.js';
 import { authenticate, requireAdmin, sha256 } from './auth.js';
 import { registerRooms, ensureAllRoom } from './rooms.js';
+import { createFocus, registerFocus, studyDay } from './focus.js';
 
 const MEDIA_DIR = path.join(process.env.FILES_DIR || '/data/files', 'media');
 const IMAGE_MAX = 10 * 1024 * 1024;
@@ -22,6 +23,7 @@ export function broadcast(event) {
   const data = JSON.stringify(event);
   for (const [ws, info] of sockets) if (info.userId && ws.readyState === 1) ws.send(data);
 }
+const focus = createFocus({ broadcast });
 const onlineIds = () => new Set([...sockets.values()].map(s => s.userId).filter(Boolean));
 
 // 사진만 허용(앞부분 바이트로 형식 확인)
@@ -41,8 +43,8 @@ const noticeRow = r => ({ id: r.id, title: r.title, body: r.body, pinned: r.pinn
 async function publicStudy(uid) {
   const { rows } = await pool.query(`SELECT data FROM items WHERE user_id = $1 AND kind = 'setting' AND id = 'focus' AND NOT deleted`, [uid]);
   const sessions = rows[0]?.data?.v?.sessions || [];
-  const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // 한국 시간 기준
-  return { todayMinutes: sessions.filter(s => s.date === today).reduce((a, s) => a + (Number(s.minutes) || 0), 0) };
+  const today = studyDay(); // 한국 시간 새벽 5시 기준
+  return { todayMinutes: Math.floor(sessions.filter(s => s.date === today).reduce((a, s) => a + (Number(s.seconds) || (Number(s.minutes) || 0) * 60), 0) / 60) };
 }
 async function publicTimetable(uid) {
   const { rows } = await pool.query(`SELECT data FROM items WHERE user_id = $1 AND kind = 'course' AND NOT deleted`, [uid]);
@@ -76,12 +78,13 @@ export function registerCommunity(app) {
           socket.send(JSON.stringify({ type: 'ready', online: [...onlineIds()] }));
           if (!wasOnline) broadcast({ type: 'presence', userId: rows[0].id, online: true });
         } else if (msg.type === 'ping') socket.send('{"type":"pong"}');
+        else if (msg.type === 'focus' && sockets.get(socket)?.userId) focus.setFocus(sockets.get(socket).userId, msg).catch(() => {});
       });
       socket.on('close', () => {
         clearTimeout(timer);
         const uid = sockets.get(socket)?.userId;
         sockets.delete(socket);
-        if (uid && !onlineIds().has(uid)) broadcast({ type: 'presence', userId: uid, online: false });
+        if (uid && !onlineIds().has(uid)) { broadcast({ type: 'presence', userId: uid, online: false }); focus.clearFocus(uid).catch(() => {}); }
       });
     });
   });
@@ -165,4 +168,5 @@ export function registerCommunity(app) {
   });
 
   registerRooms(app, { broadcast, sendTo, onlineIds });
+  registerFocus(app);
 }

@@ -181,11 +181,21 @@ function renderList() { if (state.mini) renderMini(); else renderTodos(); }
 function focusSubAdd() { const box = state.mini ? $('mini-list') : $('todo-list'); const inp = box && box.querySelector('[data-subadd]'); if (inp) inp.focus(); }
 
 // ---------- 집중 타이머 (카운트업 스톱워치) ----------
+// 공부 날짜는 새벽 5시 기준(열품타처럼 새벽 공부는 전날로). 서버 랭킹(server/src/focus.js)과 같은 규칙
+const FOCUS_DAY_START_HOUR = 5;
+function focusDay(t = Date.now()) { return fmtD(new Date(t - FOCUS_DAY_START_HOUR * 3600 * 1000)); }
+const sessionSec = (s) => Number(s.seconds) || (s.minutes || 0) * 60;
+// 지금 재는 상태를 서버에 알린다(공부 시간 공개한 경우 동아리원에게 '공부 중'으로 보임)
+function reportFocus() {
+  const t = state.timer;
+  window.Community?.focus(t ? { state: t.running ? 'running' : 'paused', subject: t.subject || null, elapsed: t.elapsed || 0 } : { state: 'stopped' });
+}
 function fmtClock(sec) { const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, '0')}`; }
 function startFocus(taskText, subject) {
   stopTimer(true);
-  state.timer = { taskText: taskText || '집중', subject: subject || null, elapsed: 0, running: true, intervalId: null };
+  state.timer = { taskText: taskText || '집중', subject: subject || null, elapsed: 0, running: true, intervalId: null, startedAt: Date.now() };
   state.timer.intervalId = setInterval(timerTick, 1000);
+  reportFocus();
   enterFocus();  // 전용 전체화면으로 진입
   renderSummary();
 }
@@ -196,12 +206,13 @@ function timerTick() {
   if (fv && !fv.classList.contains('hidden')) renderFocus();
   renderSummary();
 }
-function pauseTimer() { const t = state.timer; if (!t) return; t.running = !t.running; renderSummary(); }
+function pauseTimer() { const t = state.timer; if (!t) return; t.running = !t.running; reportFocus(); renderSummary(); }
 function stopTimer(silent) {
   const t = state.timer; if (!t) { if (!silent) renderSummary(); return; }
   clearInterval(t.intervalId);
-  if ((t.elapsed || 0) >= 60) logFocus(t.taskText, t.subject, Math.round(t.elapsed / 60));
+  if ((t.elapsed || 0) >= 60) logFocus(t.taskText, t.subject, t.elapsed, t.startedAt);
   state.timer = null;
+  reportFocus();
   exitFocus();
   if (!silent) { renderSummary(); if (currentTab === 'stats') renderStats(); }
 }
@@ -214,11 +225,11 @@ function fmtHMS(sec) {
 }
 // 오늘 그 과목(작업)에 쌓은 총 공부시간(초) = 오늘 세션 합 + 진행 중 elapsed
 function todayFocusSec(subject) {
-  const today = todayStr();
+  const today = focusDay();
   const key = subject || null;
   let sec = ((state.focus && state.focus.sessions) || [])
     .filter((s) => s.date === today && (s.subject || null) === key)
-    .reduce((a, s) => a + (s.minutes || 0) * 60, 0);
+    .reduce((a, s) => a + sessionSec(s), 0);
   const t = state.timer;
   if (t && (t.subject || null) === key) sec += (t.elapsed || 0);
   return sec;
@@ -256,9 +267,11 @@ function renderFocus() {
     </div>
     <div class="fv-foot">오늘 이 과목 <b>${cumMin >= 60 ? `${Math.floor(cumMin / 60)}시간 ${cumMin % 60}분` : `${cumMin}분`}</b> <span class="sum-sep">·</span> 목표 ${goalLabel}</div>`;
 }
-function logFocus(task, subject, minutes) {
-  if (!minutes) return;
-  state.focus.sessions.push({ date: todayStr(), minutes, task: task || '', subject: subject || null });
+function logFocus(task, subject, seconds, startedAt) {
+  if (!seconds) return;
+  // date=시작 시각의 공부 날짜(새벽 5시 기준), seconds=정확한 시간, minutes=예전 버전 호환
+  const start = startedAt || Date.now() - seconds * 1000;
+  state.focus.sessions.push({ date: focusDay(start), start: new Date(start).toISOString(), seconds: Math.round(seconds), minutes: Math.round(seconds / 60), task: task || '', subject: subject || null });
   if (state.focus.sessions.length > 2000) state.focus.sessions = state.focus.sessions.slice(-1500);
   persist({ focus: state.focus });
   if (currentTab === 'stats') renderStats();

@@ -83,8 +83,8 @@
       <button class="btn primary mini" data-focus-card>${running ? '보기' : '시작'}</button>`;
   }
   function todayFocusSecAll() {
-    const today = todayStr();
-    let sec = ((state.focus && state.focus.sessions) || []).filter(s => s.date === today).reduce((a, s) => a + (s.minutes || 0) * 60, 0);
+    const today = focusDay();
+    let sec = ((state.focus && state.focus.sessions) || []).filter(s => s.date === today).reduce((a, s) => a + sessionSec(s), 0);
     if (state.timer) sec += state.timer.elapsed || 0;
     return sec;
   }

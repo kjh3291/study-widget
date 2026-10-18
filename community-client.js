@@ -5,6 +5,7 @@
 (function () {
   const listeners = new Map();
   let ws = null, stopped = true, retry = 0, pingTimer = null, retryTimer = null;
+  let focusState = null;   // 마지막 집중 상태(다시 연결되면 다시 알림)
   const state = { connected: false, online: new Set() };
   const emit = (type, ev) => (listeners.get(type) || []).concat(listeners.get('*') || []).forEach(fn => { try { fn(ev); } catch (e) { console.error(e); } });
 
@@ -16,7 +17,7 @@
     ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: info.token }));
     ws.onmessage = e => {
       let ev; try { ev = JSON.parse(e.data); } catch { return; }
-      if (ev.type === 'ready') { retry = 0; state.connected = true; state.online = new Set(ev.online); emit('connection', { connected: true }); return; }
+      if (ev.type === 'ready') { retry = 0; state.connected = true; state.online = new Set(ev.online); if (focusState) sendFocus({ ...focusState, elapsed: focusState.elapsed + (focusState.state === 'running' ? Math.floor((Date.now() - focusState.at) / 1000) : 0) }); emit('connection', { connected: true }); return; }
       if (ev.type === 'presence') ev.online ? state.online.add(ev.userId) : state.online.delete(ev.userId);
       if (ev.type !== 'pong') emit(ev.type, ev);
     };
@@ -33,6 +34,8 @@
     clearTimeout(retryTimer);
     retryTimer = setTimeout(open, Math.min(30000, 1000 * 2 ** retry++));
   }
+
+  function sendFocus(st) { if (ws?.readyState === 1 && state.connected) ws.send(JSON.stringify({ type: 'focus', ...st })); }
 
   async function prepareImage(file) {
     if (file.size > 10 * 1024 * 1024 && file.type === 'image/gif') throw new Error('움직이는 사진(GIF)은 10MB까지 올릴 수 있어요');
@@ -62,6 +65,10 @@
     messages: (roomId, before) => window.Community.call('GET', `/rooms/${roomId}/messages?limit=50${before ? '&before=' + before : ''}`),
     send: (roomId, body, image) => window.Community.call('POST', `/rooms/${roomId}/messages`, { body, image }),
     members: () => window.Community.call('GET', '/profiles'),
+    // 집중 타이머 상태: { state: 'running'|'paused'|'stopped', subject, elapsed(초) }
+    focus(st) { focusState = st.state === 'stopped' ? null : { ...st, elapsed: st.elapsed || 0, at: Date.now() }; sendFocus({ state: st.state, subject: st.subject, elapsed: st.elapsed }); },
+    focusLive: () => window.Community.call('GET', '/focus/live'),
+    focusRanking: (period, roomId) => window.Community.call('GET', `/focus/ranking?period=${period || 'today'}${roomId ? '&room=' + roomId : ''}`),
     async uploadImage(file) {
       const img = await prepareImage(file);
       const r = await window.api.communityUpload(img.bytes);
