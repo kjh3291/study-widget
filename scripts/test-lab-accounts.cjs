@@ -44,14 +44,15 @@ app.on('browser-window-created', (_e, win) => {
       await js(`openSettings(); await wait(300); $('btn-account').click(); await until(()=>document.querySelector('#account-panel [data-gh-link]'),'내 계정 화면');
         const t=$('account-panel').textContent; if(!t.includes('이회원')||!t.includes('GitHub 연결')||!t.includes('탈퇴')) throw new Error('내 계정 내용 오류');`);
       await shot('account-panel.png');
-      await js(`window.prompt=()=>${JSON.stringify(newPw)}; document.querySelector('#account-panel [data-withdraw]').click();
+      await js(`UI.testAutoConfirm=true; document.querySelector('#account-panel [data-withdraw]').click(); await until(()=>$('ac-wd-pw'),'탈퇴 시트');
+        $('ac-wd-pw').value=${JSON.stringify(newPw)}; $('ac-wd').requestSubmit();
         await until(()=>!$('auth-gate').hidden && $('gate-msg').textContent.includes('탈퇴'),'탈퇴 후 시작 화면');`);
       if ((await serverCall(URL, 'POST', '/auth/login', { username: member, password: newPw })).json.error !== 'deleted') throw new Error('탈퇴 후 로그인이 막혀야 함');
 
       // 3. 최고 관리자로 로그인 → 회원 관리: 복구 → 운영진 지정
       await js(`$('gate-l-id').value=${JSON.stringify(owner)}; $('gate-l-pw').value=${JSON.stringify(pw)}; submit('gate-login');
         await until(()=>$('auth-gate').hidden && !_syncInFlight,'관리자 로그인');
-        window.confirm=()=>true; openSettings(); await wait(300); await until(()=>!$('admin-box').hidden,'운영진 상자');
+        window.confirm=()=>true; UI.testAutoConfirm=true; openSettings(); await wait(300); await until(()=>!$('admin-box').hidden,'운영진 상자');
         $('btn-members').click(); await until(()=>document.querySelector('#members-panel .mrow[data-name="이회원"] [data-act="restore"]'),'삭제된 회원');`);
       await shot('members-panel.png');
       await js(`document.querySelector('#members-panel .mrow[data-name="이회원"] [data-act="restore"]').click();

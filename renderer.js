@@ -1858,11 +1858,16 @@ function showGate(on, message = '', tone = '') {
 }
 function gateMsg(text, tone = '') { const m = $('gate-msg'); if (!m) return; m.textContent = text; m.className = tone; }
 // 시작 화면 탭: login | signup | reset(비밀번호 찾기) | change(임시 비밀번호 → 새 비밀번호)
+// pending(가입 신청 뒤 승인 대기)도 같은 자리에서 보여 준다
+const GATE_HEAD = { login: ['Studeck', 'COSMIC과 함께, 오늘도 한 걸음.'], signup: ['가입 신청', '동아리 운영진이 확인 후 승인해드려요.'],
+  pending: ['신청을 보냈어요.', '운영진의 승인을 기다리고 있어요.'], reset: ['비밀번호 찾기', '학번에 연결한 GitHub 계정으로 본인을 확인해요.'],
+  change: ['새 비밀번호', '임시 비밀번호로 로그인했어요. 새 비밀번호를 정해 주세요.'] };
 function gateTab(which) {
-  for (const t of ['login', 'signup', 'reset', 'change']) $('gate-' + t).hidden = which !== t;
+  for (const t of ['login', 'signup', 'pending', 'reset', 'change']) $('gate-' + t).hidden = which !== t;
   $('gate-tab-login').classList.toggle('on', which === 'login'); $('gate-tab-signup').classList.toggle('on', which === 'signup');
   $('gate-forgot').hidden = which !== 'login';
-  document.querySelector('#auth-gate .gate-tabs').hidden = which === 'change';
+  document.querySelector('#auth-gate .gate-tabs').hidden = which === 'change' || which === 'login';
+  $('gate-title').textContent = GATE_HEAD[which][0]; $('gate-sub').textContent = GATE_HEAD[which][1];
   gateMsg('');
 }
 const CONSENT_VERSION = '2026-10-v1';
@@ -1883,7 +1888,7 @@ async function refreshAdminList(notify = false) {
   const pending = r.users.filter(u => u.status === 'pending');
   $('admin-count').textContent = pending.length ? String(pending.length) : '';
   $('admin-list').innerHTML = pending.length ? pending.map(u => `<div class="admin-row"><div class="who"><b>${escapeHtml(u.displayName)}</b> ${escapeHtml(u.username)}<small>신청 ${new Date(u.createdAt).toLocaleString()}</small></div>
-      <button class="btn mini primary" data-admin="approve" data-id="${u.id}">승인</button><button class="btn mini" data-admin="reject" data-id="${u.id}">거절</button></div>`).join('')
+      <button class="sd-btn sd-btn-small sd-btn-primary" data-admin="approve" data-id="${u.id}">승인</button><button class="sd-btn sd-btn-small" data-admin="reject" data-id="${u.id}">거절</button></div>`).join('')
     : '<span style="font-size:11px;color:var(--muted)">대기 중인 가입 신청이 없습니다.</span>';
   if (notify && pending.length > Math.max(_adminSeen, 0)) {
     window.api.notify('Studeck 가입 신청', `승인 대기 ${pending.length}건 — 설정 > 서버 동기화에서 확인하세요.`);
@@ -1892,7 +1897,7 @@ async function refreshAdminList(notify = false) {
   _adminSeen = pending.length;
 }
 if (SERVER_MODE) {
-  const msg = t => { $('git-sync-msg').textContent = t; };
+  const msg = t => { if (t && !/중…$/.test(t)) showToast(t); };   // 서버 모드: 상태는 #sync-label 한 줄, 결과 알림은 토스트
   $('gate-tab-login').onclick = () => gateTab('login');
   $('gate-tab-signup').onclick = () => gateTab('signup');
   $('gate-close').onclick = () => $('btn-close').click();
@@ -1955,14 +1960,14 @@ if (SERVER_MODE) {
     if (name.length < 2) return gateMsg('이름을 입력하세요.', 'err');
     if (pw.length < 8) return gateMsg('비밀번호는 8자 이상이어야 합니다.', 'err');
     if (pw !== pw2) return gateMsg('비밀번호 확인이 일치하지 않습니다.', 'err');
-    if (!$('gate-s-consent').checked) return gateMsg('이용 안내에 동의해야 가입할 수 있습니다.', 'err');
+    if (!$('gate-s-consent').checked || !$('gate-s-consent2').checked) return gateMsg('두 가지 안내에 모두 동의해야 가입할 수 있어요.', 'err');
     $('gate-s-btn').disabled = true; gateMsg('신청 중…');
     try {
       const r = await window.api.serverSignup(id, pw, name, CONSENT_VERSION);
       if (!r?.ok) return gateMsg(r?.error || '가입 신청 실패', 'err');
       $('gate-s-pw').value = ''; $('gate-s-pw2').value = '';
-      gateTab('login'); $('gate-l-id').value = id;
-      gateMsg(r.status === 'approved' ? '가입 완료! 로그인하세요.' : '가입 신청 완료! 운영진 승인 후 로그인할 수 있습니다.', 'ok');
+      $('gate-l-id').value = id;
+      if (r.status === 'approved') { gateTab('login'); gateMsg('가입 완료! 로그인하세요.', 'ok'); } else gateTab('pending');
     } finally { $('gate-s-btn').disabled = false; }
   };
   $('btn-srv-sync').onclick = async () => {
@@ -1971,7 +1976,7 @@ if (SERVER_MODE) {
     if (!r?.ok && !(await handleAuthLost(r?.error))) msg(r?.error || '동기화 실패');
   };
   $('btn-srv-logout').onclick = async () => {
-    if (!confirm('로그아웃하면 시작 화면으로 돌아갑니다. 이 기기의 데이터는 남아 있고, 다시 로그인하면 이어서 동기화합니다.')) return;
+    if (!(await UI.confirm({ title: '로그아웃할까요?', body: '시작 화면으로 돌아가요. 이 기기의 데이터는 남아 있고, 다시 로그인하면 이어서 동기화해요.', ok: '로그아웃' }))) return;
     const r = await window.api.serverLogout();
     if (!r?.ok) return msg(r?.error || '로그아웃 실패');
     state.syncEnabled = false; state.serverRole = 'member';
@@ -1980,17 +1985,18 @@ if (SERVER_MODE) {
     showGate(true, '로그아웃했습니다.');
   };
   if ($('btn-srv-import')) $('btn-srv-import').onclick = async () => {
-    if (!confirm('운영 앱(Studeck)의 할 일·일정·시간표·설정을 이 실험실 앱으로 복사합니다.\n운영 앱의 데이터는 바뀌지 않습니다. 계속할까요?')) return;
+    if (!(await UI.confirm({ title: '운영 앱 데이터를 가져올까요?', body: '운영 앱(Studeck)의 할 일·일정·시간표·설정을 이 실험실 앱으로 복사해요. 운영 앱의 데이터는 바뀌지 않아요.', ok: '가져오기' }))) return;
     const r = await window.api.importProdData();
     if (!r?.ok) return msg(r?.error || '가져오기 실패');
-    alert(`가져왔습니다: 할 일 ${r.todos}개, 일정 ${r.events}개, 시간표 ${r.courses}과목, 보조자료·과제 파일 ${r.files}개.\n화면을 새로 고친 뒤 서버로 올립니다.`);
+    showToast(`가져왔어요: 할 일 ${r.todos}개, 일정 ${r.events}개, 시간표 ${r.courses}과목, 파일 ${r.files}개. 새로 고친 뒤 서버로 올려요.`);
+    await new Promise(res => setTimeout(res, 1800));
     location.reload();
   };
   $('btn-admin-refresh').onclick = () => refreshAdminList();
   $('admin-list').onclick = async e => {
     const b = e.target.closest('[data-admin]'); if (!b) return;
     const row = b.closest('.admin-row'), who = row.querySelector('.who b').textContent;
-    if (b.dataset.admin === 'reject' && !confirm(`${who}님의 가입 신청을 거절할까요? (신청이 삭제되고, 다시 신청할 수 있습니다)`)) return;
+    if (b.dataset.admin === 'reject' && !(await UI.confirm({ title: `${who}님의 가입 신청을 거절할까요?`, body: '신청이 삭제되고, 다시 신청할 수 있어요.', ok: '거절', danger: true }))) return;
     b.disabled = true;
     const r = await window.api.adminAction(b.dataset.id, b.dataset.admin);
     if (!r?.ok) { b.disabled = false; return showToast(r?.error || '처리 실패'); }
@@ -2019,25 +2025,24 @@ function reportFileSync(f) {
   if (f.uploaded + f.downloaded + f.removedRemote + f.trashedLocal) refreshFileUsage();
 }
 async function openFilesPanel() {
-  $('files-panel')?.remove();
-  const ov = document.createElement('div'); ov.id = 'files-panel'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '서버 파일');
-  ov.innerHTML = '<h2>서버 파일 · 휴지통 · 이전 버전</h2><div id="fp-body">불러오는 중…</div><button class="btn primary" id="fp-close">닫기</button>';
-  $('app').appendChild(ov);
-  ov.querySelector('#fp-close').onclick = () => ov.remove();
-  ov.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.isComposing) ov.remove(); });
+  const P = UI.panel('files-panel', '휴지통 · 이전 버전', '파일과 저장공간');
+  const ico = (n) => `<span class="sd-ico" data-icon="${n}" aria-hidden="true"></span>`;
+  P.body.innerHTML = '<div class="sd-skeleton-row"><span class="sd-skeleton" style="flex:1"></span></div><span class="sd-sr-only" role="status">불러오는 중</span>';
   const render = async () => {
     const r = await refreshFileUsage();
-    const body = ov.querySelector('#fp-body');
-    if (!r?.ok) { body.textContent = r?.error || '불러오기 실패'; return; }
+    if (!r?.ok) { P.body.innerHTML = `<div class="sd-empty"><span class="sd-ico" data-icon="circle-alert" aria-hidden="true"></span><h3>불러오지 못했어요.</h3><p>${escapeHtml(r?.error || '연결을 확인해 주세요.')}</p><button type="button" class="sd-btn" data-retry>다시 시도</button></div>`; return; }
     const when = t => new Date(t).toLocaleString();
-    body.innerHTML = `<div style="color:var(--muted)">사용량 ${fmtSize(r.usage.used)} / ${fmtSize(r.usage.limit)} · 파일 1개 최대 ${fmtSize(r.usage.fileMax)} · 휴지통과 이전 버전은 30일 보관</div>
-      <h3>휴지통 (${r.trash.length})</h3>
-      ${r.trash.length ? r.trash.map(t => `<div class="frow"><div class="top"><div class="name">${escapeHtml(t.path)}<small>${when(t.deletedAt)} 삭제 · ${fmtSize(t.size)}</small></div><button class="btn mini" data-restore="${escapeHtml(t.path)}">복구</button></div></div>`).join('')
-        : '<div style="color:var(--muted)">비어 있어요.</div>'}
-      <h3>서버에 있는 파일 (${r.current.length})</h3>
-      ${r.current.map(f => `<div class="frow" data-path="${escapeHtml(f.path)}"><div class="top"><div class="name">${escapeHtml(f.path)}<small>${when(f.updatedAt)} 수정 · ${fmtSize(f.size)}</small></div><button class="btn mini" data-versions>이전 버전</button></div></div>`).join('') || '<div style="color:var(--muted)">아직 없어요.</div>'}`;
+    P.sub.hidden = false; P.sub.textContent = `사용량 ${fmtSize(r.usage.used)} / ${fmtSize(r.usage.limit)} · 파일 1개 최대 ${fmtSize(r.usage.fileMax)} · 30일 보관`;
+    P.body.innerHTML = `<h3 class="sd-gap">휴지통 <span class="sd-muted">${r.trash.length}</span></h3>
+      ${r.trash.length ? r.trash.map(t => `<div class="frow sd-file-row"><div class="sd-grow"><strong class="sd-truncate">${escapeHtml(t.path)}</strong><span class="sd-muted">${when(t.deletedAt)} 삭제 · ${fmtSize(t.size)}</span></div>
+          <button type="button" class="sd-btn sd-btn-small" data-restore="${escapeHtml(t.path)}">${ico('rotate-cw')}복구</button></div>`).join('')
+        : '<p class="sd-muted sd-gap">휴지통이 비어 있어요.</p>'}
+      <h3 class="sd-gap-lg">서버에 있는 파일 <span class="sd-muted">${r.current.length}</span></h3>
+      ${r.current.map(f => `<div class="frow sd-file-row" data-path="${escapeHtml(f.path)}"><div class="sd-grow"><strong class="sd-truncate">${escapeHtml(f.path)}</strong><span class="sd-muted">${when(f.updatedAt)} 수정 · ${fmtSize(f.size)}</span></div>
+          <button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-versions>${ico('history')}이전 버전</button></div>`).join('') || '<p class="sd-muted sd-gap">아직 서버에 올린 파일이 없어요.</p>'}`;
   };
-  ov.addEventListener('click', async e => {
+  P.el.addEventListener('click', async e => {
+    if (e.target.closest('[data-retry]')) return render();
     const restore = e.target.closest('[data-restore]');
     if (restore) {
       restore.disabled = true;
@@ -2053,14 +2058,14 @@ async function openFilesPanel() {
       const r = await window.api.filesVersions(p);
       vbtn.disabled = false;
       if (!r?.ok) return showToast(r?.error || '불러오기 실패');
-      if (!r.versions.length) return row.insertAdjacentHTML('beforeend', '<div class="vrow"><span>이전 버전이 없어요.</span></div>');
-      row.insertAdjacentHTML('beforeend', r.versions.map(v => `<div class="vrow"><span>${new Date(v.updatedAt).toLocaleString()} 수정본 · ${fmtSize(v.size)}</span><button class="btn mini" data-revert="${v.vid}">이걸로 되돌리기</button></div>`).join(''));
+      if (!r.versions.length) return row.insertAdjacentHTML('beforeend', '<div class="vrow"><span class="sd-muted">이전 버전이 없어요.</span></div>');
+      row.insertAdjacentHTML('beforeend', r.versions.map(v => `<div class="vrow"><span class="sd-muted">${new Date(v.updatedAt).toLocaleString()} 수정본 · ${fmtSize(v.size)}</span><button type="button" class="sd-btn sd-btn-small" data-revert="${v.vid}">이걸로 되돌리기</button></div>`).join(''));
       return;
     }
     const rv = e.target.closest('[data-revert]');
     if (rv) {
       const p = rv.closest('.frow').dataset.path;
-      if (!confirm(`'${p}'을(를) 이 버전으로 되돌릴까요?\n지금 파일은 이전 버전으로 남습니다.`)) return;
+      if (!(await UI.confirm({ title: '이 버전으로 되돌릴까요?', body: `'${p}'을(를) 선택한 버전으로 되돌려요. 지금 파일은 이전 버전으로 남아요.`, ok: '되돌리기' }))) return;
       rv.disabled = true;
       const r = await window.api.filesRevert(p, Number(rv.dataset.revert));
       if (!r?.ok) { rv.disabled = false; return showToast(r?.error || '되돌리기 실패'); }
@@ -2076,12 +2081,13 @@ function githubDeviceFlow() {
   return new Promise(async resolve => {
     const start = await window.api.githubDeviceStart();
     if (!start?.ok) { showToast(start?.error || 'GitHub 인증을 시작하지 못했습니다'); gateMsg(start?.error || '', 'err'); return resolve(null); }
-    const ov = document.createElement('div'); ov.className = 'panel-ov'; ov.id = 'gh-flow';
-    ov.innerHTML = `<h2>GitHub로 확인</h2>
-      <div>브라우저에서 <b>${escapeHtml(start.verificationUri)}</b> 가 열렸어요. 아래 코드를 입력하고 승인하세요.</div>
-      <div class="gh-code">${escapeHtml(start.userCode)}</div>
-      <div style="display:flex;gap:8px"><button class="btn" id="gh-copy" style="flex:1">코드 복사</button><button class="btn" id="gh-cancel" style="flex:1">취소</button></div>
-      <div id="gh-state" style="color:var(--muted)">GitHub 승인을 기다리는 중…</div>`;
+    const ov = document.createElement('div'); ov.className = 'panel-ov gh-flow-v2'; ov.id = 'gh-flow';
+    ov.innerHTML = `<main class="sd-content sd-login"><div class="sd-page-head"><div><h1>GitHub 인증</h1>
+        <p class="sd-page-subtitle">브라우저에 열린 ${escapeHtml(start.verificationUri)} 화면에 아래 코드를 입력해주세요.</p></div></div>
+      <div class="sd-login-code" aria-label="인증 코드 ${escapeHtml(start.userCode.split('').join(' '))}">${escapeHtml(start.userCode)}</div>
+      <div class="sd-actions"><button type="button" class="sd-btn" id="gh-copy"><span class="sd-ico" data-icon="copy" aria-hidden="true"></span>코드 복사</button></div>
+      <p class="sd-muted sd-gap" id="gh-state" role="status">인증을 기다리고 있어요.</p>
+      <button type="button" class="sd-btn sd-btn-ghost sd-btn-block sd-gap" id="gh-cancel">취소</button></main>`;
     $('app').appendChild(ov);
     let stop = false, wait = (start.interval || 5) * 1000;
     const finish = v => { stop = true; ov.remove(); resolve(v); };
@@ -2101,38 +2107,29 @@ function githubDeviceFlow() {
 }
 
 const ROLE_LABEL = { owner: '최고 관리자', admin: '운영진', member: '회원' };
+// 내 계정: 정보 · GitHub 연결 · 비밀번호 변경(시트) · 탈퇴(비밀번호 확인 시트 → 최종 확인)
 async function openAccountPanel() {
-  $('account-panel')?.remove();
-  const ov = document.createElement('div'); ov.className = 'panel-ov'; ov.id = 'account-panel';
-  $('app').appendChild(ov);
+  const P = UI.panel('account-panel', '내 계정', '계정과 보안');
+  const ico = (n) => `<span class="sd-ico" data-icon="${n}" aria-hidden="true"></span>`;
   const render = async () => {
     const r = await window.api.accountMe();
-    if (!r?.ok) { ov.innerHTML = `<h2>내 계정</h2><div>${escapeHtml(r?.error || '불러오지 못했습니다')}</div><button class="btn primary" data-close>닫기</button>`; return; }
+    if (!r?.ok) { P.body.innerHTML = `<div class="sd-empty"><span class="sd-ico" data-icon="circle-alert" aria-hidden="true"></span><h3>불러오지 못했어요.</h3><p>${escapeHtml(r?.error || '')}</p></div>`; return; }
     const u = r.user;
-    ov.innerHTML = `<h2>내 계정</h2>
-      <div class="mrow"><div class="who"><b>${escapeHtml(u.displayName)}</b> ${escapeHtml(u.username)}<span class="role-tag">${ROLE_LABEL[u.role] || u.role}</span>
-        <small>가입 ${new Date(u.createdAt).toLocaleDateString()}</small></div></div>
-      <h3>GitHub 연결 · 대표 메일</h3>
-      <div class="mrow">${u.githubLogin
-        ? `<div class="who">GitHub <b>${escapeHtml(u.githubLogin)}</b><small>대표 메일: ${escapeHtml(u.email || '(GitHub에 공개·확인된 메일 없음)')}</small></div><div class="acts"><button class="btn mini" data-gh-relink>다시 연결(메일 갱신)</button><button class="btn mini" data-gh-unlink>연결 해제</button></div>`
-        : `<div class="who">연결 안 됨<small>연결하면 GitHub 메일이 대표 메일이 되고, 비밀번호를 잊었을 때 GitHub로 본인 확인을 할 수 있어요.</small></div><div class="acts"><button class="btn mini primary" data-gh-link>GitHub 연결</button></div>`}</div>
-      <h3>비밀번호 변경</h3>
-      <form class="mrow" id="ac-pw"><input type="password" id="ac-cur" placeholder="현재 비밀번호" /><input type="password" id="ac-new" placeholder="새 비밀번호 (8자 이상)" /><input type="password" id="ac-new2" placeholder="새 비밀번호 확인" />
-        <button class="btn mini primary" type="submit">바꾸기 (다른 기기는 다시 로그인)</button></form>
-      ${u.role === 'owner' ? '' : `<h3>탈퇴</h3><div class="mrow"><div class="who">탈퇴하면 바로 로그인이 막히고, 내 데이터·파일은 30일 뒤 완전히 삭제돼요. 그 전에는 운영진에게 복구를 요청할 수 있어요.</div><div class="acts"><button class="btn mini" data-withdraw style="color:#ff7b7b">탈퇴하기</button></div></div>`}
-      <button class="btn primary" data-close>닫기</button>`;
-    ov.querySelector('#ac-pw').onsubmit = async e => {
-      e.preventDefault();
-      const cur = ov.querySelector('#ac-cur').value, n = ov.querySelector('#ac-new').value, n2 = ov.querySelector('#ac-new2').value;
-      if (n.length < 8) return showToast('새 비밀번호는 8자 이상이어야 해요');
-      if (n !== n2) return showToast('새 비밀번호 확인이 일치하지 않아요');
-      const x = await window.api.accountPassword(cur, n);
-      if (!x?.ok) return showToast(x?.error || '변경 실패');
-      showToast('비밀번호를 바꿨어요'); render();
-    };
+    P.body.innerHTML = `<div class="sd-info-row"><span class="sd-muted">이름</span><strong>${escapeHtml(u.displayName)}</strong></div>
+      <div class="sd-info-row"><span class="sd-muted">학번</span><strong>${escapeHtml(u.username)}</strong></div>
+      <div class="sd-info-row"><span class="sd-muted">역할</span><strong>${ROLE_LABEL[u.role] || u.role}</strong></div>
+      <div class="sd-info-row"><span class="sd-muted">이메일</span><strong>${escapeHtml(u.email || '없음')}</strong></div>
+      <div class="sd-info-row"><span class="sd-muted">가입일</span><strong>${new Date(u.createdAt).toLocaleDateString()}</strong></div>
+      <div class="sd-setting-row stacked"><div class="sd-setting-copy"><strong>GitHub 연결</strong><p>${u.githubLogin ? `${escapeHtml(u.githubLogin)}에 연결돼 있어요. 비밀번호를 잊었을 때 본인 확인에 써요.` : '연결하면 GitHub 메일이 대표 메일이 되고, 비밀번호를 잊었을 때 GitHub로 본인 확인을 할 수 있어요.'}</p></div>
+        <div class="sd-setting-control sd-actions">${u.githubLogin
+          ? `<button type="button" class="sd-btn sd-btn-small" data-gh-relink>${ico('refresh-cw')}다시 연결</button><button type="button" class="sd-btn sd-btn-small sd-btn-ghost sd-danger-text" data-gh-unlink>연결 해제</button>`
+          : `<button type="button" class="sd-btn sd-btn-small sd-btn-primary" data-gh-link>${ico('github')}GitHub 연결</button>`}</div></div>
+      <button type="button" class="sd-menu-row" data-pw><span class="sd-menu-icon">${ico('key-round')}</span><span class="sd-grow"><strong>비밀번호 변경</strong><span class="sd-muted">바꾸면 다른 기기는 다시 로그인해야 해요.</span></span>${ico('chevron-right')}</button>
+      ${u.role === 'owner' ? '' : `<div class="sd-danger-zone"><h3>회원 탈퇴</h3><p class="sd-muted sd-gap">탈퇴하면 바로 로그인이 막히고, 내 데이터·파일은 30일 뒤 완전히 삭제돼요. 그 전에는 운영진에게 복구를 요청할 수 있어요.</p>
+        <button type="button" class="sd-btn sd-btn-ghost sd-danger-text sd-gap" data-withdraw>탈퇴하기</button></div>`}`;
   };
-  ov.addEventListener('click', async e => {
-    if (e.target.closest('[data-close]')) return ov.remove();
+  const pwField = (id, label) => `<div class="sd-field"><label for="${id}">${label}</label><input type="password" class="sd-input" id="${id}" autocomplete="off"></div>`;
+  P.el.addEventListener('click', async e => {
     if (e.target.closest('[data-gh-link],[data-gh-relink]')) {
       const token = await githubDeviceFlow(); if (!token) return;
       const x = await window.api.accountGithubLink(token);
@@ -2140,62 +2137,89 @@ async function openAccountPanel() {
       showToast('GitHub을 연결했어요'); return render();
     }
     if (e.target.closest('[data-gh-unlink]')) {
-      if (!confirm('GitHub 연결을 해제할까요? 비밀번호를 잊으면 운영진에게 임시 비밀번호를 받아야 해요.')) return;
+      if (!(await UI.confirm({ title: 'GitHub 연결을 해제할까요?', body: '비밀번호를 잊으면 운영진에게 임시 비밀번호를 받아야 해요.', ok: '연결 해제', danger: true }))) return;
       const x = await window.api.accountGithubUnlink(); if (!x?.ok) return showToast(x?.error || '해제 실패');
       return render();
     }
+    if (e.target.closest('[data-pw]')) {
+      const s = UI.sheet('비밀번호 변경', `<form id="ac-pw" novalidate>${pwField('ac-cur', '현재 비밀번호')}${pwField('ac-new', '새 비밀번호 (8자 이상)')}${pwField('ac-new2', '새 비밀번호 확인')}
+        <p class="sd-error" id="ac-err" hidden></p><button class="sd-btn sd-btn-primary sd-btn-block">바꾸기</button></form>`);
+      s.el.querySelector('#ac-pw').onsubmit = async ev => {
+        ev.preventDefault();
+        const err = t => { const el = s.el.querySelector('#ac-err'); el.textContent = t; el.hidden = false; };
+        const cur = $('ac-cur').value, n = $('ac-new').value, n2 = $('ac-new2').value;
+        if (n.length < 8) return err('새 비밀번호는 8자 이상이어야 해요.');
+        if (n !== n2) return err('새 비밀번호 확인이 일치하지 않아요.');
+        const x = await window.api.accountPassword(cur, n);
+        if (!x?.ok) return err(x?.error || '변경 실패');
+        s.close(); showToast('비밀번호를 바꿨어요');
+      };
+      return;
+    }
     if (e.target.closest('[data-withdraw]')) {
-      const pw = prompt('탈퇴하려면 비밀번호를 입력하세요.\n30일 뒤 내 데이터·파일이 완전히 삭제됩니다.');
-      if (!pw) return;
-      const x = await window.api.accountWithdraw(pw);
-      if (!x?.ok) return showToast(x?.error || '탈퇴 실패');
-      ov.remove(); $('settings').classList.add('hidden');
-      state.syncEnabled = false;
-      showGate(true, '탈퇴했습니다. 30일 안에는 운영진에게 복구를 요청할 수 있어요.');
+      const s = UI.sheet('회원 탈퇴', `<form id="ac-wd" novalidate><p class="sd-muted">본인 확인을 위해 비밀번호를 입력해주세요. 30일 뒤 내 데이터·파일이 완전히 삭제돼요.</p>
+        ${pwField('ac-wd-pw', '비밀번호')}<p class="sd-error" id="ac-wd-err" hidden></p><button class="sd-btn sd-btn-danger sd-btn-block">탈퇴하기</button></form>`);
+      s.el.querySelector('#ac-wd').onsubmit = async ev => {
+        ev.preventDefault();
+        const pw = $('ac-wd-pw').value; if (!pw) return;
+        if (!(await UI.confirm({ title: '정말 탈퇴할까요?', body: '바로 로그인이 막히고, 30일 뒤 내 데이터와 파일이 완전히 삭제돼요.', ok: '탈퇴', danger: true }))) return;
+        const x = await window.api.accountWithdraw(pw);
+        if (!x?.ok) { const el = s.el.querySelector('#ac-wd-err'); el.textContent = x?.error || '탈퇴 실패'; el.hidden = false; return; }
+        s.close(); P.close(); $('settings').classList.add('hidden');
+        state.syncEnabled = false;
+        showGate(true, '탈퇴했습니다. 30일 안에는 운영진에게 복구를 요청할 수 있어요.');
+      };
     }
   });
   render();
 }
-
-// 운영진: 회원 목록(승인·정지·삭제·복구·임시 비밀번호·운영진 지정)
+// 회원 관리(운영진): 검색 · 정지/해제 · 임시 비밀번호 · 운영진 지정(최고 관리자) · 삭제/복구
 async function openMembersPanel() {
-  $('members-panel')?.remove();
-  const ov = document.createElement('div'); ov.className = 'panel-ov'; ov.id = 'members-panel';
-  $('app').appendChild(ov);
+  const P = UI.panel('members-panel', '회원 관리', '운영진 관리');
   const myRole = state.serverRole;
+  let query = '';
   const render = async () => {
     const r = await window.api.adminUsers();
-    if (!r?.ok) { ov.innerHTML = `<h2>회원 관리</h2><div>${escapeHtml(r?.error || '불러오지 못했습니다')}</div><button class="btn primary" data-close>닫기</button>`; return; }
+    if (!r?.ok) { P.body.innerHTML = `<div class="sd-empty"><span class="sd-ico" data-icon="circle-alert" aria-hidden="true"></span><h3>불러오지 못했어요.</h3><p>${escapeHtml(r?.error || '')}</p></div>`; return; }
     const rank = { owner: 3, admin: 2, member: 1 }, canTouch = u => (rank[u.role] || 0) < (rank[myRole] || 0);
     const daysLeft = u => Math.max(0, 30 - Math.floor((Date.now() - new Date(u.deletedAt).getTime()) / 86400000));
-    const row = (u, acts) => `<div class="mrow" data-id="${u.id}" data-name="${escapeHtml(u.displayName)}"><div class="who"><b>${escapeHtml(u.displayName)}</b> ${escapeHtml(u.username)}<span class="role-tag">${ROLE_LABEL[u.role] || u.role}</span>${u.status === 'suspended' ? '<span class="role-tag" style="color:#ff7b7b">정지</span>' : ''}
-      <small>${u.githubLogin ? 'GitHub ' + escapeHtml(u.githubLogin) + (u.email ? ' · ' + escapeHtml(u.email) : '') : 'GitHub 미연결'} · 가입 ${new Date(u.createdAt).toLocaleDateString()}${u.deletedAt ? ' · ' + daysLeft(u) + '일 뒤 완전 삭제' : ''}</small></div>${acts ? `<div class="acts">${acts}</div>` : ''}</div>`;
-    const btn = (act, label, extra = '') => `<button class="btn mini" data-act="${act}" ${extra}>${label}</button>`;
-    const active = r.users.filter(u => u.status === 'approved' || u.status === 'suspended');
-    const deleted = r.users.filter(u => u.status === 'deleted');
-    ov.innerHTML = `<h2>회원 관리 <span style="color:var(--muted);font-size:12px">(${ROLE_LABEL[myRole]})</span></h2>
-      <h3>회원 (${active.length})</h3>
+    const match = u => !query || (u.displayName + u.username).toLowerCase().includes(query);
+    const row = (u, acts) => `<div class="mrow sd-member-row" data-id="${u.id}" data-name="${escapeHtml(u.displayName)}">
+      <div class="sd-row"><span class="sd-avatar">${escapeHtml(u.displayName.slice(0, 1))}</span><div class="sd-grow"><strong>${escapeHtml(u.displayName)}</strong>
+        <span class="sd-badge">${ROLE_LABEL[u.role] || u.role}</span>${u.status === 'suspended' ? '<span class="sd-badge sd-badge-danger">정지</span>' : ''}
+        <span class="sd-muted" style="display:block">${escapeHtml(u.username)} · ${u.githubLogin ? 'GitHub ' + escapeHtml(u.githubLogin) : 'GitHub 미연결'} · 가입 ${new Date(u.createdAt).toLocaleDateString()}${u.deletedAt ? ' · ' + daysLeft(u) + '일 뒤 완전 삭제' : ''}</span></div></div>
+      ${acts ? `<div class="sd-actions acts">${acts}</div>` : ''}</div>`;
+    const btn = (act, label, extra = '') => `<button type="button" class="sd-btn sd-btn-small" data-act="${act}" ${extra}>${label}</button>`;
+    const active = r.users.filter(u => (u.status === 'approved' || u.status === 'suspended') && match(u));
+    const deleted = r.users.filter(u => u.status === 'deleted' && match(u));
+    P.sub.hidden = false; P.sub.textContent = `내 권한: ${ROLE_LABEL[myRole]}`;
+    const focused = document.activeElement?.id === 'mem-q';
+    P.body.innerHTML = `<label class="sd-search"><span class="sd-ico" data-icon="search" aria-hidden="true"></span><span class="sd-sr-only">회원 검색</span><input id="mem-q" type="search" placeholder="이름이나 학번으로 찾기" value="${escapeHtml(query)}"></label>
+      <h3 class="sd-gap-lg">회원 <span class="sd-muted">${active.length}</span></h3>
       ${active.map(u => row(u, canTouch(u) ? [
         u.status === 'suspended' ? btn('approve', '정지 해제') : btn('suspend', '정지'),
         u.status === 'approved' ? btn('temp-password', '임시 비밀번호') : '',
         myRole === 'owner' && u.status === 'approved' ? (u.role === 'admin' ? btn('role', '운영진 해제', 'data-role="member"') : btn('role', '운영진 지정', 'data-role="admin"')) : '',
-        btn('delete', '삭제', 'style="color:#ff7b7b"')].join('') : '')).join('')}
-      <h3>삭제된 회원 (${deleted.length}) <span style="color:var(--muted);font-weight:400">· 30일 안에 복구 가능</span></h3>
-      ${deleted.map(u => row(u, canTouch(u) ? btn('restore', '복구') : '')).join('') || '<div style="color:var(--muted)">없어요.</div>'}
-      <button class="btn primary" data-close>닫기</button>`;
+        btn('delete', '삭제', 'class="sd-btn sd-btn-small sd-btn-ghost sd-danger-text"').replace('class="sd-btn sd-btn-small" ', '')].join('') : '')).join('') || '<p class="sd-muted sd-gap">찾는 회원이 없어요.</p>'}
+      <h3 class="sd-gap-lg">삭제된 회원 <span class="sd-muted">${deleted.length} · 30일 안에 복구 가능</span></h3>
+      ${deleted.map(u => row(u, canTouch(u) ? btn('restore', '복구') : '')).join('') || '<p class="sd-muted sd-gap">없어요.</p>'}`;
+    if (focused) { const q = $('mem-q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   };
-  ov.addEventListener('click', async e => {
-    if (e.target.closest('[data-close]')) return ov.remove();
+  P.el.addEventListener('input', e => { if (e.target.id === 'mem-q') { query = e.target.value.trim().toLowerCase(); render(); } });
+  P.el.addEventListener('click', async e => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const rowEl = b.closest('.mrow'), id = rowEl.dataset.id, name = rowEl.dataset.name, act = b.dataset.act;
-    const ask = { suspend: `${name}님을 정지할까요? 접속이 바로 끊깁니다.`, delete: `${name}님을 삭제할까요? 바로 로그인이 막히고 30일 뒤 데이터가 완전히 삭제됩니다.`,
-      'temp-password': `${name}님의 임시 비밀번호를 만들까요? 지금 비밀번호와 로그인이 모두 끊깁니다.`, role: b.dataset.role === 'admin' ? `${name}님을 운영진으로 지정할까요?` : `${name}님의 운영진 권한을 해제할까요?` }[act];
-    if (ask && !confirm(ask)) return;
+    const ask = { suspend: `${name}님을 정지할까요? 접속이 바로 끊겨요.`, delete: `${name}님을 삭제할까요? 바로 로그인이 막히고 30일 뒤 데이터가 완전히 삭제돼요.`,
+      'temp-password': `${name}님의 임시 비밀번호를 만들까요? 지금 비밀번호와 로그인이 모두 끊겨요.`, role: b.dataset.role === 'admin' ? `${name}님을 운영진으로 지정할까요?` : `${name}님의 운영진 권한을 해제할까요?` }[act];
+    if (ask && !(await UI.confirm({ title: `${name}님 · ${b.textContent.trim()}`, body: ask, ok: b.textContent.trim(), danger: ['suspend', 'delete'].includes(act) }))) return;
     b.disabled = true;
     const x = await window.api.adminAction(id, act, b.dataset.role);
     if (!x?.ok) { b.disabled = false; return showToast(x?.error || '처리 실패'); }
-    if (act === 'temp-password') alert(`${name}님의 임시 비밀번호: ${x.tempPassword}\n\n직접 전달해 주세요. 첫 로그인 때 새 비밀번호로 바꾸게 됩니다. 이 창을 닫으면 다시 볼 수 없어요.`);
-    else showToast({ approve: '정지를 풀었어요', suspend: '정지했어요', delete: '삭제했어요(30일 보관)', restore: '복구했어요', role: '역할을 바꿨어요' }[act] || '처리했어요');
+    if (act === 'temp-password') {
+      const s = UI.sheet('임시 비밀번호', `<p class="sd-muted">${escapeHtml(name)}님에게 직접 전달해 주세요. 첫 로그인 때 새 비밀번호로 바꾸게 돼요. 이 창을 닫으면 다시 볼 수 없어요.</p>
+        <div class="sd-login-code" id="temp-pw">${escapeHtml(x.tempPassword)}</div><div class="sd-actions"><button type="button" class="sd-btn" data-copy-temp><span class="sd-ico" data-icon="copy" aria-hidden="true"></span>복사</button><button type="button" class="sd-btn sd-btn-primary" data-sheet-close>확인</button></div>`);
+      s.el.querySelector('[data-copy-temp]').onclick = () => { navigator.clipboard.writeText(x.tempPassword); showToast('복사했어요'); };
+    } else showToast({ approve: '정지를 풀었어요', suspend: '정지했어요', delete: '삭제했어요(30일 보관)', restore: '복구했어요', role: '역할을 바꿨어요' }[act] || '처리했어요');
     render(); refreshAdminList();
   });
   render();

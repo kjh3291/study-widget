@@ -2,19 +2,19 @@
 // renderer.js의 화면 함수(switchTab·openSettings·showSyncStatus 등)는 그대로 쓰고 바깥에서 감싼다.
 (function () {
   const STUDY = [
-    { tab: 'timetable', ico: 'grid', name: '시간표', desc: '수업 블록을 누르면 그 과목 자료 폴더' },
-    { tab: 'schedule', ico: 'calendar', name: '일정', desc: '월 달력·기간 일정·미리 알림' },
-    { tab: 'lms', ico: 'school', name: 'LMS', desc: '과목 공지·과제 마감·수업자료' },
-    { tab: 'attend', ico: 'attend', name: '출석', desc: '과목 × 주차 출석 기록' },
-    { view: 'records', ico: 'timer', name: '집중 기록', desc: '일·주·월 공부 시간과 세션' },
-    { tab: 'stats', ico: 'chart', name: '기록', desc: '할 일 완료와 연속 달성' },
+    { tab: 'timetable', ico: 'calendar-range', name: '시간표', desc: '수업 블록을 누르면 그 과목 자료 폴더' },
+    { tab: 'schedule', ico: 'calendar-days', name: '일정', desc: '월 달력·기간 일정·미리 알림' },
+    { tab: 'lms', ico: 'graduation-cap', name: 'LMS', desc: '과목 공지·과제 마감·수업자료' },
+    { tab: 'attend', ico: 'clipboard-check', name: '출석', desc: '과목 × 주차 출석 기록' },
+    { view: 'records', ico: 'chart-no-axes-column', name: '집중 기록', desc: '일·주·월 공부 시간과 세션' },
+    { tab: 'stats', ico: 'circle-check', name: '기록', desc: '할 일 완료와 연속 달성' },
   ];
   const SETTINGS = [
-    { cat: 'screen', ico: 'palette', name: '화면과 위젯', desc: '테마 · 투명도 · 항상 위 · 시계' },
-    { cat: 'study', ico: 'bell', name: '학습과 알림', desc: '집중 목표 · 알림 시각 · 이월' },
-    { cat: 'lms', ico: 'sync', name: 'LMS와 동기화', desc: '자동 새로고침 · 다운로드 · 동기화' },
-    { cat: 'files', ico: 'drive', name: '파일과 저장공간', desc: '사용량 · 휴지통 · 이전 버전 · 폴더' },
-    { cat: 'account', ico: 'shield', name: '계정과 보안', desc: 'GitHub 연결 · 비밀번호 · 로그아웃', server: true },
+    { cat: 'screen', ico: 'palette', name: '화면과 위젯', desc: '테마 · 시계 · 창 표시' },
+    { cat: 'study', ico: 'bell', name: '학습과 알림', desc: '집중 목표 · 알림 · 날짜 기준' },
+    { cat: 'lms', ico: 'refresh-cw', name: 'LMS와 동기화', desc: '자동 새로고침 · 저장 상태' },
+    { cat: 'files', ico: 'hard-drive', name: '파일과 저장공간', desc: '서버 사용량 · 휴지통 · 버전' },
+    { cat: 'account', ico: 'shield-check', name: '계정과 보안', desc: '내 정보 · GitHub · 비밀번호', server: true },
   ];
   const ico = n => `<span class="ico-${n}" aria-hidden="true"></span>`;
   const VIEWS = ['view-study', 'view-club', 'view-more', 'view-focus', 'view-records', 'view-together'];
@@ -42,8 +42,8 @@
     const item = STUDY.find(s => s.tab === tab); if (!item) return;
     const view = $('view-' + tab);
     if (view.querySelector(':scope > .study-head')) return;
-    view.insertAdjacentHTML('afterbegin', `<div class="study-head"><div class="subhead"><button class="back" data-back-study>${ico('back')}학습</button></div>
-      <div class="sub-title-row"><div class="sub-title">${item.name}</div></div></div>`);
+    view.insertAdjacentHTML('afterbegin', `<div class="study-head"><button type="button" class="sd-btn sd-btn-ghost sd-back" data-back-study><span class="sd-ico" data-icon="chevron-left" aria-hidden="true"></span>학습</button>
+      <div class="sd-page-head"><div><h1>${item.name}</h1></div></div></div>`);
   }
 
   // renderer의 탭 전환을 감싼다: 오늘(todos) 또는 학습 하위 화면
@@ -79,12 +79,14 @@
   }
 
   // ---------- 학습 ----------
+  const sdIco = n => `<span class="sd-ico" data-icon="${n}" aria-hidden="true"></span>`;
+  const menuRow = (attrs, icon, name, desc, extra = '') => `<button type="button" class="sd-menu-row" ${attrs}><span class="sd-menu-icon">${sdIco(icon)}</span>
+    <span class="sd-grow"><strong>${name}</strong><span class="sd-muted">${desc}</span></span>${extra}${sdIco('chevron-right')}</button>`;
   function renderStudy() {
-    $('view-study').innerHTML = `<div class="page-head"><div class="eyebrow">시간표 · 일정 · LMS · 출석 · 기록</div><h1>학습</h1></div>
-      <div class="menu-list">${STUDY.map(s => `<button class="menu-row" ${s.view ? `data-study-view="${s.view}"` : `data-study="${s.tab}"`}><span class="mi">${ico(s.ico)}</span>
-        <span class="mt"><b>${s.name}${s.tab === 'lms' ? ' <span id="study-lms-badge"></span>' : ''}</b><small>${s.desc}</small></span>${ico('next').replace('class="', 'class="chev ')}</button>`).join('')}</div>`;
+    $('view-study').innerHTML = `<main class="sd-content sd-header-glow"><div class="sd-page-head"><div><h1>학습</h1><p class="sd-page-subtitle">이번 학기도 함께 채워가요.</p></div></div>
+      ${STUDY.map(s => menuRow(s.view ? `data-study-view="${s.view}"` : `data-study="${s.tab}"`, s.ico, s.name, s.desc, s.tab === 'lms' ? '<span id="study-lms-badge"></span>' : '')).join('')}</main>`;
     const lmsBadge = document.querySelector('.tabs [data-tab="lms"] .lms-dot');
-    if (lmsBadge) $('study-lms-badge').innerHTML = '<span class="pill">새 소식</span>';
+    if (lmsBadge) $('study-lms-badge').innerHTML = '<span class="sd-badge sd-badge-accent">새 소식</span>';
   }
   $('view-study').addEventListener('click', e => {
     if (e.target.closest('[data-study-view="records"]')) return window.Focus.openRecords();
@@ -98,13 +100,11 @@
     const role = { owner: '최고 관리자', admin: '운영진', member: '동아리원' }[st?.role] || '';
     const isAdmin = ['admin', 'owner'].includes(st?.role);
     const initials = (name || 'S').slice(0, 2);
-    $('view-more').innerHTML = `<div class="page-head"><div class="eyebrow">나에게 맞게</div><h1>더보기</h1></div>
-      ${SERVER_MODE && st?.enabled ? `<button class="account-card menu-row" data-more="profile" style="width:auto"><span class="avatar" id="more-avatar">${escapeHtml(initials)}</span>
-        <span class="mt"><b>${escapeHtml(name)}</b><small>${escapeHtml(st.username)} · ${role}</small></span>${ico('next').replace('class="', 'class="chev ')}</button>` : ''}
-      <div class="menu-list">${SETTINGS.filter(s => !s.server || SERVER_MODE).map(s => `<button class="menu-row" data-cat="${s.cat}"><span class="mi">${ico(s.ico)}</span>
-        <span class="mt"><b>${s.name}</b><small>${s.desc}</small></span>${ico('next').replace('class="', 'class="chev ')}</button>`).join('')}
-        ${isAdmin ? `<button class="menu-row" data-cat="admin"><span class="mi">${ico('users')}</span><span class="mt"><b>운영진 관리</b><small>가입 승인 · 회원 관리 · 방 승인</small></span><span id="more-admin-count"></span>${ico('next').replace('class="', 'class="chev ')}</button>` : ''}
-      </div>`;
+    $('view-more').innerHTML = `<main class="sd-content sd-header-glow"><div class="sd-page-head"><div><h1>더보기</h1></div></div>
+      ${SERVER_MODE && st?.enabled ? `<button type="button" class="sd-card sd-row sd-btn-block account-card-v2" data-more="profile"><span class="sd-avatar" id="more-avatar">${escapeHtml(initials)}</span>
+        <span class="sd-grow" style="text-align:left"><strong>${escapeHtml(name)}</strong><span class="sd-muted" style="display:block">${escapeHtml(st.username)} · ${role} · 프로필 편집</span></span>${sdIco('chevron-right')}</button>` : ''}
+      ${SETTINGS.filter(s => !s.server || SERVER_MODE).map(s => menuRow(`data-cat="${s.cat}"`, s.ico, s.name, s.desc)).join('')}
+      ${isAdmin ? menuRow('data-cat="admin"', 'users-round', '운영진 관리', '가입 · 회원 · 방 승인', '<span id="more-admin-count"></span>') : ''}</main>`;
     if (isAdmin) updateAdminCount();
     window.Club?.loadMyAvatar?.('more-avatar');
   }
@@ -112,7 +112,7 @@
     const el = $('more-admin-count'); if (!el) return;
     const [u, r] = await Promise.all([window.api.adminUsers(), window.api.communityCall('GET', '/admin/rooms')]);
     const n = (u?.ok ? u.users.filter(x => x.status === 'pending').length : 0) + (r?.ok ? r.rooms.length : 0);
-    el.innerHTML = n ? `<span class="pill">${n}</span>` : '';
+    el.innerHTML = n ? `<span class="sd-unread">${n}</span>` : '';
   }
   $('view-more').addEventListener('click', e => {
     const c = e.target.closest('[data-cat]'); if (c) return openSettings(c.dataset.cat);

@@ -44,7 +44,7 @@ app.on('browser-window-created', (_e, win) => {
         $('gate-s-pw2').value = ${JSON.stringify(pw)};
         submit('gate-signup'); await wait(50);
         if (!$('gate-msg').textContent.includes('동의')) throw new Error('동의 검사 없음');
-        $('gate-s-consent').checked = true;
+        $('gate-s-consent').checked = true; $('gate-s-consent2').checked = true;
         submit('gate-signup');
         await until(() => !$('gate-login').hidden && $('gate-msg').className === 'ok', '가입 신청');
         if ($('gate-l-id').value !== ${JSON.stringify(user)}) throw new Error('로그인 칸에 학번 미입력');
@@ -64,7 +64,7 @@ app.on('browser-window-created', (_e, win) => {
         const gh = await window.api.gitConnect('a/b', 'x');
         if (gh.ok) throw new Error('실험실에서 GitHub 연결이 허용됨');
         // 로그아웃 → 시작 화면으로 복귀, 데이터는 기기에 남음
-        window.confirm = () => true;
+        window.confirm = () => true; UI.testAutoConfirm = true;
         $('btn-srv-logout').click();
         await until(() => !$('auth-gate').hidden, '로그아웃 후 시작 화면');
         const after = await window.api.loadConfig();

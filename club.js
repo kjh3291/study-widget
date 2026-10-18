@@ -82,13 +82,15 @@
   function headHtml() {
     return `<div class="club-head">
       <div class="club-title-row"><div><div class="eyebrow">COSMIC 동아리</div><h1>동아리</h1></div>
+        <button type="button" class="sd-btn sd-btn-small together-btn" data-c="together"><span class="sd-ico" data-icon="users" aria-hidden="true"></span>같이 공부</button>
+      </div>
+      <div class="club-subrow">
         ${S.tab === 'chat' ? `<div class="club-tools">
           <button class="tool" data-c="search" title="방 검색" aria-label="방 검색" aria-pressed="${S.searching}">${ico('search')}</button>
           <button class="tool" data-c="new" title="새 채팅방" aria-label="새 채팅방">${ico('newchat')}</button></div>`
-        : S.tab === 'notice' && isAdmin() ? `<div class="club-tools"><button class="tool" data-c="new-notice" title="공지 쓰기" aria-label="공지 쓰기">${ico('plus')}</button></div>` : ''}
-      </div>
+        : S.tab === 'notice' && isAdmin() ? `<div class="club-tools"><button class="tool" data-c="new-notice" title="공지 쓰기" aria-label="공지 쓰기">${ico('plus')}</button></div>` : '<div class="club-tools"></div>'}
       <div class="club-tabs" role="tablist">${[['chat', '채팅'], ['notice', '공지'], ['members', '멤버']].map(([k, l]) =>
-        `<button role="tab" data-ctab="${k}" aria-selected="${S.tab === k}" class="${S.tab === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+        `<button role="tab" data-ctab="${k}" aria-selected="${S.tab === k}" class="${S.tab === k ? 'active' : ''}">${l}</button>`).join('')}</div></div>
     </div>`;
   }
   function renderList() {
@@ -193,6 +195,7 @@
         <button class="tool" data-c="room-menu" aria-label="방 메뉴" aria-expanded="false">${ico('more')}</button>
         <div class="room-menu" hidden>
           <button data-c="room-members">${ico('users')}참여자 보기</button>
+          ${r.kind === 'study' && r.status === 'active' ? `<button data-c="room-together"><span class="sd-ico" data-icon="timer" aria-hidden="true"></span>같이 공부 · 이 방 랭킹</button>` : ''}
           ${canManage && r.kind !== 'all' ? `<button data-c="room-invite">${ico('plus')}초대하기</button>` : ''}
           ${r.kind !== 'all' ? `<button data-c="room-leave" class="danger">${ico('logout')}방 나가기</button>` : ''}
           ${canManage && r.kind !== 'all' ? `<button data-c="room-archive" class="danger">${ico('x')}방 닫기</button>` : ''}
@@ -233,12 +236,13 @@
     const unreadLine = prev && prev.id <= lastRead && m.id > lastRead && !mine ? '<div class="chat-unread-line"><span>여기부터 안 읽음</span></div>' : '';
     const content = m.deleted ? '<span class="deleted">삭제된 메시지예요</span>'
       : `${m.image ? `<button class="chat-img" data-img="${m.image.sha}" style="${m.image.width ? `aspect-ratio:${m.image.width}/${m.image.height}` : ''}" aria-label="사진 크게 보기"></button>` : ''}${m.body ? `<span class="chat-text">${linkify(escapeHtml(m.body))}</span>` : ''}`;
-    const canDelete = !m.deleted && (mine || isAdmin());
+    const canDelete = !m.tmp && !m.deleted && (mine || isAdmin());
+    const msgState = m.tmp ? (m.failed ? `<span class="msg-state failed">전송 실패 · <button type="button" class="link" data-retry="${m.id}">다시 보내기</button></span>` : '<span class="msg-state">보내는 중…</span>') : '';
     return `${dayLine}${unreadLine}<div class="msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}" data-mid="${m.id}">
       ${mine || grouped ? '' : avatarHtml(m.author, m.avatar, 'avatar sm')}
       <div class="msg-body">${mine || grouped ? '' : `<div class="msg-name">${escapeHtml(m.author)}</div>`}
         <div class="msg-line"><div class="bubble">${content}</div><span class="msg-time">${new Date(m.createdAt).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}</span>
-        ${canDelete ? `<button class="msg-del" data-del="${m.id}" title="삭제" aria-label="메시지 삭제">${ico('x')}</button>` : ''}</div></div></div>`;
+        ${msgState}${canDelete ? `<button class="msg-del" data-del="${m.id}" title="삭제" aria-label="메시지 삭제">${ico('x')}</button>` : ''}</div></div></div>`;
   }
   const linkify = s => s.replace(/https?:\/\/[^\s<]+/g, u => `<a href="#" data-link="${u}">${u}</a>`);
   function renderLog(toBottom) {
@@ -272,18 +276,26 @@
   let readTimer = null;
   function markRead() {
     if (!S.room || !S.messages.length) return;
-    const last = S.messages[S.messages.length - 1].id;
+    const last = [...S.messages].reverse().find(m => !m.tmp)?.id; if (!last) return;
     const room = S.rooms.find(r => r.id === S.room.id);
     if (room) { room.unread = 0; room.lastReadId = Math.max(room.lastReadId || 0, last); updateBadge(); }
     clearTimeout(readTimer);
     readTimer = setTimeout(() => C.call('POST', `/rooms/${S.room.id}/read`, { lastId: last }), 400);
   }
-  async function sendText() {
-    const inp = $('compose-in'), body = inp.value.trim();
+  // 보내는 동안은 '보내는 중' 말풍선을 먼저 보여 주고, 실패하면 그 자리에서 다시 보내기
+  let tempSeq = 0;
+  async function sendText(retryOf) {
+    const inp = $('compose-in');
+    const body = retryOf ? retryOf.body : inp.value.trim();
     if (!body) return;
-    inp.value = '';
-    const r = await C.send(S.room.id, body);
-    if (!r?.message) { inp.value = body; return showToast(errText(r)); }
+    if (!retryOf) inp.value = '';
+    const temp = retryOf || { id: 'tmp' + (++tempSeq), tmp: true, body, userId: S.me?.id, author: S.me?.displayName, createdAt: new Date().toISOString(), roomId: S.room.id };
+    temp.failed = false;
+    if (!retryOf) S.messages.push(temp);
+    renderLog('bottom'); const log = $('chat-log'); if (log) log.scrollTop = log.scrollHeight;
+    const r = await C.send(temp.roomId, body);
+    if (!r?.message) { temp.failed = true; temp.error = errText(r); renderLog('keep'); return; }
+    S.messages = S.messages.filter(x => x !== temp);
     addMessage(r.message);
   }
   async function sendImage(file) {
@@ -330,7 +342,10 @@
     };
   }
   async function roomLeave(archive) {
-    if (!confirm(archive ? `'${S.room.name}' 방을 닫을까요? 모든 참여자에게서 사라져요.` : `'${S.room.name}' 방에서 나갈까요?`)) return;
+    const ok = await UI.confirm(archive
+      ? { title: '채팅방을 닫을까요?', body: `'${S.room.name}' 방이 모든 참여자에게서 사라져요. 되돌릴 수 없어요.`, ok: '방 닫기', danger: true }
+      : { title: '채팅방에서 나갈까요?', body: `'${S.room.name}' 방이 목록에서 사라져요. 공개방이면 다시 참여할 수 있어요.`, ok: '나가기', danger: true });
+    if (!ok) return;
     const r = archive ? await C.call('DELETE', `/rooms/${S.room.id}`) : await C.call('POST', `/rooms/${S.room.id}/leave`);
     if (!r?.ok) return showToast(errText(r));
     showToast(archive ? '방을 닫았어요' : '방에서 나왔어요');
@@ -338,17 +353,14 @@
   }
 
   // 아래에서 올라오는 시트(참여자·초대·공지 작성·프로필 사진 확대)
+  let openSheet = null;
   function sheet(title, html) {
     closeSheet();
-    const el = document.createElement('div');
-    el.className = 'sheet-back'; el.id = 'club-sheet';
-    el.innerHTML = `<div class="sheet" role="dialog" aria-label="${escapeHtml(title)}"><div class="sheet-head"><b>${escapeHtml(title)}</b><button class="tool" data-sheet="close" aria-label="닫기">${ico('x')}</button></div><div class="sheet-body">${html}</div></div>`;
-    el.addEventListener('click', e => { if (e.target === el || e.target.closest('[data-sheet=close]')) closeSheet(); });
-    $('app').appendChild(el);
-    fillAvatars(el);
-    return el;
+    openSheet = UI.sheet(title, html, { onClose: () => { openSheet = null; } });
+    fillAvatars(openSheet.el);
+    return openSheet.el;
   }
-  function closeSheet() { $('club-sheet')?.remove(); }
+  function closeSheet() { openSheet?.close(); openSheet = null; }
 
   async function backToList(reload) {
     S.screen = 'list'; S.room = null; S.messages = [];
@@ -410,7 +422,7 @@
   }
 
   // ---------- 내 프로필 ----------
-  async function openProfileEditor() {
+  async function openProfileEditor(onSaved) {
     const r = await C.call('GET', '/me/profile');
     if (!r?.profile) return showToast(errText(r));
     const p = r.profile; let avatar = p.avatar;
@@ -420,8 +432,10 @@
         <input type="file" id="pf-file" accept="image/png,image/jpeg,image/webp" hidden></div>
       <label for="pf-nick">닉네임 <span class="set-hint">(비우면 이름 ${escapeHtml(me?.displayName || '')})</span></label><input id="pf-nick" maxlength="20" value="${escapeHtml(p.nickname)}">
       <label for="pf-bio">한 줄 소개</label><input id="pf-bio" maxlength="200" value="${escapeHtml(p.bio)}">
-      <label class="row"><input type="checkbox" id="pf-study" ${p.showStudy ? 'checked' : ''}>오늘 공부 시간 공개</label>
-      <label class="row"><input type="checkbox" id="pf-tt" ${p.showTimetable ? 'checked' : ''}>시간표 공개</label>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><label for="pf-study">공부 시간 공개</label><p>같이 공부·랭킹에 내 공부 시간과 과목이 보여요.</p></div>
+        <div class="sd-setting-control"><span class="sd-toggle-hit"><input class="sd-toggle" type="checkbox" role="switch" id="pf-study" ${p.showStudy ? 'checked' : ''}></span></div></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><label for="pf-tt">시간표 공개</label><p>멤버 프로필에서 내 수업 시간이 보여요.</p></div>
+        <div class="sd-setting-control"><span class="sd-toggle-hit"><input class="sd-toggle" type="checkbox" role="switch" id="pf-tt" ${p.showTimetable ? 'checked' : ''}></span></div></div>
       <div class="sheet-actions">${avatar ? '<button type="button" class="btn" id="pf-noavatar">사진 지우기</button>' : ''}<button class="btn primary" type="submit">저장</button></div></form>`);
     el.querySelector('#pf-avatar').onclick = () => el.querySelector('#pf-file').click();
     el.querySelector('#pf-file').onchange = async e => {
@@ -434,7 +448,7 @@
       e.preventDefault();
       const x = await C.call('PUT', '/me/profile', { nickname: $('pf-nick').value, bio: $('pf-bio').value, avatar, showStudy: $('pf-study').checked, showTimetable: $('pf-tt').checked });
       if (!x?.ok) return showToast(errText(x));
-      myAvatarSha = avatar; closeSheet(); showToast('프로필을 저장했어요');
+      myAvatarSha = avatar; closeSheet(); showToast('프로필을 저장했어요'); onSaved?.();
       if (nav() === 'more') window.Shell.goNav('more');
     };
   }
@@ -453,7 +467,7 @@
     $('room-admin-count').textContent = rooms.length ? rooms.length : '';
     list.innerHTML = rooms.length ? rooms.map(x => `<div class="row admin-room" style="justify-content:space-between;gap:8px">
         <span><b>${escapeHtml(x.name)}</b> <span class="set-hint">${KIND[x.kind]} · ${x.visibility === 'private' ? '비공개' : '공개'} · ${escapeHtml(x.owner || '')}</span>${x.topic ? `<br><span class="set-hint">${escapeHtml(x.topic)}</span>` : ''}</span>
-        <span style="display:flex;gap:6px;flex:none"><button class="btn mini primary" data-room-admin="approve" data-id="${x.id}">승인</button><button class="btn mini" data-room-admin="reject" data-id="${x.id}">거절</button></span></div>`).join('')
+        <span style="display:flex;gap:6px;flex:none"><button class="sd-btn sd-btn-small sd-btn-primary" data-room-admin="approve" data-id="${x.id}">승인</button><button class="sd-btn sd-btn-small" data-room-admin="reject" data-id="${x.id}">거절</button></span></div>`).join('')
       : '<span class="set-hint">승인을 기다리는 방이 없어요</span>';
   }
   $('room-admin-list').addEventListener('click', async e => {
@@ -487,9 +501,11 @@
       if (!r?.room) { join.disabled = false; return showToast(errText(r)); }
       await loadRooms(); return openRoom(r.room.id);
     }
+    const retry = t.closest('[data-retry]');
+    if (retry) { const m = S.messages.find(x => x.id === retry.dataset.retry); if (m) sendText(m); return; }
     const del = t.closest('[data-del]');
     if (del) {
-      if (!confirm('이 메시지를 삭제할까요?')) return;
+      if (!(await UI.confirm({ title: '메시지를 삭제할까요?', body: '모든 참여자에게 삭제된 메시지로 보여요.', ok: '삭제', danger: true }))) return;
       const r = await C.call('DELETE', `/messages/${del.dataset.del}`);
       if (!r?.ok) return showToast(errText(r));
       const m = S.messages.find(x => x.id === Number(del.dataset.del)); if (m) { m.deleted = true; m.body = ''; m.image = null; renderLog('keep'); }
@@ -501,7 +517,7 @@
     const ne = t.closest('[data-notice-edit]'); if (ne) return noticeEditor(S.notices.find(n => n.id === Number(ne.dataset.noticeEdit)));
     const nd = t.closest('[data-notice-del]');
     if (nd) {
-      if (!confirm('이 공지를 삭제할까요?')) return;
+      if (!(await UI.confirm({ title: '공지를 삭제할까요?', body: '동아리원 모두에게서 사라져요.', ok: '삭제', danger: true }))) return;
       const r = await C.call('DELETE', `/notices/${nd.dataset.noticeDel}`);
       if (!r?.ok) return showToast(errText(r));
       await loadNotices(); return renderList();
@@ -516,6 +532,8 @@
     if (c === 'image') return $('compose-file').click();
     if (c === 'room-menu') { menu.hidden = !menu.hidden; t.closest('[data-c]').setAttribute('aria-expanded', String(!menu.hidden)); return; }
     if (c === 'room-members') return roomMembers();
+    if (c === 'room-together') return window.Focus?.openTogether(S.room.id);
+    if (c === 'together') return window.Focus?.openTogether();
     if (c === 'room-invite') return roomInvite();
     if (c === 'room-leave') return roomLeave(false);
     if (c === 'room-archive') return roomLeave(true);

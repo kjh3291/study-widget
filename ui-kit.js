@@ -44,6 +44,7 @@
 
   // 확인창: 대상·결과·행동을 분명히. resolve(true|false)
   function confirmDialog({ title, body = '', ok = '확인', cancel = '취소', danger = false } = {}) {
+    if (window.UI.testAutoConfirm) return Promise.resolve(true);   // 자동 테스트 전용
     return new Promise(resolve => {
       const ov = document.createElement('div');
       ov.className = 'sd-overlay sd-dialog-overlay';
@@ -112,4 +113,25 @@
   const timeLabel = v => { const [h, m] = String(v || '00:00').split(':').map(Number); return `${h < 12 ? '오전' : '오후'} ${String(h % 12 || 12).padStart(2, '0')}:${String(m).padStart(2, '0')}`; };
 
   window.UI = { ico, esc, confirm: confirmDialog, sheet, timePicker, timeLabel, isModalOpen: () => stack.length > 0 };
+})();
+
+// 설정 안 하위 화면(계정·회원 관리·파일): 제목 표시줄 아래를 덮고, 뒤로/Esc로 닫는다
+(function () {
+  const { ico, esc } = window.UI;
+  window.UI.panel = function (id, title, back = '설정') {
+    document.getElementById(id)?.remove();
+    const el = document.createElement('div');
+    el.id = id; el.className = 'sd-panel'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', title);
+    el.innerHTML = `<main class="sd-content"><button type="button" class="sd-btn sd-btn-ghost sd-back" data-close>${ico('chevron-left')}${esc(back)}</button>
+      <div class="sd-page-head"><div><h1>${esc(title)}</h1><p class="sd-page-subtitle" data-panel-sub hidden></p></div></div><div class="sd-panel-body"></div></main>`;
+    const trigger = document.activeElement;
+    const close = () => { el.remove(); if (trigger?.isConnected) trigger.focus({ preventScroll: true }); };
+    el.addEventListener('click', e => { if (e.target.closest('[data-close]')) close(); });
+    el.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.isComposing && !window.UI.isModalOpen()) close(); });
+    $('app').appendChild(el);
+    // 화면 자체에 포커스(뒤로 버튼에 포커스 링이 먼저 뜨지 않게). Tab을 누르면 뒤로 버튼부터
+    const main = el.querySelector('main'); main.tabIndex = -1;
+    setTimeout(() => main.focus({ preventScroll: true }), 0);
+    return { el, body: el.querySelector('.sd-panel-body'), sub: el.querySelector('[data-panel-sub]'), close };
+  };
 })();

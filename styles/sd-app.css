@@ -113,3 +113,56 @@
 #app input.sd-toggle { width: 42px; height: 24px; flex: none; }
 #app input.sd-slider { flex: none; }
 #app [hidden] { display: none !important; }
+
+/* 동아리 머리: 제목 + 같이 공부 / 탭 + 도구 */
+#app .club-title-row { align-items: center; }
+#app .together-btn { flex: none; }
+#app .club-subrow { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: 14px; border-bottom: 1px solid var(--border); }
+#app .club-subrow .club-tabs { margin-top: 0; border-bottom: 0; order: 1; }
+#app .club-subrow .club-tools { order: 2; padding-bottom: 6px; }
+#app .msg-state { font-size: 11px; color: var(--text-muted); flex: none; padding-bottom: 2px; }
+#app .msg-state.failed { color: var(--danger); }
+#app .msg-state .link { color: inherit; font-size: 11px; }
+.sd-sheet .club-new label.row, .sd-sheet .sd-setting-row { margin-top: 0; }
+.sd-sheet .sd-setting-row { min-height: 0; padding: 14px 0; }
+.account-card-v2 { margin: 4px 0 8px; color: var(--text-primary); font-family: inherit; cursor: pointer; text-align: left; }
+.account-card-v2:hover { border-color: var(--text-muted); }
+#app .study-head { padding: 20px var(--page-padding) 0; }
+#app .study-head .sd-page-head { margin-bottom: 4px; }
+#app .study-head h1 { font-size: var(--font-title); line-height: var(--line-title); font-weight: 700; letter-spacing: -.035em; }
+
+/* 시작 화면(로그인·가입·승인 대기·비밀번호 찾기·첫 비밀번호 변경) */
+#auth-gate .gate-body { flex: 1; overflow: auto; display: block; }
+#auth-gate .sd-login { max-width: 440px; width: 100%; margin: 0 auto; }
+#auth-gate .gate-bar button { display: grid; place-items: center; }
+#auth-gate .gate-bar .sd-ico { width: 14px; height: 14px; }
+#auth-gate form[hidden], #auth-gate section[hidden] { display: none; }
+#auth-gate .gate-tabs { margin-top: 8px; }
+#auth-gate .consent-v2 .sd-check { align-items: flex-start; font-size: 13px; color: var(--text-secondary); }
+#auth-gate .consent-v2 .sd-check input { margin-top: 1px; }
+#auth-gate .sd-login-links .sd-btn { color: var(--text-secondary); }
+#gate-msg { margin-top: 12px; }
+#gate-msg:empty { display: none; }
+#gate-msg.err { color: var(--danger); }
+#gate-msg.ok { color: var(--success); }
+.gh-flow-v2 { padding: 0; display: block; }
+
+/* 설정 하위 화면(계정·회원 관리·휴지통) */
+.sd-panel { position: absolute; top: var(--titlebar-height); left: 0; right: 0; bottom: 0; z-index: 25; background: var(--bg-app); overflow: auto; }
+.sd-file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.sd-file-row .sd-grow { display: flex; flex-direction: column; gap: 3px; }
+.sd-file-row strong { font-weight: 500; font-size: 13px; }
+.sd-file-row .vrow { flex-basis: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0 0 12px; border-left: 1px solid var(--border); }
+.sd-member-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.sd-member-row .sd-grow strong { font-weight: 600; margin-right: 4px; }
+.sd-member-row .acts { margin-top: 10px; padding-left: 48px; }
+.sd-member-row .acts .sd-btn { flex: none; }
+.sd-info-row strong { font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+#admin-list .admin-row, #room-admin-list .admin-room { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+#admin-list .admin-row .who small { display: block; color: var(--text-muted); font-size: 12px; }
+#admin-box { display: block; padding-top: 4px; }
+#admin-box .sd-row h3 { display: flex; align-items: center; gap: 6px; }
+.admin-count:not(:empty) { min-width: 19px; height: 19px; padding: 1px 5px; border-radius: 99px; background: var(--accent-fill); color: var(--on-accent); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+#app .sd-member-row.mrow { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; padding: 12px 0; display: block; }
+#app .sd-btn { white-space: nowrap; }
+.sd-panel > main:focus { outline: none; }
