@@ -200,3 +200,18 @@
 #app .stat-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
 #view-stats .sd-menu-row { margin: 8px 0; }
 #app input#td-text { border: 0; background: transparent; padding: 2px 2px 6px; min-height: 30px; font-size: 14px; box-shadow: none; }
+
+/* 마우스 사용 중에는 버튼 포커스 테두리 숨김(입력칸은 유지) — ui-kit.js가 data-input을 바꾼다 */
+:root[data-input="mouse"] :is(button, summary, a, [role="button"], [tabindex]):focus-visible { outline: none; box-shadow: none; }
+:root[data-input="mouse"] .sd-search:focus-within { box-shadow: none; }
+
+/* 하단 메뉴 아이콘 */
+#nav .sd-ico { width: 18px; height: 18px; }
+
+/* 제목 표시줄 더보기: 오른쪽 위 점 = 동기화 상태, 숫자 = 승인 대기 */
+header .btn-more { position: relative; }
+header .btn-more .sync-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; margin: 0; border: 1.5px solid var(--bg-app); box-sizing: content-box; }
+header .btn-more .more-badge { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--accent-fill); color: var(--on-accent); font-size: 10px; font-style: normal; line-height: 15px; text-align: center; }
+header .btn-more .more-badge:not([hidden]) ~ .sync-dot, header .btn-more:has(.more-badge:not([hidden])) .sync-dot { display: none; }
+#app.mini header .btn-more { display: none; }
+header button .sd-ico { width: 16px; height: 16px; }

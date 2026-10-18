@@ -1,8 +1,7 @@
-// COSMIC 셸: 하단 메뉴(오늘·학습·동아리·더보기), 학습 하위 화면, 더보기·설정 카테고리, 제목 표시줄 동기화 점.
+// COSMIC 셸: 하단 메뉴(시간표·오늘·학습·동아리), 학습 하위 화면, 더보기(제목 표시줄 버튼)·설정 카테고리, 동기화 점.
 // renderer.js의 화면 함수(switchTab·openSettings·showSyncStatus 등)는 그대로 쓰고 바깥에서 감싼다.
 (function () {
   const STUDY = [
-    { tab: 'timetable', ico: 'calendar-range', name: '시간표', desc: '수업 블록을 누르면 그 과목 자료 폴더' },
     { tab: 'schedule', ico: 'calendar-days', name: '일정', desc: '월 달력·기간 일정·미리 알림' },
     { tab: 'lms', ico: 'graduation-cap', name: 'LMS', desc: '과목 공지·과제 마감·수업자료' },
     { tab: 'attend', ico: 'clipboard-check', name: '출석', desc: '과목 × 주차 출석 기록' },
@@ -23,6 +22,7 @@
   if (!SERVER_MODE) document.querySelectorAll('.srv-only').forEach(e => e.remove());
   if (!IS_LAB) document.querySelectorAll('.lab-only').forEach(e => e.remove());   // 개발용 항목은 실험실 앱에서만
   document.querySelector('#nav [data-nav="club"]').hidden = !SERVER_MODE;
+  $('nav').style.gridTemplateColumns = `repeat(${SERVER_MODE ? 4 : 3}, minmax(0, 1fr))`;
 
   function setNav(n) {
     nav = n;
@@ -37,11 +37,12 @@
     $('settings').classList.add('hidden');
   }
 
-  // 학습 하위 화면 머리(뒤로 + 제목)는 처음 열 때 한 번 붙인다
+  // 학습 하위 화면 머리(뒤로 + 제목)는 처음 열 때 한 번 붙인다. 시간표는 하단 메뉴 첫 화면이라 뒤로 없이 제목만
   function ensureSubhead(tab) {
-    const item = STUDY.find(s => s.tab === tab); if (!item) return;
     const view = $('view-' + tab);
     if (view.querySelector(':scope > .study-head')) return;
+    if (tab === 'timetable') return view.insertAdjacentHTML('afterbegin', '<div class="study-head"><div class="sd-page-head"><div><h1>시간표</h1></div></div></div>');
+    const item = STUDY.find(s => s.tab === tab); if (!item) return;
     view.insertAdjacentHTML('afterbegin', `<div class="study-head"><button type="button" class="sd-btn sd-btn-ghost sd-back" data-back-study><span class="sd-ico" data-icon="chevron-left" aria-hidden="true"></span>학습</button>
       <div class="sd-page-head"><div><h1>${item.name}</h1></div></div></div>`);
   }
@@ -53,12 +54,13 @@
     $('settings').classList.add('hidden');
     baseSwitch(tab);
     if (tab === 'todos') { setNav('today'); renderTodayHead(); }
-    else { setNav('study'); ensureSubhead(tab); }
+    else { setNav(tab === 'timetable' ? 'timetable' : 'study'); ensureSubhead(tab); }
     $('view-' + tab).scrollTop = 0;
   };
 
   function goNav(n) {
     if (n === 'today') return switchTab('todos');
+    if (n === 'timetable') return switchTab('timetable');
     setNav(n);
     if (n === 'study') { showShellView('view-study'); renderStudy(); }
     if (n === 'club') { showShellView('view-club'); window.Club?.open(); }
@@ -93,7 +95,7 @@
     const b = e.target.closest('[data-study]'); if (b) switchTab(b.dataset.study);
   });
 
-  $('view-stats').addEventListener('click', e => { if (e.target.closest('[data-open-records]')) window.Focus.openRecords(); });
+  $('view-stats').addEventListener('click', e => { if (e.target.closest('[data-open-records]')) window.Focus.openRecords(null, { label: '기록', nav: 'study', go: () => switchTab('stats') }); });
 
   // ---------- 더보기 ----------
   async function renderMore() {
@@ -107,7 +109,7 @@
         <span class="sd-grow" style="text-align:left"><strong>${escapeHtml(name)}</strong><span class="sd-muted" style="display:block">${escapeHtml(st.username)} · ${role} · 프로필 편집</span></span>${sdIco('chevron-right')}</button>` : ''}
       ${SETTINGS.filter(s => !s.server || SERVER_MODE).map(s => menuRow(`data-cat="${s.cat}"`, s.ico, s.name, s.desc)).join('')}
       ${isAdmin ? menuRow('data-cat="admin"', 'users-round', '운영진 관리', '가입 · 회원 · 방 승인', '<span id="more-admin-count"></span>') : ''}</main>`;
-    if (isAdmin) updateAdminCount();
+    if (isAdmin) { updateAdminCount(); updateMoreBadge(); }
     window.Club?.loadMyAvatar?.('more-avatar');
   }
   async function updateAdminCount() {
@@ -116,6 +118,14 @@
     const n = (u?.ok ? u.users.filter(x => x.status === 'pending').length : 0) + (r?.ok ? r.rooms.length : 0);
     el.innerHTML = n ? `<span class="sd-unread">${n}</span>` : '';
   }
+  async function updateMoreBadge() {
+    const b = $('more-badge'); if (!SERVER_MODE || !['admin', 'owner'].includes(state.serverRole)) { b.hidden = true; return; }
+    const [u, r] = await Promise.all([window.api.adminUsers(), window.api.communityCall('GET', '/admin/rooms')]);
+    const n = (u?.ok ? u.users.filter(x => x.status === 'pending').length : 0) + (r?.ok ? r.rooms.length : 0);
+    b.hidden = !n; b.textContent = n > 9 ? '9+' : String(n);
+    $('btn-settings').setAttribute('aria-label', n ? `더보기와 설정, 승인 대기 ${n}건` : '더보기와 설정');
+  }
+  setTimeout(updateMoreBadge, 4000); setInterval(updateMoreBadge, 60000);
   $('view-more').addEventListener('click', e => {
     const c = e.target.closest('[data-cat]'); if (c) return openSettings(c.dataset.cat);
     if (e.target.closest('[data-more="profile"]')) window.Club?.openProfileEditor?.();

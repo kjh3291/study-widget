@@ -135,3 +135,11 @@
     return { el, body: el.querySelector('.sd-panel-body'), sub: el.querySelector('[data-panel-sub]'), close };
   };
 })();
+
+// 마우스로 누른 뒤에는 포커스 테두리를 숨기고, 키보드(Tab 등)를 쓰기 시작하면 다시 보이게
+(function () {
+  const root = document.documentElement;
+  root.dataset.input = 'mouse';
+  window.addEventListener('mousedown', () => { root.dataset.input = 'mouse'; }, true);
+  window.addEventListener('keydown', e => { if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Escape'].includes(e.key) && !e.isComposing) root.dataset.input = 'key'; }, true);
+})();

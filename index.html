@@ -849,9 +849,9 @@
     <span class="term" id="term"></span>
     <span class="spacer"></span>
     <span class="sd-focus-dot" role="img" aria-label="집중 진행 중" title="집중 진행 중"></span>
-    <span id="sync-dot" class="sync-dot" role="img" aria-label="동기화 상태"></span>
+    <!-- 더보기(설정·계정): 오른쪽 위 점은 동기화 상태, 숫자는 운영진 승인 대기 -->
+    <button id="btn-settings" class="btn-more" title="더보기 · 설정" aria-label="더보기와 설정"><span class="sd-ico" data-icon="ellipsis" aria-hidden="true"></span><span id="sync-dot" class="sync-dot" role="img" aria-label="동기화 상태"></span><i class="more-badge" id="more-badge" hidden></i></button>
     <button id="btn-mini" title="미니 모드" aria-label="미니 모드"><span class="ico-mini" aria-hidden="true"></span></button>
-    <button id="btn-settings" title="설정" aria-label="설정" hidden></button>
     <button id="btn-min" title="최소화" aria-label="최소화"><span class="ico-min" aria-hidden="true"></span></button>
     <button id="btn-close" class="close" title="닫기" aria-label="닫기"><span class="ico-x" aria-hidden="true"></span></button>
   </header>
@@ -937,10 +937,10 @@
   </div>
 
   <nav id="nav" aria-label="주 메뉴">
-    <button data-nav="today" class="active"><span class="ico-home" aria-hidden="true"></span><span>오늘</span></button>
-    <button data-nav="study"><span class="ico-book" aria-hidden="true"></span><span>학습</span></button>
-    <button data-nav="club"><span class="ico-chat" aria-hidden="true"></span><span>동아리</span><i class="nav-badge" id="club-badge" hidden></i></button>
-    <button data-nav="more"><span class="ico-more" aria-hidden="true"></span><span>더보기</span></button>
+    <button data-nav="timetable"><span class="sd-ico" data-icon="calendar-range" aria-hidden="true"></span><span>시간표</span></button>
+    <button data-nav="today" class="active"><span class="sd-ico" data-icon="house" aria-hidden="true"></span><span>오늘</span></button>
+    <button data-nav="study"><span class="sd-ico" data-icon="book-open" aria-hidden="true"></span><span>학습</span></button>
+    <button data-nav="club"><span class="sd-ico" data-icon="messages-square" aria-hidden="true"></span><span>동아리</span><i class="nav-badge" id="club-badge" hidden></i></button>
   </nav>
 
   <div id="focus-view" class="hidden"></div>

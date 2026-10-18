@@ -173,7 +173,7 @@
     if (!band) {
       $('view-todos').querySelector('.page-head').insertAdjacentHTML('afterend', '<div class="pad band-pad"><button type="button" class="sd-timer-band" id="focus-band"></button></div>');
       band = $('focus-band');
-      band.onclick = () => (T ? openImmersive() : open());
+      band.onclick = () => (T ? openImmersive() : open(TODAY));
     }
     const reached = todayTotal() >= goalSec();
     band.innerHTML = `${ico('timer')}<span class="sd-grow"><span class="sd-muted">${T ? `${esc(T.subject)} · ${T.phase === 'study' ? '공부 중' : '휴식 중'}` : '오늘 공부'}</span><strong data-live="today">${hms(todayTotal())}</strong></span>
@@ -181,12 +181,20 @@
     band.setAttribute('aria-label', `오늘 공부 ${human(todayTotal())}, 목표 ${goalLabel()}. ${T ? '집중 중 화면 열기' : '집중 열기'}`);
   }
 
+  // ---------- 들어온 곳으로 돌아가기 ----------
+  // 집중·집중 기록·같이 공부는 여러 곳에서 열리므로, 열 때 받은 { label, nav, go }로 뒤로 가기를 정한다
+  const TODAY = { label: '오늘', nav: 'today', go: () => window.Shell.goNav('today') };
+  const STUDY = { label: '학습', nav: 'study', go: () => window.Shell.goNav('study') };
+  const CLUB = { label: '동아리', nav: 'club', go: () => window.Shell.goNav('club') };
+  let mainBack = TODAY, recBack = STUDY, togBack = CLUB;
+  const toMain = () => ({ label: '집중', nav: mainBack.nav, go: () => open() });
+
   // ---------- 집중 메인 ----------
-  function open() { window.Shell.showView('view-focus', 'today'); renderMain(); }
+  function open(back) { if (back) mainBack = back; window.Shell.showView('view-focus', mainBack.nav); renderMain(); }
   function renderMain() {
     const list = subjects(), pct = Math.min(100, Math.round(todayTotal() / goalSec() * 100)), reached = todayTotal() >= goalSec();
     $('view-focus').innerHTML = `<main class="sd-content sd-header-glow sd-focus-main">
-      <button type="button" class="sd-btn sd-btn-ghost sd-back" data-f="back">${ico('chevron-left')}오늘</button>
+      <button type="button" class="sd-btn sd-btn-ghost sd-back" data-f="back">${ico('chevron-left')}${esc(mainBack.label)}</button>
       <div class="sd-page-head"><div><h1>집중</h1></div><button type="button" class="sd-btn sd-btn-small" data-f="records">${ico('chart-no-axes-column')}기록</button></div>
       <div class="sd-focus-total"><p class="sd-muted">오늘 총 공부 시간${reached ? ' · <span class="sd-accent">목표 달성</span>' : ''}</p><div class="sd-time" data-live="today">${hms(todayTotal())}</div>
         <div class="sd-row sd-muted"><span>목표 ${goalLabel()}</span><span data-live-pcttext="%p%">${pct}%</span></div>
@@ -212,11 +220,11 @@
     if (s) { const name = s.dataset.subject; return T && T.subject === name ? openImmersive() : start(name, ''); }
     const ed = e.target.closest('[data-subject-edit]'); if (ed) return editSubject(ed.dataset.subjectEdit);
     const f = e.target.closest('[data-f]')?.dataset.f;
-    if (f === 'back') window.Shell.goNav('today');
-    if (f === 'records') openRecords();
+    if (f === 'back') mainBack.go();
+    if (f === 'records') openRecords(null, toMain());
     if (f === 'immersive') openImmersive();
     if (f === 'add') addSubject();
-    if (f === 'together') openTogether();
+    if (f === 'together') openTogether(null, toMain());
   });
 
   function colorPicker(cur) {
@@ -271,7 +279,7 @@
 
   // ---------- 몰입 화면 ----------
   function openImmersive() {
-    if (!T) return open();
+    if (!T) return open(TODAY);
     $('focus-view').classList.remove('hidden'); $('app').classList.add('no-nav', 'immersive');
     renderImmersive();
   }
@@ -328,9 +336,10 @@
     while (dayTotal(d) >= 60) { n++; d = addDays(d, -1); }
     return n;
   }
-  function openRecords(mode) {
+  function openRecords(mode, back) {
+    recBack = back || STUDY;
     R.mode = mode || R.mode; R.anchor = R.anchor || focusDay(); R.selected = R.selected || focusDay();
-    window.Shell.showView('view-records', 'study'); renderRecords();
+    window.Shell.showView('view-records', recBack.nav); renderRecords();
   }
   function periodBars() {
     const a = R.anchor;
@@ -369,7 +378,7 @@
     const any = (state.focus?.sessions || []).length || T;
     const seg = `<div class="sd-segment" role="group" aria-label="보기 선택">${[['day', '일'], ['week', '주'], ['month', '월']].map(([k, l]) =>
       `<button type="button" aria-pressed="${R.mode === k}" data-r-mode="${k}">${l}</button>`).join('')}</div>`;
-    const head = `<button type="button" class="sd-btn sd-btn-ghost sd-back" data-r="back">${ico('chevron-left')}학습</button>
+    const head = `<button type="button" class="sd-btn sd-btn-ghost sd-back" data-r="back">${ico('chevron-left')}${esc(recBack.label)}</button>
       <div class="sd-page-head"><div><h1>집중 기록</h1><p class="sd-page-subtitle">${dayStartLabel()}부터 다음 날 ${prevDayLabel()}까지 기록해요.</p></div></div>${seg}`;
     if (!any) {
       $('view-records').innerHTML = `<main class="sd-content">${head}<div class="sd-empty"><span class="sd-ico" data-icon="chart-no-axes-column" aria-hidden="true"></span>
@@ -408,8 +417,8 @@
     const d = e.target.closest('[data-r-day]');
     if (d) { R.selected = d.dataset.rDay; if (R.mode === 'day') R.anchor = R.selected; return renderRecords(); }
     const a = e.target.closest('[data-r]')?.dataset.r;
-    if (a === 'back') window.Shell.goNav('study');
-    if (a === 'start') open();
+    if (a === 'back') recBack.go();
+    if (a === 'start') open(TODAY);
     if (a === 'prev' || a === 'next') {
       const k = a === 'prev' ? -1 : 1;
       if (R.mode === 'day') R.anchor = addDays(R.anchor, k);
@@ -423,9 +432,10 @@
 
   // ---------- 같이 공부 ----------
   const G = { scope: null, period: 'today', rooms: [], live: [], rank: null, publicMe: null };
-  function openTogether(roomId) {
+  function openTogether(roomId, back) {
+    togBack = back || CLUB;
     G.scope = roomId || null;
-    window.Shell.showView('view-together', 'club'); loadTogether();
+    window.Shell.showView('view-together', togBack.nav); loadTogether();
   }
   async function loadTogether() {
     const C = window.Community;
@@ -443,7 +453,7 @@
   const initial = n => esc(String(n || '?').slice(0, 1));
   function renderTogether(loading) {
     const scopeName = G.scope ? (G.rooms.find(r => r.id === G.scope)?.name || '스터디방') : 'COSMIC 전체';
-    const head = `<button type="button" class="sd-btn sd-btn-ghost sd-back" data-t="back">${ico('chevron-left')}동아리</button>
+    const head = `<button type="button" class="sd-btn sd-btn-ghost sd-back" data-t="back">${ico('chevron-left')}${esc(togBack.label)}</button>
       <div class="sd-page-head"><div><h1>같이 공부</h1><p class="sd-page-subtitle">공개에 동의한 멤버와 함께해요.</p></div></div>
       <details class="sd-select" id="together-scope"><summary>${esc(scopeName)}</summary><div class="sd-select-menu">
         <button type="button" data-scope="">COSMIC 전체</button>${G.rooms.map(r => `<button type="button" data-scope="${r.id}">${esc(r.name)}</button>`).join('')}</div></details>`;
@@ -474,9 +484,9 @@
     if (sc) { $('together-scope').open = false; G.scope = Number(sc.dataset.scope) || null; return loadTogether(); }
     const p = e.target.closest('[data-period]'); if (p) { G.period = p.dataset.period; return loadTogether(); }
     const a = e.target.closest('[data-t]')?.dataset.t;
-    if (a === 'back') window.Shell.goNav('club');
+    if (a === 'back') togBack.go();
     if (a === 'profile') window.Club?.openProfileEditor?.(() => loadTogether());
-    if (a === 'start') open();
+    if (a === 'start') open(TODAY);
     if (a === 'retry') loadTogether();
   });
   // 실시간: 누가 공부를 시작·멈추면 목록을 새로

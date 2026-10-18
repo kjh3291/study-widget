@@ -532,7 +532,7 @@
     if (c === 'image') return $('compose-file').click();
     if (c === 'room-menu') { menu.hidden = !menu.hidden; t.closest('[data-c]').setAttribute('aria-expanded', String(!menu.hidden)); return; }
     if (c === 'room-members') return roomMembers();
-    if (c === 'room-together') return window.Focus?.openTogether(S.room.id);
+    if (c === 'room-together') return window.Focus?.openTogether(S.room.id, { label: '채팅방', nav: 'club', go: () => window.Shell.goNav('club') });
     if (c === 'together') return window.Focus?.openTogether();
     if (c === 'room-invite') return roomInvite();
     if (c === 'room-leave') return roomLeave(false);
