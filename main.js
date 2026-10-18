@@ -604,6 +604,44 @@ ipcMain.handle('github-device-poll', (_e, deviceCode) => serverTry(async () => {
   if (j.error === 'authorization_pending' || j.error === 'slow_down') return { ok: false, pending: true, slowDown: j.error === 'slow_down' };
   return { ok: false, error: j.error === 'expired_token' ? '시간이 지나 코드가 만료됐습니다. 다시 시도하세요.' : j.error === 'access_denied' ? 'GitHub에서 거부했습니다.' : 'GitHub 인증 실패: ' + (j.error || res.status) };
 }));
+// ---------- 커뮤니티(공지·채팅·프로필) ----------
+// 허용된 경로만 대신 호출한다(토큰은 main에서 붙임).
+const COMMUNITY_PATH = /^\/(notices|rooms|messages|profiles|me\/profile)(\/[\w-]+)*(\/messages)?(\?[\w=&-]*)?$/;
+ipcMain.handle('community-call', (_e, { method, path: p, body } = {}) => serverTry(async () => {
+  if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || !COMMUNITY_PATH.test(String(p))) return { ok: false, error: '잘못된 요청입니다.' };
+  return accountCall(method, p, body || {});
+}));
+ipcMain.handle('community-socket-info', () => {
+  const s = loadConfig().sync || {};
+  if (!IS_LAB || !s.enabled || !s.token) return { ok: false };
+  return { ok: true, wsUrl: s.url.replace(/^http/, 'ws') + '/ws', token: s.token };
+});
+ipcMain.handle('community-upload', (_e, bytes) => serverTry(async () => {
+  const s = loadConfig().sync || {};
+  if (!IS_LAB || !s.token) return { ok: false, error: '로그인이 필요합니다.' };
+  const res = await fetch(s.url + '/media', { method: 'POST', headers: { authorization: 'Bearer ' + s.token, 'content-type': 'application/octet-stream' },
+    body: Buffer.from(bytes), signal: AbortSignal.timeout(60000) });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: json.error === 'not_image' ? '사진 파일만 올릴 수 있어요.' : res.status === 413 ? '사진이 너무 커요(10MB 초과).' : '사진 올리기 실패(' + res.status + ')' };
+  return { ok: true, sha: json.sha };
+}));
+// 사진은 내용 해시가 이름이라 바뀌지 않으므로 기기에 캐시한다.
+ipcMain.handle('community-media', (_e, sha) => serverTry(async () => {
+  if (!/^[0-9a-f]{64}$/.test(String(sha))) return { ok: false };
+  const cacheDir = path.join(app.getPath('userData'), 'media-cache'), file = path.join(cacheDir, sha);
+  const mimeFile = file + '.type';
+  if (!fs.existsSync(file)) {
+    const s = loadConfig().sync || {};
+    if (!s.token) return { ok: false };
+    const res = await fetch(s.url + '/media/' + sha, { headers: { authorization: 'Bearer ' + s.token }, signal: AbortSignal.timeout(60000) });
+    if (!res.ok) return { ok: false };
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    fs.writeFileSync(mimeFile, res.headers.get('content-type') || 'image/jpeg');
+  }
+  const mime = fs.existsSync(mimeFile) ? fs.readFileSync(mimeFile, 'utf8') : 'image/jpeg';
+  return { ok: true, dataUrl: 'data:' + mime + ';base64,' + fs.readFileSync(file).toString('base64') };
+}));
 // 운영 앱 데이터를 실험실로 복사(운영 설정 파일은 읽기만 한다). 가져온 내용은 미전송 변경이 되어 서버로 올라간다.
 ipcMain.handle('import-prod-data', () => {
   if (!IS_LAB) return { ok: false, error: '실험실 앱 전용입니다.' };
