@@ -1241,6 +1241,32 @@ function completedItems() {
   });
   return out;
 }
+// 돌아보기(review.js) 입력: 앱 상태를 계산용 모양으로
+function reviewData() {
+  const lms = ((state.lms && state.lms.assignments) || []).map((a) => ({ id: a.id, title: a.title, course: cleanCourse(a.courseName) || null, due: a.due, submitted: !!a.submitted }));
+  const lmsDone = {};
+  Object.entries(state.lmsDone || {}).forEach(([id, r]) => { if (r) lmsDone[id] = { doneAt: r.doneAt, title: r.title, course: cleanCourse(r.courseName) || null }; });
+  // 출석: 이미 시작한 수업 주차만(자동 출석 포함)
+  const attendance = {};
+  if (attStartMonday()) for (const c of attSubjects()) {
+    const list = [];
+    for (let w = 1; w <= ATT_WEEKS; w++) { const cs = classStartDateTime(c, w); if (cs && cs.getTime() <= Date.now()) { const v = effectiveAtt(c, w); if (v) list.push(v); } }
+    attendance[c] = list;
+  }
+  return { todos: state.todos, lms, lmsDone, sessions: (state.focus && state.focus.sessions) || [], courses: state.timetableSubjects || [], attendance, events: state.events || [] };
+}
+// 미룬 일 정리함 동작: tomorrow | weekend | date(YYYY-MM-DD) | skip | delete
+function reviewAct(id, action, date) {
+  const t = state.todos.find((x) => x.id === id); if (!t) return false;
+  const today = todayStr();
+  if (action === 'tomorrow') deferTodo(id, addDaysStr(today, 1));
+  else if (action === 'weekend') { const d = new Date(); const toSat = (6 - d.getDay() + 7) % 7 || 7; deferTodo(id, addDaysStr(today, toSat)); }
+  else if (action === 'date' && date) deferTodo(id, date);
+  else if (action === 'skip') { t.skipped = true; t.doneAt = Date.now(); saveTodos(); rerenderTodoAreas(); }
+  else if (action === 'delete') { state.todos = state.todos.filter((x) => x.id !== id); saveTodos(); rerenderTodoAreas(); }
+  else return false;
+  return true;
+}
 function renderStats() {
   const today = todayStr();
   const done = completedItems();
