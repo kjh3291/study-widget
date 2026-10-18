@@ -217,3 +217,15 @@ header .btn-more .more-badge:not([hidden]) ~ .sync-dot, header .btn-more:has(.mo
 header button .sd-ico { width: 16px; height: 16px; }
 /* 좁은 창(300px대): 제목 표시줄에서 '/ COSMIC'·LAB을 숨겨 버튼이 잘리지 않게 */
 @container (max-width: 359px) { header .brand-sub, header .lab-badge { display: none; } header .term { margin-left: 2px; } }
+
+/* 오늘 제목 옆 '완료한 일' 버튼과 시트 */
+.today-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.today-title-row .sd-btn { color: var(--text-secondary); flex: none; }
+.today-title-row .sd-btn .sd-ico { color: var(--success); }
+.done-list { margin-top: 4px; }
+.done-day { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 16px 0 4px; }
+.done-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.done-row .sd-check { flex: 1; min-width: 0; align-items: center; }
+.done-row .done-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); text-decoration: line-through; font-size: 13px; }
+.done-row.undone .done-text { color: var(--text-primary); text-decoration: none; }
+.done-row .done-meta { display: flex; align-items: center; gap: 6px; flex: none; font-size: 12px; }

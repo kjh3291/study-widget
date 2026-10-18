@@ -714,9 +714,12 @@ function renderTodos() {
   if (q) {
     const all = activeItems().concat(state.todos.filter((t) => t.done).map((t) => ({ kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: true, starred: !!t.starred, repeat: t.repeat || null, subs: t.subs || [], origDue: t.origDue || null, deferCount: t.deferCount || 0 })));
     const hit = all.filter((i) => (i.text || '').toLowerCase().includes(q) || (i.subject || '').toLowerCase().includes(q));
+    const open = hit.filter((i) => !i.done).sort(sortByDue), closed = hit.filter((i) => i.done);
     $('todo-list').innerHTML = hit.length
-      ? `<div class="cat-head"><span class="ico">${ICO.search}</span>검색 결과<span class="cat-count">${hit.length}</span></div>` + hit.sort(sortByDue).map((it) => todoBlock(it, true)).join('')
+      ? `<section class="sd-task-group"><h3>검색 결과 <span class="sd-muted">${open.length}</span></h3>${open.map((it) => todoBlock(it, true)).join('') || '<p class="sd-muted sd-gap">남은 할 일이 없어요.</p>'}</section>`
+        + (closed.length ? `<details class="sd-task-group done-group"><summary>완료한 일 <span class="sd-muted">${closed.length}</span></summary>${closed.map((it) => todoBlock(it, true)).join('')}</details>` : '')
       : '<div class="empty-note">검색 결과가 없어요.</div>';
+    updateDoneButton();
     return;
   }
 
@@ -729,8 +732,6 @@ function renderTodos() {
   const todayList = rest.filter((i) => i.due === today || !i.due).sort(sortByDue);
   const upcoming = rest.filter((i) => i.due && i.due > today).sort(sortByDue);
   const backlog = rest.filter((i) => i.due && i.due < today).sort(sortByDue);
-  const doneToday = state.todos.filter((t) => t.done && t.doneAt && fmtD(new Date(t.doneAt)) === today)
-    .map((t) => ({ kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: true, starred: !!t.starred, repeat: t.repeat, subs: t.subs }));
 
   let html = '';
   const section = (cls, label, items) => {
@@ -741,7 +742,7 @@ function renderTodos() {
   html += section('cat-today', '오늘', todayList);
   html += section('cat-soon', '예정', upcoming);
   html += section('cat-backlog', '지난', backlog);
-  if (doneToday.length) html += `<details class="sd-task-group done-group"><summary>오늘 완료 <span class="sd-muted">${doneToday.length}</span></summary>${doneToday.map((it) => todoBlock(it, true)).join('')}</details>`;
+  updateDoneButton();
 
   if (!html) html = '<div class="empty-note">할 일이 없어요. 위에 적고 Enter를 눌러보세요. 완료한 일은 <b>기록</b> 탭에 쌓입니다.</div>';
   $('todo-list').innerHTML = html;
@@ -772,9 +773,19 @@ function openRepeatPopover(anchor) {
 }
 
 // 완료 토글 (토스트로 실행취소 제공) — 할 일/달력 어디서든 사용
+// 반복 할 일을 완료하면 다음 회차가 생긴다. 완료를 취소할 때 그 회차가 아직 손대지 않은 그대로면 함께 지운다(중복 방지)
+function removeSpawnedRepeat(t) {
+  if (!t.repeat || !t.doneAt) return null;
+  const nextDue = addDaysStr(t.due || todayStr(), t.repeat === 'weekly' ? 7 : 1);
+  const twin = state.todos.find((x) => x.id !== t.id && !x.done && x.repeat === t.repeat && x.text === t.text && (x.subject || null) === (t.subject || null)
+    && x.due === nextDue && (x.createdAt || 0) >= t.doneAt - 1000 && !(x.subs || []).some((s) => s.done));
+  if (twin) state.todos = state.todos.filter((x) => x !== twin);
+  return twin || null;
+}
 function toggleTodo(id, checked) {
   const t = state.todos.find((x) => x.id === id);
   if (!t) return;
+  if (!checked && t.done) removeSpawnedRepeat(t);
   t.done = checked; t.doneAt = checked ? Date.now() : null;
   if (checked) delete t.origDue;  // 완료본엔 밀림 마커 불필요
   let spawnedId = null;
@@ -793,6 +804,41 @@ function toggleTodo(id, checked) {
       saveTodos(); rerenderTodoAreas();
     });
   }
+}
+function updateDoneButton() {
+  const b = $('btn-done-list'); if (!b) return;
+  const today = todayStr(), n = state.todos.filter((t) => t.done && t.doneAt && fmtD(new Date(t.doneAt)) === today).length;
+  b.querySelector('span:last-child').textContent = n ? `오늘 완료 ${n}` : '완료한 일';
+  b.setAttribute('aria-label', `완료한 일 보기, 오늘 완료 ${n}개`);
+}
+function openDoneSheet() {
+  const since = Date.now() - 14 * 86400000;
+  const list = state.todos.filter((t) => t.done && t.doneAt && t.doneAt >= since).sort((a, b) => b.doneAt - a.doneAt).slice(0, 80);
+  const dayLabel = (ts) => { const d = fmtD(new Date(ts)), today = todayStr(); if (d === today) return '오늘'; if (d === addDaysStr(today, -1)) return '어제';
+    const x = new Date(ts); return `${x.getMonth() + 1}월 ${x.getDate()}일 ${'일월화수목금토'[x.getDay()]}요일`; };
+  let html = '', last = '';
+  for (const t of list) {
+    const g = dayLabel(t.doneAt);
+    if (g !== last) { html += `<h3 class="done-day">${g}</h3>`; last = g; }
+    html += `<div class="done-row" data-id="${t.id}"><label class="sd-check"><input type="checkbox" class="check" checked data-undone="${t.id}"><span class="done-text">${escapeHtml(t.text)}</span></label>
+      <span class="done-meta">${t.subject ? `<span class="sd-badge">${escapeHtml(t.subject)}</span>` : ''}<span class="sd-muted">${new Date(t.doneAt).toTimeString().slice(0, 5)}</span></span></div>`;
+  }
+  const s = UI.sheet('완료한 일', list.length ? `<p class="sd-muted">체크를 풀면 완료가 취소되고 할 일 목록으로 돌아가요. 최근 14일까지 보여요.</p><div class="done-list">${html}</div>`
+    : '<div class="sd-empty"><span class="sd-ico" data-icon="circle-check" aria-hidden="true"></span><h3>최근 완료한 일이 없어요.</h3><p>할 일을 체크하면 여기 모여요.</p></div>');
+  s.el.addEventListener('change', (e) => {
+    const box = e.target.closest('[data-undone]'); if (!box) return;
+    const t = state.todos.find((x) => x.id === box.dataset.undone); if (!t) return;
+    if (box.checked) return;
+    const before = { done: t.done, doneAt: t.doneAt, origDue: t.origDue };
+    const twin = removeSpawnedRepeat(t);
+    t.done = false; t.doneAt = null;
+    saveTodos(); rerenderTodoAreas();
+    const row = box.closest('.done-row'); row.classList.add('undone');
+    showToast(`'${t.text.length > 18 ? t.text.slice(0, 18) + '…' : t.text}' 완료를 취소했어요`, '실행 취소', () => {
+      Object.assign(t, before); if (twin) state.todos.push(twin);
+      saveTodos(); rerenderTodoAreas(); if (row.isConnected) { row.classList.remove('undone'); box.checked = true; }
+    });
+  });
 }
 function rerenderTodoAreas() {
   if (currentTab === 'todos') renderTodos();

@@ -80,6 +80,8 @@
     window.Focus?.refresh();
   }
 
+  $('btn-done-list').onclick = () => openDoneSheet();   // 오늘 제목 옆: 완료한 일(체크 풀면 완료 취소)
+
   // ---------- 학습 ----------
   const sdIco = n => `<span class="sd-ico" data-icon="${n}" aria-hidden="true"></span>`;
   const menuRow = (attrs, icon, name, desc, extra = '') => `<button type="button" class="sd-menu-row" ${attrs}><span class="sd-menu-icon">${sdIco(icon)}</span>
