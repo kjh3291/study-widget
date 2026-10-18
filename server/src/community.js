@@ -55,6 +55,14 @@ async function publicTimetable(uid) {
   return rows.map(r => r.data?.v).filter(Boolean).map(c => ({ name: c.name, times: (c.times || []).map(t => ({ day: t.day, start: t.start, end: t.end })) }));
 }
 
+// 매일: 메시지·프로필 어디에서도 쓰지 않는 사진(올린 지 하루 지난 것)을 지운다.
+export async function purgeMedia(log) {
+  const { rows } = await pool.query(`DELETE FROM media m WHERE m.created_at < now() - interval '1 day'
+    AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.image->>'sha' = m.sha256 AND NOT x.deleted)
+    AND NOT EXISTS (SELECT 1 FROM profiles p WHERE p.avatar_sha = m.sha256) RETURNING sha256`);
+  for (const { sha256: sha } of rows) { fs.rmSync(path.join(MEDIA_DIR, sha.slice(0, 2), sha), { force: true }); log?.info({ sha }, 'purged media'); }
+}
+
 export function registerCommunity(app) {
   app.register(websocket, { options: { maxPayload: 64 * 1024 } });
   app.register(async scoped => {

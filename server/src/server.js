@@ -5,7 +5,7 @@ import { hashPassword, verifyPassword, issueToken, authenticate, requireAdmin } 
 import { clientIp, limits, tooMany, securityHeaders } from './guard.js';
 import { registerFiles, purgeFiles } from './files.js';
 import { registerSite } from './site.js';
-import { registerCommunity } from './community.js';
+import { registerCommunity, purgeMedia } from './community.js';
 import { registerAccounts, purgeAccounts, CONSENT_VERSION, publicUser } from './accounts.js';
 import { statusError } from './auth.js';
 
@@ -145,7 +145,7 @@ app.post('/sync', { preHandler: authenticate }, async (req, reply) => {
 await migrate();
 const pruneHistory = () => pool.query(`DELETE FROM items_history WHERE recorded_at < now() - interval '30 days'`).catch(e => app.log.error(e));
 pruneHistory(); setInterval(pruneHistory, 24 * 60 * 60 * 1000).unref();
-const purge = () => purgeAccounts(app.log).then(() => purgeFiles(app.log)).catch(e => app.log.error(e));
+const purge = () => purgeAccounts(app.log).then(() => purgeFiles(app.log)).then(() => purgeMedia(app.log)).catch(e => app.log.error(e));
 purge(); setInterval(purge, 24 * 60 * 60 * 1000).unref();
 // 이미 가입된 계정도 ADMIN_USERNAME이면 운영진으로 올린다.
 if (ADMIN_USERNAME) await pool.query(`UPDATE users SET role = 'owner', status = 'approved', deleted_at = NULL WHERE username = $1`, [ADMIN_USERNAME]);

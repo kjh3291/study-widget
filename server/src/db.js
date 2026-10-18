@@ -118,6 +118,9 @@ CREATE TABLE IF NOT EXISTS messages (
   deleted     BOOLEAN NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS messages_room ON messages (room_id, id);
+-- 탈퇴 계정이 완전히 삭제(30일 후)되면 그 사람의 메시지도 함께 지운다(가입 동의 내용).
+ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_user_id_fkey;
+ALTER TABLE messages ADD CONSTRAINT messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 CREATE TABLE IF NOT EXISTS media (
   sha256      TEXT PRIMARY KEY,
   mime        TEXT NOT NULL,

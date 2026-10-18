@@ -164,6 +164,7 @@ export async function purgeFiles(log) {
     WHERE v.vid = x.vid AND x.n > ${KEEP_VERSIONS}`);
   if (!fs.existsSync(FILES_DIR)) return;
   for (const uid of fs.readdirSync(FILES_DIR)) {
+    if (!/^\d+$/.test(uid)) continue; // 사용자 폴더(숫자)만. media(채팅 사진) 등은 각자 정리 함수가 맡는다.
     const { rows } = await pool.query('SELECT sha256 FROM files WHERE user_id = $1 UNION SELECT sha256 FROM file_versions WHERE user_id = $1', [Number(uid) || 0]);
     const used = new Set(rows.map(r => r.sha256));
     const base = path.join(FILES_DIR, uid);
