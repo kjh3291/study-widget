@@ -51,6 +51,9 @@
       "community-client.js",
       "ui-shell.js",
       "club.js",
+      "styles/**",
+      "focus.js",
+      "ui-kit.js",
       "icons.css",
       "fonts/**"
     ],

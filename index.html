@@ -4,6 +4,10 @@
 <meta charset="UTF-8" />
 <title>Studeck</title>
 <link rel="stylesheet" href="icons.css" />
+<link rel="stylesheet" href="styles/sd-tokens.css" />
+<link rel="stylesheet" href="styles/sd-components.css" />
+<link rel="stylesheet" href="styles/sd-screens.css" />
+<link rel="stylesheet" href="styles/sd-app.css" />
 <style>
   @font-face { font-family: "Pretendard"; src: url("fonts/PretendardVariable.woff2") format("woff2-variations"); font-weight: 45 920; font-display: swap; }
   :root {
@@ -546,31 +550,9 @@
   .popover input[type=date] { width: 100%; margin-top: 2px; }
 
   /* 집중 전용 전체화면 */
-  #focus-view { position: absolute; inset: 0; z-index: 30; background: var(--bg); display: flex; flex-direction: column; }
-  #focus-view .fv-top { -webkit-app-region: drag; padding: 12px 14px; }
-  #focus-view .fv-back { -webkit-app-region: no-drag; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; color: var(--muted); font-size: 13px; font-family: inherit; padding: 4px 6px; border-radius: 8px; }
-  #focus-view .fv-back:hover { color: var(--text); background: var(--surface2); }
-  #focus-view .fv-back .isvg { width: 16px; height: 16px; }
-  #focus-view .fv-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
-  #focus-view .fv-subj { font-size: 13px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 5px 15px; border-radius: 999px; }
-  #focus-view .fv-ring { position: relative; width: 210px; height: 210px; display: flex; align-items: center; justify-content: center; }
-  #focus-view .fv-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #focus-view .fv-time-wrap { display: flex; flex-direction: column; align-items: center; }
-  #focus-view .fv-time { font-size: 46px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); line-height: 1.05; }
-  #focus-view .fv-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  #focus-view .fv-task { font-size: 14px; color: var(--muted); max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-  #focus-view .fv-controls { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 0 0 22px; }
-  #focus-view .fv-btn { -webkit-app-region: no-drag; cursor: pointer; width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--line2); background: var(--surface2); color: var(--text); display: flex; align-items: center; justify-content: center; }
-  #focus-view .fv-btn:hover { border-color: var(--muted); }
-  #focus-view .fv-btn .isvg { width: 22px; height: 22px; }
-  #focus-view .fv-btn.danger { background: var(--danger-soft); border-color: var(--danger-soft); color: var(--danger); }
-  #focus-view .fv-foot { text-align: center; font-size: 11.5px; color: var(--muted); padding: 0 0 18px; }
-  #focus-view .fv-foot b { color: var(--text); font-weight: 700; }
 
   /* 설정 */
-  #settings { position: absolute; inset: 0; z-index: 20; background: var(--bg); padding: 18px; display: flex; flex-direction: column; gap: 13px; overflow: auto; }
-  #settings h2 { font-size: 15px; }
-  #settings label { font-size: 12px; color: var(--muted); }
+  #settings { position: absolute; inset: 0; z-index: 20; background: var(--bg); overflow: auto; }
   #settings input[type=text], #settings input[type=password] { width: 100%; }
   #server-box [hidden] { display: none !important; }
   .admin-count { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10.5px; text-align: center; }
@@ -624,8 +606,6 @@
   #files-panel .vrow { display: flex; align-items: center; gap: 8px; padding-left: 10px; font-size: 11px; color: var(--muted); }
   #files-panel .vrow span { flex: 1; }
   #settings .row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
-  #settings .btns { display: flex; gap: 8px; margin-top: auto; }
-  #settings .btns button { flex: 1; }
   #settings .hint { font-size: 11px; color: var(--muted); line-height: 1.6; }
   #settings .err { color: #ff7b7b; font-size: 11.5px; min-height: 14px; }
   input[type=range] { -webkit-app-region: no-drag; flex: 1; accent-color: var(--accent); }
@@ -694,25 +674,10 @@
   .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 600; font-size: 13px; flex: none; overflow: hidden; }
   .avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-  /* 오늘: 집중 카드 */
-  .focus-card { margin: 4px 22px 18px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 14px;
-    background: radial-gradient(ellipse at 0% 0%, var(--glow-a), transparent 80%), var(--surface); }
-  .focus-card:empty { display: none; }
-  .orbit { width: 38px; height: 38px; border: 2px dashed var(--accent); border-radius: 50%; display: grid; place-items: center; color: var(--accent); position: relative; flex: none; }
-  .orbit::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; right: -2px; top: 4px; background: var(--text); }
-  .focus-card .ft { flex: 1; min-width: 0; } .focus-card .ft b { font-size: 13px; font-weight: 600; display: block; } .focus-card .ft small { color: var(--muted); font-size: 12px; }
 
   /* 설정(카테고리 하위 화면) */
-  #settings { padding: 0 0 18px; gap: 0; }
-  #settings h2 { font-size: 22px; letter-spacing: -0.6px; padding: 4px 22px 10px; }
-  #settings .set-cat { padding: 0 22px; display: flex; flex-direction: column; }
-  #settings .set-cat > .row, #settings .set-block { padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
-  #settings .set-block { display: flex; flex-direction: column; gap: 8px; }
-  #settings .set-cat[hidden] { display: none; }
   .set-label { font-size: 12px; font-weight: 600; color: var(--sub); }
   .set-hint { font-size: 11.5px; color: var(--muted); line-height: 1.55; }
-  #settings .btns { padding: 14px 22px 0; }
-  #settings .subhead { padding-top: 12px; }
   .srv-only[hidden] { display: none; }
 
   /* 공통: 포커스·모션 */
@@ -898,6 +863,7 @@
     <span class="brand"><span class="logomark" aria-hidden="true"></span><span class="title">Studeck</span><span class="brand-sub">/ COSMIC</span></span>
     <span class="term" id="term"></span>
     <span class="spacer"></span>
+    <span class="sd-focus-dot" role="img" aria-label="집중 진행 중" title="집중 진행 중"></span>
     <span id="sync-dot" class="sync-dot" role="img" aria-label="동기화 상태"></span>
     <button id="btn-mini" title="미니 모드" aria-label="미니 모드"><span class="ico-mini" aria-hidden="true"></span></button>
     <button id="btn-settings" title="설정" aria-label="설정" hidden></button>
@@ -910,6 +876,9 @@
     <div id="view-study" class="view hidden"></div>
     <div id="view-club" class="view hidden"></div>
     <div id="view-more" class="view hidden"></div>
+    <div id="view-focus" class="view hidden"></div>
+    <div id="view-records" class="view hidden"></div>
+    <div id="view-together" class="view hidden"></div>
     <div id="view-timetable" class="view">
       <div class="pad"><button id="btn-syllabus" class="btn mini">강의계획서 PDF 가져오기</button> <button id="btn-manual-timetable" class="btn mini">시간 직접 입력</button><div id="syllabus-msg" style="font-size:11px;color:var(--muted);margin-top:6px" aria-live="polite"></div></div>
       <div id="empty">
@@ -939,7 +908,6 @@
         <input type="text" id="td-search" class="td-search" placeholder="할 일 검색…" autocomplete="off" />
         <div id="todo-list"></div>
       </div>
-      <div id="focus-card" class="focus-card"></div>
     </div>
 
     <div id="view-schedule" class="view hidden">
@@ -1047,39 +1015,64 @@
   </div>
 
   <div id="settings" class="hidden" role="dialog" aria-labelledby="set-title">
-    <div class="subhead"><button class="back" id="set-back" aria-label="더보기로 돌아가기"><span class="ico-back" aria-hidden="true"></span>더보기</button></div>
-    <h2 id="set-title">설정</h2>
+   <main class="sd-content">
+    <button type="button" class="sd-btn sd-btn-ghost sd-back" id="set-back"><span class="sd-ico" data-icon="chevron-left" aria-hidden="true"></span>더보기</button>
+    <div class="sd-page-head"><div><h1 id="set-title">설정</h1></div></div>
     <div class="err" id="settings-err"></div>
 
     <section class="set-cat" data-cat="screen">
-      <div class="row" style="justify-content:space-between;"><span>테마</span><span class="seg"><button id="theme-dark">COSMIC</button><button id="theme-light">밝게</button><button id="theme-cbnu">충북대</button><button id="theme-baekjoon">백준</button><button id="theme-gray">회색</button></span></div>
-      <div class="row" style="justify-content:space-between;"><span>헤더 시계</span><span class="seg"><button id="clk-h">시</button><button id="clk-hm">시:분</button><button id="clk-hms">시:분:초</button></span></div>
-      <div class="row"><span>투명도</span><input type="range" id="inp-opacity" min="30" max="100" value="100" aria-label="투명도" /></div>
-      <div class="row"><input type="checkbox" id="inp-top" checked /><label for="inp-top">항상 맨 위에 표시</label></div>
-      <div class="row"><input type="checkbox" id="inp-autostart" /><label for="inp-autostart">컴퓨터 시작 시 자동 실행</label></div>
+      <div class="sd-setting-row stacked"><div class="sd-setting-copy"><strong>테마</strong><p>편안한 화면 색을 골라주세요.</p></div>
+        <div class="sd-setting-control"><div class="sd-theme-options" role="radiogroup" aria-label="테마">
+          <button type="button" class="sd-radio-card" id="theme-dark" role="radio"><span class="sd-radio-dot"></span><span class="sd-swatch" style="--swatch-color:#65D8EB"></span>COSMIC</button>
+          <button type="button" class="sd-radio-card" id="theme-light" role="radio"><span class="sd-radio-dot"></span><span class="sd-swatch" style="--swatch-color:#F3F7FC"></span>밝게</button>
+          <button type="button" class="sd-radio-card" id="theme-cbnu" role="radio"><span class="sd-radio-dot"></span><span class="sd-swatch" style="--swatch-color:#B72654"></span>충북대</button>
+          <button type="button" class="sd-radio-card" id="theme-baekjoon" role="radio"><span class="sd-radio-dot"></span><span class="sd-swatch" style="--swatch-color:#0076C0"></span>백준</button>
+          <button type="button" class="sd-radio-card" id="theme-gray" role="radio"><span class="sd-radio-dot"></span><span class="sd-swatch" style="--swatch-color:#9A9AA1"></span>회색</button>
+        </div></div></div>
+      <div class="sd-setting-row stacked"><div class="sd-setting-copy"><strong>헤더 시계</strong><p>표시할 시간 형식을 선택해요.</p></div>
+        <div class="sd-setting-control"><div class="sd-segment" role="group" aria-label="헤더 시계 형식">
+          <button type="button" id="clk-h">시</button><button type="button" id="clk-hm">시:분</button><button type="button" id="clk-hms">시:분:초</button></div></div></div>
+      <div class="sd-setting-row stacked"><div class="sd-setting-copy"><strong>창 투명도</strong><p>배경이 비치는 정도를 조절해요.</p></div>
+        <div class="sd-setting-control"><label class="sd-row sd-muted" for="inp-opacity"><span>불투명도</span><output id="opacity-out">100%</output></label>
+          <input type="range" class="sd-slider" id="inp-opacity" min="30" max="100" value="100" aria-label="창 불투명도" /></div></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><label for="inp-top">항상 맨 위에</label><p>다른 창 위에 Studeck를 표시해요.</p></div>
+        <div class="sd-setting-control"><span class="sd-toggle-hit"><input class="sd-toggle" type="checkbox" role="switch" id="inp-top" checked /></span></div></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><label for="inp-autostart">컴퓨터 시작 시 실행</label><p>로그인하면 Studeck가 자동으로 켜져요.</p></div>
+        <div class="sd-setting-control"><span class="sd-toggle-hit"><input class="sd-toggle" type="checkbox" role="switch" id="inp-autostart" /></span></div></div>
     </section>
 
     <section class="set-cat" data-cat="study">
-      <div class="row" style="justify-content:space-between;"><label for="inp-focus-goal">하루 집중 목표(시간)</label><input type="number" id="inp-focus-goal" min="0.5" max="16" step="0.5" value="2" style="width:80px;" /></div>
-      <div class="row" style="justify-content:space-between;"><label for="inp-morning">아침 요약 시각</label><input type="time" id="inp-morning" value="08:00" style="width:110px;" /></div>
-      <div class="row"><input type="checkbox" id="inp-deadline" checked /><label for="inp-deadline">마감 임박 알림</label></div>
-      <div class="row"><input type="checkbox" id="inp-rollover" checked /><label for="inp-rollover">지난 할 일 자동으로 오늘로 이월</label></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><strong id="goal-label">하루 집중 목표</strong><p>30분씩 조절해요.</p></div>
+        <div class="sd-setting-control"><div class="sd-stepper" role="group" aria-labelledby="goal-label">
+          <button type="button" id="goal-minus" aria-label="목표 30분 줄이기">−</button><output id="goal-out" aria-live="polite">2시간</output><button type="button" id="goal-plus" aria-label="목표 30분 늘리기">＋</button></div>
+          <input type="number" id="inp-focus-goal" min="0.5" max="16" step="0.5" value="2" hidden /></div></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><strong>아침 요약 알림</strong><p>오늘 할 일을 알려드려요.</p></div>
+        <div class="sd-setting-control"><button type="button" class="sd-btn sd-btn-small" id="btn-morning"><span class="sd-ico" data-icon="clock" aria-hidden="true"></span><span id="morning-label">오전 08:00</span></button>
+          <input type="time" id="inp-morning" value="08:00" hidden /></div></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><label for="inp-deadline">마감 임박 알림</label><p>마감 전에 알려드려요.</p></div>
+        <div class="sd-setting-control"><span class="sd-toggle-hit"><input class="sd-toggle" type="checkbox" role="switch" id="inp-deadline" checked /></span></div></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><label for="inp-rollover">지난 할 일 이월</label><p>미완료 항목을 오늘로 가져와요. 원래 마감일은 그대로예요.</p></div>
+        <div class="sd-setting-control"><span class="sd-toggle-hit"><input class="sd-toggle" type="checkbox" role="switch" id="inp-rollover" checked /></span></div></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><strong>집중 날짜 기준</strong><p>이 시각부터 새 하루로 계산해요. 동아리 랭킹은 05:00 기준이에요.</p></div>
+        <div class="sd-setting-control"><button type="button" class="sd-btn sd-btn-small" id="btn-day-start"><span class="sd-ico" data-icon="clock" aria-hidden="true"></span><span id="day-start-label">오전 05:00</span></button></div></div>
     </section>
 
     <section class="set-cat" data-cat="lms">
-      <div class="row"><input type="checkbox" id="inp-lms-auto" checked /><label for="inp-lms-auto">LMS 자동 새로고침 (3시간마다)</label></div>
-      <div class="row"><input type="checkbox" id="inp-autodl" checked /><label for="inp-autodl">LMS 수업 자료 자동 다운로드</label></div>
-      <div id="sync-bar" class="set-block" role="status">
-        <div class="set-label">동기화</div>
-        <div class="row" style="justify-content:space-between;"><span id="sync-label">기기에 저장됨</span><span style="display:flex;gap:6px"><button id="sync-now" class="btn mini">지금 동기화</button><button id="sync-resolve" class="btn mini" hidden>충돌 확인</button></span></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><label for="inp-lms-auto">LMS 자동 새로고침</label><p>3시간마다 새 소식을 확인해요.</p></div>
+        <div class="sd-setting-control"><span class="sd-toggle-hit"><input class="sd-toggle" type="checkbox" role="switch" id="inp-lms-auto" checked /></span></div></div>
+      <div class="sd-setting-row"><div class="sd-setting-copy"><label for="inp-autodl">수업자료 자동 다운로드</label><p>새 수업자료를 기기에 내려받아요.</p></div>
+        <div class="sd-setting-control"><span class="sd-toggle-hit"><input class="sd-toggle" type="checkbox" role="switch" id="inp-autodl" checked /></span></div></div>
+      <div id="sync-bar" class="sd-setting-row stacked" role="status">
+        <div class="sd-setting-copy"><strong id="sync-label">기기에 저장됨</strong><p id="sync-hint">기기 간 데이터가 최신 상태예요.</p></div>
+        <div class="sd-setting-control sd-actions"><button id="sync-now" class="sd-btn sd-btn-small" type="button">지금 동기화</button><button id="sync-resolve" class="sd-btn sd-btn-small" type="button" hidden>충돌 확인</button></div>
       </div>
-      <div id="server-box" hidden class="set-block">
+      <div id="server-box" hidden>
         <button class="btn mini srv-only" id="btn-srv-sync" hidden>지금 동기화</button>
-        <button class="btn mini" id="btn-srv-import">운영 앱 데이터 가져오기</button>
-        <span id="git-sync-msg" class="set-hint"></span>
-        <span class="set-hint">비밀번호는 저장하지 않고 이 기기 전용 접속 키만 보관해요.</span>
+        <div class="sd-setting-row stacked lab-only"><div class="sd-setting-copy"><strong>운영 앱 데이터 가져오기</strong><p>실험실 전용: 운영 앱의 할 일·일정·파일을 복사해요.</p></div>
+          <div class="sd-setting-control"><button class="sd-btn sd-btn-small" id="btn-srv-import" type="button">가져오기</button></div></div>
+
       </div>
-      <div class="row set-block" id="git-box" style="flex-direction:column;align-items:stretch;gap:6px;">
+      <div class="set-block" id="git-box">
         <span class="set-label">GitHub 동기화 <span style="color:var(--muted)">(맥↔윈도우 자료 공유)</span></span>
         <input type="text" id="inp-git-repo" placeholder="예: kjh3291/studeck-data" autocomplete="off" />
         <input type="password" id="inp-git-token" placeholder="GitHub 토큰 붙여넣기" autocomplete="off" />
@@ -1089,44 +1082,41 @@
         </div>
         <span id="git-sync-msg" class="set-hint"></span>
       </div>
-      <div class="row" style="justify-content:space-between;">
-        <button id="btn-lms-dump" class="btn mini">LMS 디버그 저장</button>
-        <span id="lms-dump-msg" class="set-hint" style="flex:1;text-align:right;"></span>
-      </div>
+      <div class="sd-setting-row stacked lab-only"><div class="sd-setting-copy"><strong>LMS 디버그 저장</strong><p id="lms-dump-msg">실험실 전용: LMS 화면 구조를 파일로 저장해요.</p></div>
+        <div class="sd-setting-control"><button id="btn-lms-dump" class="sd-btn sd-btn-small" type="button">저장</button></div></div>
     </section>
 
     <section class="set-cat" data-cat="files">
-      <div class="row" style="justify-content:space-between;"><span id="studeck-folder-label">바탕화면\Studeck 폴더</span><button class="btn mini" id="btn-open-studeck">폴더 열기</button></div>
-      <div class="row srv-only" style="justify-content:space-between;align-items:center;gap:8px;">
-        <span id="srv-usage" class="set-hint">보조자료·과제 파일: 확인 중…</span>
-        <button class="btn mini" id="btn-srv-files">휴지통·이전 버전</button>
-      </div>
-      <span class="set-hint srv-only">보조자료·과제 파일은 서버의 내 공간에 저장되고, 지운 파일과 이전 버전은 30일 보관돼요. 수업자료는 각 기기가 LMS에서 받아요.</span>
+      <button type="button" class="sd-menu-row" id="btn-open-studeck"><span class="sd-menu-icon"><span class="sd-ico" data-icon="folder" aria-hidden="true"></span></span>
+        <span class="sd-grow"><strong>Studeck 폴더 열기</strong><span class="sd-muted" id="studeck-folder-label">바탕화면\Studeck 폴더</span></span><span class="sd-ico" data-icon="chevron-right" aria-hidden="true"></span></button>
+      <div class="sd-storage srv-only"><div class="sd-row"><h3>서버 사용량</h3><span class="sd-muted" id="srv-usage">확인 중…</span></div>
+        <div class="sd-progress" role="progressbar" aria-label="서버 사용량" id="srv-usage-bar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span style="--progress:0%"></span></div>
+        <p class="sd-muted">보조자료·과제만 서버에 저장되고, 지운 파일과 이전 버전은 30일 보관돼요. 수업자료는 각 기기가 LMS에서 받아요.</p></div>
+      <button type="button" class="sd-menu-row srv-only" id="btn-srv-files"><span class="sd-menu-icon"><span class="sd-ico" data-icon="history" aria-hidden="true"></span></span>
+        <span class="sd-grow"><strong>휴지통 · 이전 버전</strong><span class="sd-muted">지운 파일을 복구하고 이전 상태로 되돌려요.</span></span><span class="sd-ico" data-icon="chevron-right" aria-hidden="true"></span></button>
     </section>
 
     <section class="set-cat srv-only" data-cat="account">
-      <div id="server-in" class="row" style="justify-content:space-between;align-items:center;gap:8px;">
-        <span id="srv-who"></span>
-        <button class="btn mini" id="btn-account">내 계정</button>
-      </div>
-      <div class="row"><button class="btn mini" id="btn-srv-logout">로그아웃</button></div>
+      <div id="server-in" class="sd-info-row"><span class="sd-muted">로그인</span><strong id="srv-who"></strong></div>
+      <button type="button" class="sd-menu-row" id="btn-account"><span class="sd-menu-icon"><span class="sd-ico" data-icon="key-round" aria-hidden="true"></span></span>
+        <span class="sd-grow"><strong>내 계정</strong><span class="sd-muted">GitHub 연결 · 비밀번호 변경 · 탈퇴</span></span><span class="sd-ico" data-icon="chevron-right" aria-hidden="true"></span></button>
+      <button type="button" class="sd-btn sd-btn-block sd-gap" id="btn-srv-logout"><span class="sd-ico" data-icon="log-out" aria-hidden="true"></span>로그아웃</button>
     </section>
 
     <section class="set-cat srv-only" data-cat="admin">
       <div id="admin-box" hidden class="set-block">
-        <div class="row" style="justify-content:space-between;align-items:center;">
-          <span class="set-label">가입 신청 승인 <span id="admin-count" class="admin-count"></span></span>
-          <span style="display:flex;gap:6px;"><button class="btn mini" id="btn-admin-refresh">새로고침</button><button class="btn mini" id="btn-members">회원 관리</button></span>
-        </div>
+        <div class="sd-row"><h3>가입 신청 <span id="admin-count" class="admin-count"></span></h3>
+          <span class="sd-actions" style="flex:none"><button class="sd-btn sd-btn-small" id="btn-admin-refresh" type="button">새로고침</button><button class="sd-btn sd-btn-small" id="btn-members" type="button">회원 관리</button></span></div>
         <div id="admin-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-        <div class="set-label" style="margin-top:10px">방 승인 대기 <span id="room-admin-count" class="admin-count"></span></div>
+        <h3 class="sd-gap-lg">방 승인 대기 <span id="room-admin-count" class="admin-count"></span></h3>
         <div id="room-admin-list" style="display:flex;flex-direction:column;gap:6px;"></div>
       </div>
     </section>
 
-    <div class="btns">
+    <div class="btns" hidden>
       <button class="btn" id="btn-cancel">닫기</button>
     </div>
+   </main>
   </div>
 </div>
 
@@ -1135,6 +1125,8 @@
 <script src="syllabus.js"></script>
 <script src="community-client.js"></script>
 <script src="renderer.js"></script>
+<script src="ui-kit.js"></script>
+<script src="focus.js"></script>
 <script src="ui-shell.js"></script>
 <script src="club.js"></script>
 </body>

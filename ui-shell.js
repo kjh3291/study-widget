@@ -6,7 +6,8 @@
     { tab: 'schedule', ico: 'calendar', name: '일정', desc: '월 달력·기간 일정·미리 알림' },
     { tab: 'lms', ico: 'school', name: 'LMS', desc: '과목 공지·과제 마감·수업자료' },
     { tab: 'attend', ico: 'attend', name: '출석', desc: '과목 × 주차 출석 기록' },
-    { tab: 'stats', ico: 'chart', name: '기록', desc: '완료·연속 달성·공부 시간' },
+    { view: 'records', ico: 'timer', name: '집중 기록', desc: '일·주·월 공부 시간과 세션' },
+    { tab: 'stats', ico: 'chart', name: '기록', desc: '할 일 완료와 연속 달성' },
   ];
   const SETTINGS = [
     { cat: 'screen', ico: 'palette', name: '화면과 위젯', desc: '테마 · 투명도 · 항상 위 · 시계' },
@@ -16,10 +17,11 @@
     { cat: 'account', ico: 'shield', name: '계정과 보안', desc: 'GitHub 연결 · 비밀번호 · 로그아웃', server: true },
   ];
   const ico = n => `<span class="ico-${n}" aria-hidden="true"></span>`;
-  const VIEWS = ['view-study', 'view-club', 'view-more'];
+  const VIEWS = ['view-study', 'view-club', 'view-more', 'view-focus', 'view-records', 'view-together'];
   let nav = 'today';
 
   if (!SERVER_MODE) document.querySelectorAll('.srv-only').forEach(e => e.remove());
+  if (!IS_LAB) document.querySelectorAll('.lab-only').forEach(e => e.remove());   // 개발용 항목은 실험실 앱에서만
   document.querySelector('#nav [data-nav="club"]').hidden = !SERVER_MODE;
 
   function setNav(n) {
@@ -27,6 +29,8 @@
     document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.nav === n));
   }
   function hideShellViews() { VIEWS.forEach(id => $(id).classList.add('hidden')); }
+  // 셸이 관리하는 화면 하나를 보여 주고 하단 메뉴 위치를 맞춘다(집중·기록·같이 공부도 여기로)
+  function showView(id, navName) { showShellView(id); setNav(navName); $(id).scrollTop = 0; }
   function showShellView(id) {
     ['timetable', 'todos', 'schedule', 'lms', 'stats', 'attend'].forEach(t => $('view-' + t).classList.add('hidden'));
     VIEWS.forEach(v => $(v).classList.toggle('hidden', v !== id));
@@ -60,7 +64,7 @@
     if (n === 'club') { showShellView('view-club'); window.Club?.open(); }
     if (n === 'more') { showShellView('view-more'); renderMore(); }
   }
-  window.Shell = { goNav, openStudy: tab => switchTab(tab) };
+  window.Shell = { goNav, showView, openStudy: tab => switchTab(tab) };
 
   document.querySelector('#nav').addEventListener('click', e => {
     const b = e.target.closest('[data-nav]'); if (b) goNav(b.dataset.nav);
@@ -71,41 +75,21 @@
   function renderTodayHead() {
     const d = new Date();
     $('today-date').textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일`;
-    renderFocusCard();
+    window.Focus?.refresh();
   }
-  function renderFocusCard() {
-    const card = $('focus-card'); if (!card) return;
-    const min = Math.floor(todayFocusSecAll() / 60), goal = state.focusGoalMin || 120;
-    const fmt = m => m >= 60 ? `${Math.floor(m / 60)}시간${m % 60 ? ' ' + (m % 60) + '분' : ''}` : `${m}분`;
-    const running = !!state.timer;
-    card.innerHTML = `<span class="orbit">${ico('timer')}</span><div class="ft"><b>${running ? '집중 중 · ' + escapeHtml(state.timer.taskText || '집중') : '나만의 집중 시간'}</b>
-      <small>오늘 ${fmt(min)} / 목표 ${fmt(goal)}</small></div>
-      <button class="btn primary mini" data-focus-card>${running ? '보기' : '시작'}</button>`;
-  }
-  function todayFocusSecAll() {
-    const today = focusDay();
-    let sec = ((state.focus && state.focus.sessions) || []).filter(s => s.date === today).reduce((a, s) => a + sessionSec(s), 0);
-    if (state.timer) sec += state.timer.elapsed || 0;
-    return sec;
-  }
-  $('focus-card').addEventListener('click', e => {
-    if (!e.target.closest('[data-focus-card]')) return;
-    if (state.timer) enterFocus(); else document.querySelector('#summary [data-tm="start"]')?.click();
-  });
-  setInterval(() => { if (nav === 'today') renderFocusCard(); }, 30000);
-  // 타이머 시작·정지·일시정지 때 renderer가 요약을 다시 그리므로 집중 카드도 같이
-  const baseSummary = renderSummary;
-  renderSummary = function () { baseSummary(); renderFocusCard(); };
 
   // ---------- 학습 ----------
   function renderStudy() {
     $('view-study').innerHTML = `<div class="page-head"><div class="eyebrow">시간표 · 일정 · LMS · 출석 · 기록</div><h1>학습</h1></div>
-      <div class="menu-list">${STUDY.map(s => `<button class="menu-row" data-study="${s.tab}"><span class="mi">${ico(s.ico)}</span>
+      <div class="menu-list">${STUDY.map(s => `<button class="menu-row" ${s.view ? `data-study-view="${s.view}"` : `data-study="${s.tab}"`}><span class="mi">${ico(s.ico)}</span>
         <span class="mt"><b>${s.name}${s.tab === 'lms' ? ' <span id="study-lms-badge"></span>' : ''}</b><small>${s.desc}</small></span>${ico('next').replace('class="', 'class="chev ')}</button>`).join('')}</div>`;
     const lmsBadge = document.querySelector('.tabs [data-tab="lms"] .lms-dot');
     if (lmsBadge) $('study-lms-badge').innerHTML = '<span class="pill">새 소식</span>';
   }
-  $('view-study').addEventListener('click', e => { const b = e.target.closest('[data-study]'); if (b) switchTab(b.dataset.study); });
+  $('view-study').addEventListener('click', e => {
+    if (e.target.closest('[data-study-view="records"]')) return window.Focus.openRecords();
+    const b = e.target.closest('[data-study]'); if (b) switchTab(b.dataset.study);
+  });
 
   // ---------- 더보기 ----------
   async function renderMore() {
@@ -143,6 +127,7 @@
     document.querySelectorAll('#settings .set-cat').forEach(sec => { sec.hidden = sec.dataset.cat !== cat; });
     $('set-title').textContent = info.name;
     baseOpenSettings();
+    syncSettingControls();
     setNav('more');
     if (cat === 'admin') window.Club?.renderRoomApprovals?.();
   };
@@ -151,6 +136,45 @@
   $('set-back').addEventListener('click', closeSettings);
   $('btn-settings').onclick = () => goNav('more');
 
+  // ---------- 설정 컨트롤(2차 디자인): 스테퍼·시간 선택·슬라이더 값·선택 표시 ----------
+  const fmtGoal = h => { const m = Math.round(h * 60); return m >= 60 ? `${Math.floor(m / 60)}시간${m % 60 ? ' ' + (m % 60) + '분' : ''}` : `${m}분`; };
+  function syncSettingControls() {
+    const goal = Number($('inp-focus-goal').value) || 2;
+    $('goal-out').textContent = fmtGoal(goal);
+    $('goal-minus').disabled = goal <= 0.5; $('goal-plus').disabled = goal >= 16;
+    $('morning-label').textContent = UI.timeLabel($('inp-morning').value || '08:00');
+    const ds = Number.isFinite(state.focusDayStart) ? state.focusDayStart : 300;
+    $('day-start-label').textContent = UI.timeLabel(`${Math.floor(ds / 60)}:${ds % 60}`);
+    const op = Number($('inp-opacity').value) || 100;
+    $('opacity-out').textContent = op + '%';
+    $('inp-opacity').style.setProperty('--slider-fill', ((op - 30) / 70 * 100) + '%');
+    document.querySelectorAll('.sd-theme-options [role=radio]').forEach(b => b.setAttribute('aria-checked', String(b.classList.contains('sel'))));
+    ['h', 'hm', 'hms'].forEach(f => $('clk-' + f).setAttribute('aria-pressed', String($('clk-' + f).classList.contains('sel'))));
+  }
+  function stepGoal(d) {
+    const v = Math.min(16, Math.max(0.5, (Number($('inp-focus-goal').value) || 2) + d));
+    $('inp-focus-goal').value = String(v); $('inp-focus-goal').dispatchEvent(new Event('change'));
+    syncSettingControls();
+  }
+  $('goal-minus').onclick = () => stepGoal(-0.5);
+  $('goal-plus').onclick = () => stepGoal(0.5);
+  $('btn-morning').onclick = async () => {
+    const v = await UI.timePicker($('inp-morning').value || '08:00', { title: '알림 시각 선택', hint: '오늘 할 일 요약을 받을 시각을 골라주세요.', minuteStep: 60 });
+    if (!v) return;
+    $('inp-morning').value = v; $('inp-morning').dispatchEvent(new Event('change')); syncSettingControls();
+  };
+  $('btn-day-start').onclick = async () => {
+    const ds = Number.isFinite(state.focusDayStart) ? state.focusDayStart : 300;
+    const v = await UI.timePicker(`${String(Math.floor(ds / 60)).padStart(2, '0')}:${String(ds % 60).padStart(2, '0')}`,
+      { title: '집중 날짜 기준', hint: '이 시각부터 다음 날 같은 시각 전까지를 하루로 계산해요.', minuteStep: 30 });
+    if (!v) return;
+    const [h, m] = v.split(':').map(Number);
+    state.focusDayStart = h * 60 + m; persist({ focusDayStart: state.focusDayStart });
+    syncSettingControls(); window.Focus?.refresh();
+  };
+  $('inp-opacity').addEventListener('input', syncSettingControls);
+  ['theme-dark', 'theme-light', 'theme-cbnu', 'theme-baekjoon', 'theme-gray', 'clk-h', 'clk-hm', 'clk-hms'].forEach(id => $(id).addEventListener('click', () => setTimeout(syncSettingControls)));
+
   // ---------- 제목 표시줄 동기화 점 ----------
   const baseShowSync = showSyncStatus;
   showSyncStatus = function (status) {
@@ -158,6 +182,8 @@
     const p = (status || {}).phase, dot = $('sync-dot');
     dot.className = 'sync-dot ' + ({ synced: 'ok', idle: 'ok', syncing: 'busy', saving: 'busy', pending: 'pending', error: 'err', conflict: 'err' }[p] || '');
     dot.title = $('sync-label').textContent;
+    const hint = { synced: '기기 간 데이터가 최신 상태예요.', idle: '이 기기에 저장돼 있어요.', saving: '변경 내용을 저장하고 있어요.', syncing: '서버와 맞추는 중이에요.', pending: '연결되면 자동으로 올려요.', error: '연결을 확인한 뒤 다시 시도해주세요.', conflict: '확인이 필요한 항목이 있어요.' }[p];
+    if (hint && $('sync-hint')) $('sync-hint').textContent = hint;
     dot.setAttribute('aria-label', '동기화 상태: ' + $('sync-label').textContent);
   };
 

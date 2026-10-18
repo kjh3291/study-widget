@@ -1,0 +1,115 @@
+/* 2차 디자인을 기존 앱 틀(#app·.view·#nav)에 맞추는 연결 규칙 */
+#app { container-type: inline-size; }
+.view > .sd-content { overflow: visible; min-height: 100%; }
+.sd-overlay { top: var(--titlebar-height); }
+.sd-sheet-body { min-width: 0; }
+.sd-overlay h2, .sd-dialog h2 { font-size: 18px; line-height: 26px; font-weight: 700; }
+.sd-content h1 { font-size: var(--font-title); line-height: var(--line-title); letter-spacing: -.035em; font-weight: 700; }
+.sd-content h3, .sd-sheet h3 { font-size: var(--font-section); line-height: 22px; font-weight: 600; }
+.sd-btn { font-family: inherit; color: var(--text-primary); cursor: pointer; }
+.sd-btn-primary { color: var(--on-accent); }
+.sd-btn-danger { color: var(--on-danger); }
+.sd-btn-ghost { color: var(--text-secondary); }
+.sd-btn:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+.sd-btn .sd-ico { width: 16px; height: 16px; }
+.sd-content button, .sd-sheet button, .sd-dialog button { font-family: inherit; }
+.sd-focus-dot { margin-right: 4px; }
+.sd-danger-text { color: var(--danger); }
+
+/* 오늘: 타이머 띠(요약 아래·빠른 추가 위). 예전 요약줄의 타이머 버튼은 띠로 대신한다 */
+.band-pad { padding-top: 0; padding-bottom: 0; }
+.band-pad .sd-timer-band { margin: 8px 0 4px; cursor: pointer; color: var(--text-primary); font-family: inherit; }
+.sd-timer-band .band-side { text-align: right; line-height: 1.5; }
+#summary .sum-right { display: none; }
+
+/* 집중 메인: 과목 행 + 오른쪽 색·삭제 버튼 */
+.subject-wrap { display: flex; align-items: center; border-bottom: 1px solid var(--border); }
+.subject-wrap .sd-subject { border-bottom: 0; flex: 1; min-width: 0; color: var(--text-primary); cursor: pointer; font-family: inherit; }
+.subject-wrap .sd-subject .sd-ico { color: var(--accent); }
+.subject-more { flex: none; }
+.pick-list .sd-subject { color: var(--text-primary); cursor: pointer; font-family: inherit; }
+
+/* 몰입 화면: 제목 표시줄 아래 전체, 하단 메뉴는 숨김(#app.no-nav) */
+#focus-view { position: absolute; top: var(--titlebar-height); left: 0; right: 0; bottom: 0; z-index: 15; background: var(--bg-app); display: flex; flex-direction: column; }
+#focus-view.hidden { display: none; }
+#focus-view .sd-immersive h1 { font-size: var(--font-title); line-height: var(--line-title); font-weight: 700; }
+#focus-view .sd-actions { max-width: 420px; }
+#app.immersive .sd-focus-dot { display: none; }
+
+/* 집중 기록·같이 공부 */
+.sd-bar-col { cursor: pointer; font-family: inherit; }
+.sd-bar-chart { gap: 6px; }
+.sd-segment button { font-family: inherit; }
+.sd-select summary { color: var(--text-primary); }
+.sd-select-menu button { color: var(--text-primary); font-family: inherit; cursor: pointer; }
+.sd-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.rank-list { margin-top: 8px; }
+
+/* 미니: 진행 중 타이머 */
+#mini-focus { padding-bottom: 0; flex: none; }
+#mini-focus .sd-btn-icon { color: var(--text-secondary); }
+
+/* 설정 화면(카테고리) */
+#settings { padding: 0; gap: 0; display: block; }
+#settings > .sd-content { min-height: 100%; }
+#settings .set-cat { padding: 0; display: block; }
+#settings .set-cat[hidden] { display: none; }
+#settings .sd-back { color: var(--text-secondary); }
+#settings .err:empty { display: none; }
+.sd-setting-copy > label { cursor: pointer; }
+.sd-radio-card { font-family: inherit; color: var(--text-primary); text-align: left; }
+.sd-radio-dot { width: 17px; height: 17px; border: 1px solid var(--text-muted); border-radius: 50%; background: var(--bg-app); flex-shrink: 0; }
+.sd-radio-card.sel { border-color: var(--accent); background: var(--accent-soft); }
+.sd-radio-card.sel .sd-radio-dot { border: 5px solid var(--accent-fill); }
+.sd-swatch { border: 1px solid var(--border); }
+.sd-segment button.sel { background: var(--bg-surface); color: var(--accent); font-weight: 600; }
+.sd-stepper output { color: var(--text-primary); }
+.sd-stepper button { font-size: 16px; cursor: pointer; font-family: inherit; }
+.sd-stepper button:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+.sd-menu-row { color: var(--text-primary); font-family: inherit; cursor: pointer; }
+.sd-menu-row strong { font-weight: 500; }
+.sd-menu-row > .sd-ico:last-child { color: var(--text-muted); }
+#sync-bar .sd-actions { flex-wrap: nowrap; }
+#sync-bar .sd-actions .sd-btn { flex: none; }
+#git-box { display: flex; flex-direction: column; gap: 6px; padding: 16px 0; }
+.sd-time-picker > span { color: var(--text-muted); font-size: 18px; }
+.sd-time-column { max-height: 152px; overflow-y: auto; scrollbar-width: none; }
+.sd-time-column:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sd-time-column button { font-family: inherit; cursor: pointer; flex: none; }
+
+/* 오늘: 할 일 행(2차). 예전 .todo/.check/.star 규칙(index.html 안)보다 우선하도록 #app을 붙인다 */
+#app .sd-task.todo { display: block; padding: 13px 0; gap: 0; background: transparent; }
+#app .sd-task.todo:hover { background: transparent; }
+#app .sd-task .todo-text { min-width: 0; font-size: 14px; flex: initial; }
+#app .sd-task.done .sd-task-title { text-decoration: line-through; color: var(--text-muted); }
+#app .sd-task-star.star { opacity: 1; display: inline-flex; padding: 7px; color: var(--text-muted); }
+#app .sd-task-star.star.on { color: var(--warning); }
+#app .sd-task-actions .sd-btn { opacity: 1; position: static; transform: none; }
+#app .sd-task-badges .sd-badge { font-size: 11.5px; }
+#app .sd-task-badges .sd-badge .sd-ico { width: 12px; height: 12px; }
+#app .sd-task-badges .sd-color-dot { width: 7px; height: 7px; }
+#app .subs-badge { border: 0; cursor: pointer; font-family: inherit; font-weight: 500; }
+#app .sd-task-group > h3, #app .done-group > summary { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 0 0 2px; }
+#app .done-group > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; gap: 6px; list-style: none; }
+#app .done-group > summary::before { content: '›'; transition: transform var(--duration-fast); }
+#app .done-group[open] > summary::before { transform: rotate(90deg); }
+#app .subs { margin: 0 0 0 29px; padding: 4px 0 8px 12px; border-left: 1px solid var(--border); border-bottom: 0; }
+
+/* 체크박스: 앱 전체를 2차 디자인 모양으로(19px, 둥근 6px, 채움 + ✓) */
+#app input.check { appearance: none; width: 19px; height: 19px; margin: 0; border: 1.5px solid var(--text-muted); border-radius: 6px; background: var(--bg-surface); display: grid; place-content: center; cursor: pointer; flex-shrink: 0; position: relative; }
+#app input.check:hover:not(:disabled) { border-color: var(--accent); }
+#app input.check:checked { background: var(--accent-fill); border-color: var(--accent-fill); }
+#app input.check:checked::after { content: '✓'; position: static; width: auto; height: auto; border: 0; transform: none; color: var(--on-accent); font-size: 13px; font-weight: 700; line-height: 1; }
+#app input.check.info:checked { background: var(--success); border-color: var(--success); }
+#app .sub input.check { width: 16px; height: 16px; border-radius: 5px; }
+#app .sub input.check:checked::after { font-size: 11px; }
+
+/* 미니 모드: 할 일은 한 줄로, 보조 버튼 없음 */
+#app.mini .sd-task-actions { display: none !important; }
+#app.mini .sd-task.todo { padding: 8px 0; }
+#app.mini .sd-task-title { -webkit-line-clamp: 1; font-size: 13px; }
+#app .sd-task-group { color: var(--text-primary); }
+/* 예전 전역 checkbox 크기 규칙(index.html)보다 우선 */
+#app input.sd-toggle { width: 42px; height: 24px; flex: none; }
+#app input.sd-slider { flex: none; }
+#app [hidden] { display: none !important; }

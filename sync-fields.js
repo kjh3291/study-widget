@@ -2,7 +2,7 @@
 const sharedFields = [
   'todos', 'events', 'focus', 'attendance', 'readIds', 'starredLms', 'lmsDone',
   'subjects', 'identifier', 'timetableFull', 'timetableSource', 'newMaterials', 'notifyState',
-  'theme', 'clockFormat', 'focusGoalMin', 'notifyPrefs', 'rolloverOverdue',
+  'theme', 'clockFormat', 'focusGoalMin', 'focusDayStart', 'notifyPrefs', 'rolloverOverdue',
   'lmsAuto', 'autoDownload', 'matCourses', 'opacity', 'alwaysOnTop',
 ];
 function sharedSnapshot(data) {

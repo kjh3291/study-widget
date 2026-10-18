@@ -410,7 +410,7 @@ function openSyncConflicts() {
   const ov = document.createElement('div'); ov.id = 'sync-conflicts';
   ov.style.cssText = 'position:absolute;inset:0;z-index:40;background:var(--bg);padding:16px;overflow:auto;font-size:12px;';
   ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '동기화 충돌 확인');
-  const names = { todos: '할 일', events: '일정', focus: '집중 기록', attendance: '출석', readIds: '읽은 공지', starredLms: '중요 과제', lmsDone: '완료 과제', subjects: '과목', identifier: '시간표 공유 링크', timetableFull: '시간표', timetableSource: '시간표 입력 방식', newMaterials: '새 자료', notifyState: '알림 기록', notifyPrefs: '알림 설정', theme: '테마', clockFormat: '시계 표시', focusGoalMin: '집중 목표', rolloverOverdue: '지난 할 일 이월', lmsAuto: 'LMS 자동 갱신', autoDownload: '자료 자동 다운로드', matCourses: '자료 수집 과목', opacity: '투명도', alwaysOnTop: '항상 위에 표시', text: '내용', title: '제목', done: '완료 여부', due: '마감일', dueTime: '마감 시간', subject: '과목', starred: '중요 표시', repeat: '반복', subs: '세부 할 일', start: '시작', end: '종료', sessions: '공부 기록', minutes: '공부 시간', morningHour: '아침 알림 시간', deadlineAlerts: '마감 알림', professor: '교수', times: '수업 시간', place: '강의실', name: '이름' };
+  const names = { todos: '할 일', events: '일정', focus: '집중 기록', attendance: '출석', readIds: '읽은 공지', starredLms: '중요 과제', lmsDone: '완료 과제', subjects: '과목', identifier: '시간표 공유 링크', timetableFull: '시간표', timetableSource: '시간표 입력 방식', newMaterials: '새 자료', notifyState: '알림 기록', notifyPrefs: '알림 설정', theme: '테마', clockFormat: '시계 표시', focusGoalMin: '집중 목표', focusDayStart: '집중 날짜 기준', rolloverOverdue: '지난 할 일 이월', lmsAuto: 'LMS 자동 갱신', autoDownload: '자료 자동 다운로드', matCourses: '자료 수집 과목', opacity: '투명도', alwaysOnTop: '항상 위에 표시', text: '내용', title: '제목', done: '완료 여부', due: '마감일', dueTime: '마감 시간', subject: '과목', starred: '중요 표시', repeat: '반복', subs: '세부 할 일', start: '시작', end: '종료', sessions: '공부 기록', minutes: '공부 시간', morningHour: '아침 알림 시간', deadlineAlerts: '마감 알림', professor: '교수', times: '수업 시간', place: '강의실', name: '이름' };
   const text = syncCompareText;
   ov.innerHTML = '<h2 style="font-size:15px">양쪽 변경 비교</h2><p>선택하기 전에는 자동으로 덮어쓰지 않습니다. 파일은 두 버전을 모두 보관할 수도 있습니다.</p>';
   const choices = {};
@@ -657,37 +657,39 @@ function rolloverOverdue() {
   return changed;
 }
 
+// 할 일 행(2차 디자인): 체크 + 제목(두 줄) + 별 / 둘째 줄 과목·마감·LMS / 마우스·포커스 때 하위 추가·집중·삭제
 function todoRow(it, showSubj) {
   const b = ddayBadge(it.due, it.done, it.time);
-  const badge = b ? `<span class="dday ${b.cls}">${b.label}</span>` : '';
+  const badgeCls = b ? ({ over: 'sd-badge-danger', today: 'sd-badge-accent', soon: 'sd-badge-warning', done: 'sd-badge-success' }[b.cls] || '') : '';
+  const badge = b ? `<span class="sd-badge dday ${b.cls} ${badgeCls}">${b.label}</span>` : '';
   let defer = '';
   if (!it.done) {
-    if (it.deferCount) defer = `<span class="dday nudge" title="내가 뒤로 미룬 횟수">${it.deferCount}번 미룸</span>`;
-    else if (it.origDue) defer = `<span class="dday defer" title="원래 마감 ${escapeHtml(it.origDue)}">${-daysUntil(it.origDue)}일 밀림</span>`;
+    if (it.deferCount) defer = `<span class="sd-badge sd-badge-warning" title="내가 뒤로 미룬 횟수">${it.deferCount}번 미룸</span>`;
+    else if (it.origDue) defer = `<span class="sd-badge" title="원래 마감 ${escapeHtml(it.origDue)}">${-daysUntil(it.origDue)}일 밀림</span>`;
   }
-  const subj = showSubj && it.subject ? `<span class="subj-chip" title="${escapeHtml(it.subject)}">${escapeHtml(it.subject)}</span>` : '';
-  const play = `<span class="play" data-play="${escapeHtml(it.text)}" data-play-subj="${escapeHtml(it.subject || '')}" title="집중 시작">${ICO.play}</span>`;
+  const subj = showSubj && it.subject ? `<span class="sd-badge subj-chip" title="${escapeHtml(it.subject)}"><span class="sd-color-dot" style="--subject-color:${window.Focus ? Focus.colorVar(it.subject) : 'var(--accent)'}"></span>${escapeHtml(it.subject)}</span>` : '';
+  const ico = (n) => `<span class="sd-ico" data-icon="${n}" aria-hidden="true"></span>`;
+  const play = `<button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-play="${escapeHtml(it.text)}" data-play-subj="${escapeHtml(it.subject || '')}">${ico('play')}집중 시작</button>`;
+  const title = escapeHtml(it.text);
   if (it.kind === 'lms') {
-    const lstar = `<span class="star ${it.starred ? 'on' : ''}" data-star-lms="${escapeHtml(it.id)}" title="중요 표시">${ICO.star}</span>`;
-    return `<div class="todo ${it.done ? 'done' : ''}" data-id="${escapeHtml(it.id)}" data-kind="lms" data-url="${escapeHtml(it.url || '')}">
-      <input type="checkbox" class="check info" disabled ${it.done ? 'checked' : ''} title="LMS 제출 상태"/>
-      <span class="lms-badge">LMS</span>
-      <span class="todo-text" title="${escapeHtml(it.text)}">${escapeHtml(it.text)}</span>
-      ${subj}${badge}${lstar}${play}
-      <button class="go" data-open="${escapeHtml(it.url)}">제출</button>
-    </div>`;
+    return `<article class="sd-task todo ${it.done ? 'done' : ''}" data-id="${escapeHtml(it.id)}" data-kind="lms" data-url="${escapeHtml(it.url || '')}">
+      <div class="sd-task-main"><label class="sd-check" title="LMS 제출 상태"><input type="checkbox" class="check info" disabled ${it.done ? 'checked' : ''}/><span class="sd-sr-only">${title} 제출 상태</span></label>
+        <div class="sd-grow"><div class="sd-task-title todo-text" title="${title}">${title}</div><div class="sd-task-badges">${subj}${badge}<span class="sd-badge">LMS</span></div></div>
+        <button type="button" class="sd-btn sd-btn-ghost sd-btn-icon sd-task-star star ${it.starred ? 'on' : ''}" data-star-lms="${escapeHtml(it.id)}" aria-label="중요 표시" aria-pressed="${!!it.starred}">${ico('star')}</button></div>
+      <div class="sd-task-actions">${play}<button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-open="${escapeHtml(it.url)}">${ico('external-link')}제출하러 가기</button></div>
+    </article>`;
   }
-  const star = `<span class="star ${it.starred ? 'on' : ''}" data-star="${it.id}" title="중요 표시">${ICO.star}</span>`;
-  const rep = it.repeat ? `<span class="rep" title="반복 ${it.repeat === 'weekly' ? '매주' : '매일'}">${ICO.repeat}</span>` : '';
+  const rep = it.repeat ? `<span class="sd-badge">${ico('repeat')}${it.repeat === 'weekly' ? '매주' : '매일'}</span>` : '';
   const subs = it.subs || [];
-  const subsBadge = subs.length ? `<button type="button" class="subs-badge" data-expand="${it.id}" aria-expanded="${!!state.expandedTodos[it.id]}" title="하위 항목 펼치기/접기">${subs.filter((s) => s.done).length}/${subs.length}</button>` : '';
-  const addSub = `<span class="play addsub" data-addsub="${it.id}" title="하위 추가">${ICO.plus}</span>`;
-  return `<div class="todo ${it.done ? 'done' : ''}" data-id="${it.id}" data-kind="todo">
-    <input type="checkbox" class="check" data-toggle="${it.id}" ${it.done ? 'checked' : ''}/>
-    <span class="todo-text" data-edit="${it.id}" title="더블클릭해 수정">${escapeHtml(it.text)}</span>
-    ${rep}${subj}${subsBadge}${badge}${defer}${star}${addSub}${play}
-    <span class="x" data-del="${it.id}" title="삭제">${ICO.x}</span>
-  </div>`;
+  const subsBadge = subs.length ? `<button type="button" class="sd-badge subs-badge" data-expand="${it.id}" aria-expanded="${!!state.expandedTodos[it.id]}" title="하위 항목 펼치기/접기">하위 ${subs.filter((x) => x.done).length}/${subs.length}</button>` : '';
+  return `<article class="sd-task todo ${it.done ? 'done' : ''}" data-id="${it.id}" data-kind="todo">
+    <div class="sd-task-main"><label class="sd-check"><input type="checkbox" class="check" data-toggle="${it.id}" ${it.done ? 'checked' : ''}/><span class="sd-sr-only">${title} 완료</span></label>
+      <div class="sd-grow"><div class="sd-task-title todo-text" data-edit="${it.id}" title="더블클릭해 수정">${title}</div>
+        ${subj || badge || defer || rep || subsBadge ? `<div class="sd-task-badges">${subj}${badge}${defer}${rep}${subsBadge}</div>` : ''}</div>
+      <button type="button" class="sd-btn sd-btn-ghost sd-btn-icon sd-task-star star ${it.starred ? 'on' : ''}" data-star="${it.id}" aria-label="중요 표시" aria-pressed="${!!it.starred}">${ico('star')}</button></div>
+    <div class="sd-task-actions"><button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-addsub="${it.id}">${ico('list-plus')}하위 할 일</button>${play}
+      <button type="button" class="sd-btn sd-btn-ghost sd-btn-icon" data-del="${it.id}" aria-label="할 일 삭제">${ico('trash-2')}</button></div>
+  </article>`;
 }
 function subPanel(it) {
   const subs = it.subs || [];
@@ -720,33 +722,26 @@ function renderTodos() {
 
   const active = activeItems().filter((i) => !i.done);
 
-  const todayList = active.filter((i) => i.due === today).sort(sortByDue);
-  const upcoming = active.filter((i) => i.due && i.due > today && !i.subject).sort(sortByDue);
-  const backlog = active.filter((i) => i.due && i.due < today && !i.subject).sort(sortByDue);
-
-  const subjMap = {};
-  active.filter((i) => i.subject).forEach((i) => (subjMap[i.subject] = subjMap[i.subject] || []).push(i));
-  const subjNames = Object.keys(subjMap).sort((a, b) => sortByDue(subjMap[a].slice().sort(sortByDue)[0], subjMap[b].slice().sort(sortByDue)[0]));
+  // 한 할 일은 위에서부터 처음 맞는 묶음 하나에만 나온다(2차 디자인: 같은 할 일이 두 번 보이지 않게)
+  const urgent = active.filter((i) => i.starred || (daysUntil(i.due) !== null && daysUntil(i.due) <= 2 && i.due >= today)).sort(sortByDue);
+  const inUrgent = new Set(urgent.map((i) => i.kind + i.id));
+  const rest = active.filter((i) => !inUrgent.has(i.kind + i.id));
+  const todayList = rest.filter((i) => i.due === today || !i.due).sort(sortByDue);
+  const upcoming = rest.filter((i) => i.due && i.due > today).sort(sortByDue);
+  const backlog = rest.filter((i) => i.due && i.due < today).sort(sortByDue);
+  const doneToday = state.todos.filter((t) => t.done && t.doneAt && fmtD(new Date(t.doneAt)) === today)
+    .map((t) => ({ kind: 'todo', id: t.id, text: t.text, subject: t.subject || null, due: t.due, time: t.dueTime, done: true, starred: !!t.starred, repeat: t.repeat, subs: t.subs }));
 
   let html = '';
-  const section = (cls, ico, label, items, showSubj) => {
+  const section = (cls, label, items) => {
     if (!items.length) return '';
-    return `<div class="cat-head ${cls}"><span class="ico">${ico}</span>${label}<span class="cat-count">${items.length}</span></div>`
-      + items.map((it) => todoBlock(it, showSubj)).join('');
+    return `<section class="sd-task-group ${cls}"><h3>${label} <span class="sd-muted">${items.length}</span></h3>${items.map((it) => todoBlock(it, true)).join('')}</section>`;
   };
-
-  const urgent = active.filter((i) => i.starred || (daysUntil(i.due) !== null && daysUntil(i.due) <= 2)).sort(sortByDue);
-  html += section('cat-urgent', ICO.star, '중요 · 임박', urgent, true);
-  html += section('cat-today', ICO.sun, '오늘', todayList, true);
-  html += section('cat-soon', ICO.calendar, '예정', upcoming, true);
-
-  subjNames.forEach((name) => {
-    const items = subjMap[name].slice().sort(sortByDue);
-    html += `<div class="cat-head"><span class="subj-dot" style="background:${colorFor(name)}"></span><span class="name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="cat-count">${items.length}</span></div>`;
-    html += items.map((it) => todoBlock(it, false)).join('');
-  });
-
-  html += section('cat-backlog', ICO.inbox, '잔업', backlog, true);
+  html += section('cat-urgent', '중요·임박', urgent);
+  html += section('cat-today', '오늘', todayList);
+  html += section('cat-soon', '예정', upcoming);
+  html += section('cat-backlog', '지난', backlog);
+  if (doneToday.length) html += `<details class="sd-task-group done-group"><summary>오늘 완료 <span class="sd-muted">${doneToday.length}</span></summary>${doneToday.map((it) => todoBlock(it, true)).join('')}</details>`;
 
   if (!html) html = '<div class="empty-note">할 일이 없어요. 위에 적고 Enter를 눌러보세요. 완료한 일은 <b>기록</b> 탭에 쌓입니다.</div>';
   $('todo-list').innerHTML = html;
@@ -1591,7 +1586,14 @@ function onTodoListClick(e) {
   if (star) { const t = state.todos.find((x) => x.id === star.dataset.star); if (t) { t.starred = !t.starred; saveTodos(); renderList(); } return; }
   if (starLms) { const id = starLms.dataset.starLms; const i = state.starredLms.indexOf(id); if (i >= 0) state.starredLms.splice(i, 1); else state.starredLms.push(id); persist({ starredLms: state.starredLms }); renderList(); return; }
   if (play) { startFocus(play.dataset.play, play.dataset.playSubj || null); return; }
-  if (del) { state.todos = state.todos.filter((t) => t.id !== del.dataset.del); saveTodos(); renderList(); renderSummary(); return; }
+  if (del) {
+    const t = state.todos.find((x) => x.id === del.dataset.del); if (!t) return;
+    UI.confirm({ title: '할 일을 지울까요?', body: `'${t.text}'${(t.subs || []).length ? `과 하위 할 일 ${t.subs.length}개` : ''}를 지워요.`, ok: '지우기', danger: true }).then((ok) => {
+      if (!ok) return;
+      state.todos = state.todos.filter((x) => x.id !== t.id); saveTodos(); renderList(); renderSummary();
+    });
+    return;
+  }
   if (open) { window.api.lmsOpen(open.dataset.open); return; }
 }
 function onTodoListChange(e) {
@@ -2004,6 +2006,7 @@ async function refreshFileUsage() {
   if (!SERVER_MODE || !state.syncEnabled || !$('srv-usage')) return;
   const r = await window.api.filesOverview();
   $('srv-usage').textContent = r?.ok ? `보조자료·과제 파일 ${r.current.length}개 · ${fmtSize(r.usage.used)} / ${fmtSize(r.usage.limit)}` : (r?.error || '파일 정보를 불러오지 못했습니다');
+  if (r?.ok && $('srv-usage-bar')) { const pct = Math.min(100, Math.round(r.usage.used / r.usage.limit * 100)); $('srv-usage-bar').firstElementChild.style.setProperty('--progress', pct + '%'); $('srv-usage-bar').setAttribute('aria-valuenow', pct); }
   return r;
 }
 // 동기화 결과 중 사용자가 알아야 할 것만 알림
@@ -2374,6 +2377,7 @@ if (IS_LAB) {
   state.clockFormat = ['h', 'hm', 'hms'].includes(cfg.clockFormat) ? cfg.clockFormat : 'hms';
   applyClockFormat();
   state.focusGoalMin = (typeof cfg.focusGoalMin === 'number' && cfg.focusGoalMin > 0) ? cfg.focusGoalMin : 120;
+  state.focusDayStart = (Number.isInteger(cfg.focusDayStart) && cfg.focusDayStart >= 0 && cfg.focusDayStart < 1440) ? cfg.focusDayStart : 300;  // 집중 공부일 시작(분, 기본 05:00)
   if ($('inp-focus-goal')) $('inp-focus-goal').value = String(Math.round(state.focusGoalMin / 60 * 10) / 10);
   try { $('inp-autostart').checked = await window.api.getAutoStart(); } catch (e) {}
   state.todoDraft = { due: todayStr(), subject: null, repeat: null };
