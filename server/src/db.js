@@ -78,6 +78,53 @@ CREATE TABLE IF NOT EXISTS file_versions (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS file_versions_path ON file_versions (user_id, path, recorded_at);
+-- 커뮤니티: 프로필·공지·채팅방·메시지. 사진은 공용 미디어(sha256 이름)로 보관.
+CREATE TABLE IF NOT EXISTS profiles (
+  user_id       INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  nickname      TEXT,
+  bio           TEXT NOT NULL DEFAULT '',
+  avatar_sha    TEXT,
+  show_study    BOOLEAN NOT NULL DEFAULT false,   -- 오늘 공부 시간 공개
+  show_timetable BOOLEAN NOT NULL DEFAULT false,  -- 시간표 공개
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS notices (
+  id          SERIAL PRIMARY KEY,
+  author_id   INT REFERENCES users(id) ON DELETE SET NULL,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  pinned      BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted     BOOLEAN NOT NULL DEFAULT false
+);
+CREATE TABLE IF NOT EXISTS rooms (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL UNIQUE,
+  topic       TEXT NOT NULL DEFAULT '',
+  created_by  INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archived    BOOLEAN NOT NULL DEFAULT false
+);
+INSERT INTO rooms (name, topic) VALUES ('전체', '동아리 전체 채팅') ON CONFLICT (name) DO NOTHING;
+CREATE TABLE IF NOT EXISTS messages (
+  id          BIGSERIAL PRIMARY KEY,
+  room_id     INT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  user_id     INT REFERENCES users(id) ON DELETE SET NULL,
+  body        TEXT NOT NULL DEFAULT '',
+  image       JSONB,                              -- { sha, mime, size, width, height }
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  edited_at   TIMESTAMPTZ,
+  deleted     BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS messages_room ON messages (room_id, id);
+CREATE TABLE IF NOT EXISTS media (
+  sha256      TEXT PRIMARY KEY,
+  mime        TEXT NOT NULL,
+  size        BIGINT NOT NULL,
+  uploaded_by INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 export async function migrate() {

@@ -5,6 +5,7 @@ import { hashPassword, verifyPassword, issueToken, authenticate, requireAdmin } 
 import { clientIp, limits, tooMany, securityHeaders } from './guard.js';
 import { registerFiles, purgeFiles } from './files.js';
 import { registerSite } from './site.js';
+import { registerCommunity } from './community.js';
 import { registerAccounts, purgeAccounts, CONSENT_VERSION, publicUser } from './accounts.js';
 import { statusError } from './auth.js';
 
@@ -21,6 +22,7 @@ const app = Fastify({ logger: { level: 'info' }, bodyLimit: 5 * 1024 * 1024 });
 securityHeaders(app);
 registerFiles(app);
 registerSite(app);
+registerCommunity(app);
 registerAccounts(app);
 
 
