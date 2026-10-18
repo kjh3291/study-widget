@@ -592,7 +592,7 @@ function renderTimetable(subjects) {
       if (t.day !== d) continue;
       const top = (toMin(t.start) - gridStart) * pxPerMin;
       const h = (toMin(t.end) - toMin(t.start)) * pxPerMin;
-      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 과목 폴더 열기" style="top:${top}px;height:${h}px;background:${colorFor(s.name)}">
+      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 과목 폴더 열기" style="top:${top}px;height:${h}px;--subject-color:${window.Focus ? Focus.colorVar(s.name) : colorFor(s.name)}">
         <div class="b-name">${escapeHtml(s.name)}</div>
         ${t.place ? `<div class="b-place">${escapeHtml(t.place)}</div>` : ''}
         ${s.professor ? `<div class="b-prof">${escapeHtml(s.professor)}</div>` : ''}
@@ -1263,27 +1263,8 @@ function renderStats() {
     <div class="stat-card"><div class="stat-num warn">${streak}</div><div class="stat-label">연속 달성(일)</div></div>
   </div>`;
 
-  // 공부 시간(집중 타이머 누적)
-  const fmin = (arr) => arr.reduce((s, x) => s + (x.minutes || 0), 0);
-  const fsess = (state.focus && state.focus.sessions) || [];
-  const hm = (m) => { const h = Math.floor(m / 60), mm = m % 60; return h ? `${h}시간 ${mm}분` : `${mm}분`; };
-  const todayF = fmin(fsess.filter((s) => s.date === today));
-  const weekF = fmin(fsess.filter((s) => s.date >= wsStr));
-  html += `<div class="study-line">${ICO.clock} 공부시간 — 오늘 <b>${hm(todayF)}</b> <span class="sum-sep">·</span> 이번 주 <b>${hm(weekF)}</b></div>`;
-
-  // 과목별 공부시간 (집중 타이머 누적)
-  const bySubjF = {};
-  fsess.forEach((s) => { const k = s.subject || '기타'; bySubjF[k] = (bySubjF[k] || 0) + (s.minutes || 0); });
-  const subjFNames = Object.keys(bySubjF).filter((k) => bySubjF[k] > 0).sort((a, b) => bySubjF[b] - bySubjF[a]);
-  if (subjFNames.length) {
-    const maxF = Math.max(...subjFNames.map((n) => bySubjF[n]));
-    html += `<div class="sec-head first">과목별 공부시간</div>`;
-    html += subjFNames.map((n) => `<div class="stat-bar-row">
-      <span class="stat-bar-name" title="${escapeHtml(n)}">${escapeHtml(n)}</span>
-      <span class="stat-bar-track"><span class="stat-bar-fill" style="width:${Math.round(bySubjF[n] / maxF * 100)}%;background:${colorFor(n)}"></span></span>
-      <span class="stat-bar-val" style="width:auto;color:var(--muted)">${hm(bySubjF[n])}</span>
-    </div>`).join('');
-  }
+  // 공부 시간은 '집중 기록' 한곳에서 본다(2차 디자인). 여기서는 바로 가는 줄만
+  html += `<button type="button" class="sd-menu-row" data-open-records><span class="sd-menu-icon"><span class="sd-ico" data-icon="chart-no-axes-column" aria-hidden="true"></span></span><span class="sd-grow"><strong>공부 시간은 집중 기록에서</strong><span class="sd-muted">일·주·월 공부 시간, 과목 비율, 세션</span></span><span class="sd-ico" data-icon="chevron-right" aria-hidden="true"></span></button>`;
 
   // 이월(밀린) 할 일 현황 — 자동 이월과 맞물림
   const deferred = state.todos.filter((t) => !t.done && !t.skipped && t.origDue).length;

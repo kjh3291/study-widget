@@ -93,6 +93,8 @@
     const b = e.target.closest('[data-study]'); if (b) switchTab(b.dataset.study);
   });
 
+  $('view-stats').addEventListener('click', e => { if (e.target.closest('[data-open-records]')) window.Focus.openRecords(); });
+
   // ---------- 더보기 ----------
   async function renderMore() {
     const st = SERVER_MODE ? await window.api.gitSyncStatus() : null;
