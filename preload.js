@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('api', {
   serverRefreshMe: () => ipcRenderer.invoke('server-refresh-me'),
   communityCall: (method, path, body) => ipcRenderer.invoke('community-call', { method, path, body }),
   communitySocketInfo: () => ipcRenderer.invoke('community-socket-info'),
+  appInfo: () => ipcRenderer.invoke('app-info'),
   communityUpload: (bytes) => ipcRenderer.invoke('community-upload', bytes),
   communityMedia: (sha) => ipcRenderer.invoke('community-media', sha),
   filesOverview: () => ipcRenderer.invoke('files-overview'),

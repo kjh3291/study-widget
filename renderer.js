@@ -2084,10 +2084,15 @@ if (SERVER_MODE) {
     const b = e.target.closest('[data-admin]'); if (!b) return;
     const row = b.closest('.admin-row'), who = row.querySelector('.who b').textContent;
     if (b.dataset.admin === 'reject' && !(await UI.confirm({ title: `${who}님의 가입 신청을 거절할까요?`, body: '신청이 삭제되고, 다시 신청할 수 있어요.', ok: '거절', danger: true }))) return;
+    let position = null;
+    if (b.dataset.admin === 'approve') {
+      position = await Roles.pickPosition({ title: '가입 승인', name: who, current: 'member', confirmLabel: '승인' });
+      if (!position) return;
+    }
     b.disabled = true;
-    const r = await window.api.adminAction(b.dataset.id, b.dataset.admin);
+    const r = await window.api.adminAction(b.dataset.id, b.dataset.admin, position);
     if (!r?.ok) { b.disabled = false; return showToast(r?.error || '처리 실패'); }
-    showToast(b.dataset.admin === 'approve' ? `${who}님을 승인했습니다` : `${who}님의 신청을 거절했습니다`);
+    showToast(b.dataset.admin === 'approve' ? `${who}님을 ${Roles.POS[position]}(으)로 승인했어요` : `${who}님의 신청을 거절했어요`);
     refreshAdminList();
   };
   // 운영진: 5분마다 새 가입 신청 확인
@@ -2193,7 +2198,7 @@ function githubDeviceFlow() {
   });
 }
 
-const ROLE_LABEL = { owner: '최고 관리자', admin: '운영진', member: '회원' };
+const ROLE_LABEL = { owner: '최고 관리자', admin: '관리자', member: '일반 회원' };   // 권한(직책과 따로)
 // 내 계정: 정보 · GitHub 연결 · 비밀번호 변경(시트) · 탈퇴(비밀번호 확인 시트 → 최종 확인)
 async function openAccountPanel() {
   const P = UI.panel('account-panel', '내 계정', '계정과 보안');
@@ -2204,7 +2209,8 @@ async function openAccountPanel() {
     const u = r.user;
     P.body.innerHTML = `<div class="sd-info-row"><span class="sd-muted">이름</span><strong>${escapeHtml(u.displayName)}</strong></div>
       <div class="sd-info-row"><span class="sd-muted">학번</span><strong>${escapeHtml(u.username)}</strong></div>
-      <div class="sd-info-row"><span class="sd-muted">역할</span><strong>${ROLE_LABEL[u.role] || u.role}</strong></div>
+      <div class="sd-info-row"><span class="sd-muted">권한</span><strong>${ROLE_LABEL[u.role] || u.role}</strong></div>
+      ${await Roles.accountPositionHtml(u)}
       <div class="sd-info-row"><span class="sd-muted">이메일</span><strong>${escapeHtml(u.email || '없음')}</strong></div>
       <div class="sd-info-row"><span class="sd-muted">가입일</span><strong>${new Date(u.createdAt).toLocaleDateString()}</strong></div>
       <div class="sd-setting-row stacked"><div class="sd-setting-copy"><strong>GitHub 연결</strong><p>${u.githubLogin ? `${escapeHtml(u.githubLogin)}에 연결돼 있어요. 비밀번호를 잊었을 때 본인 확인에 써요.` : '연결하면 GitHub 메일이 대표 메일이 되고, 비밀번호를 잊었을 때 GitHub로 본인 확인을 할 수 있어요.'}</p></div>
@@ -2228,6 +2234,8 @@ async function openAccountPanel() {
       const x = await window.api.accountGithubUnlink(); if (!x?.ok) return showToast(x?.error || '해제 실패');
       return render();
     }
+    if (e.target.closest('[data-posreq]')) return Roles.requestOfficer(render);
+    if (e.target.closest('[data-posreq-cancel]')) return Roles.cancelRequest(render);
     if (e.target.closest('[data-pw]')) {
       const s = UI.sheet('비밀번호 변경', `<form id="ac-pw" novalidate>${pwField('ac-cur', '현재 비밀번호')}${pwField('ac-new', '새 비밀번호 (8자 이상)')}${pwField('ac-new2', '새 비밀번호 확인')}
         <p class="sd-error" id="ac-err" hidden></p><button class="sd-btn sd-btn-primary sd-btn-block">바꾸기</button></form>`);
@@ -2273,21 +2281,24 @@ async function openMembersPanel() {
     const match = u => !query || (u.displayName + u.username).toLowerCase().includes(query);
     const row = (u, acts) => `<div class="mrow sd-member-row" data-id="${u.id}" data-name="${escapeHtml(u.displayName)}">
       <div class="sd-row"><span class="sd-avatar">${escapeHtml(u.displayName.slice(0, 1))}</span><div class="sd-grow"><strong>${escapeHtml(u.displayName)}</strong>
-        <span class="sd-badge">${ROLE_LABEL[u.role] || u.role}</span>${u.status === 'suspended' ? '<span class="sd-badge sd-badge-danger">정지</span>' : ''}
+        ${Roles.badges(u.role, u.position)}${u.status === 'suspended' ? '<span class="sd-badge sd-badge-danger">정지</span>' : ''}
         <span class="sd-muted" style="display:block">${escapeHtml(u.username)} · ${u.githubLogin ? 'GitHub ' + escapeHtml(u.githubLogin) : 'GitHub 미연결'} · 가입 ${new Date(u.createdAt).toLocaleDateString()}${u.deletedAt ? ' · ' + daysLeft(u) + '일 뒤 완전 삭제' : ''}</span></div></div>
       ${acts ? `<div class="sd-actions acts">${acts}</div>` : ''}</div>`;
     const btn = (act, label, extra = '') => `<button type="button" class="sd-btn sd-btn-small" data-act="${act}" ${extra}>${label}</button>`;
+    // 직책: 관리자는 자기보다 낮은 권한의 회원을 부원↔임원, 회장이 걸리면 최고 관리자만. 최고 관리자는 본인 직책도
+    const canPosition = u => (myRole === 'owner' || (canTouch(u) && u.position !== 'president')) && (u.status === 'approved' || u.status === 'suspended');
+    const posBtn = u => canPosition(u) ? btn('position', '직책 변경', `data-pos="${u.position || 'member'}"`) : '';
     const active = r.users.filter(u => (u.status === 'approved' || u.status === 'suspended') && match(u));
     const deleted = r.users.filter(u => u.status === 'deleted' && match(u));
     P.sub.hidden = false; P.sub.textContent = `내 권한: ${ROLE_LABEL[myRole]}`;
     const focused = document.activeElement?.id === 'mem-q';
     P.body.innerHTML = `<label class="sd-search"><span class="sd-ico" data-icon="search" aria-hidden="true"></span><span class="sd-sr-only">회원 검색</span><input id="mem-q" type="search" placeholder="이름이나 학번으로 찾기" value="${escapeHtml(query)}"></label>
       <h3 class="sd-gap-lg">회원 <span class="sd-muted">${active.length}</span></h3>
-      ${active.map(u => row(u, canTouch(u) ? [
+      ${active.map(u => row(u, canTouch(u) ? [posBtn(u),
         u.status === 'suspended' ? btn('approve', '정지 해제') : btn('suspend', '정지'),
         u.status === 'approved' ? btn('temp-password', '임시 비밀번호') : '',
         myRole === 'owner' && u.status === 'approved' ? (u.role === 'admin' ? btn('role', '운영진 해제', 'data-role="member"') : btn('role', '운영진 지정', 'data-role="admin"')) : '',
-        btn('delete', '삭제', 'class="sd-btn sd-btn-small sd-btn-ghost sd-danger-text"').replace('class="sd-btn sd-btn-small" ', '')].join('') : '')).join('') || '<p class="sd-muted sd-gap">찾는 회원이 없어요.</p>'}
+        btn('delete', '삭제', 'class="sd-btn sd-btn-small sd-btn-ghost sd-danger-text"').replace('class="sd-btn sd-btn-small" ', '')].join('') : posBtn(u))).join('') || '<p class="sd-muted sd-gap">찾는 회원이 없어요.</p>'}
       <h3 class="sd-gap-lg">삭제된 회원 <span class="sd-muted">${deleted.length} · 30일 안에 복구 가능</span></h3>
       ${deleted.map(u => row(u, canTouch(u) ? btn('restore', '복구') : '')).join('') || '<p class="sd-muted sd-gap">없어요.</p>'}`;
     if (focused) { const q = $('mem-q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
@@ -2296,6 +2307,13 @@ async function openMembersPanel() {
   P.el.addEventListener('click', async e => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const rowEl = b.closest('.mrow'), id = rowEl.dataset.id, name = rowEl.dataset.name, act = b.dataset.act;
+    if (act === 'position') {
+      const pos = await Roles.pickPosition({ title: '직책 변경', name, current: b.dataset.pos });
+      if (!pos || pos === b.dataset.pos) return;
+      const x = await window.api.adminAction(id, 'position', pos);
+      if (!x?.ok) return showToast(x?.error || '바꾸지 못했어요');
+      showToast(`${name}님의 직책을 ${Roles.POS[pos]}(으)로 바꿨어요`); return render();
+    }
     const ask = { suspend: `${name}님을 정지할까요? 접속이 바로 끊겨요.`, delete: `${name}님을 삭제할까요? 바로 로그인이 막히고 30일 뒤 데이터가 완전히 삭제돼요.`,
       'temp-password': `${name}님의 임시 비밀번호를 만들까요? 지금 비밀번호와 로그인이 모두 끊겨요.`, role: b.dataset.role === 'admin' ? `${name}님을 운영진으로 지정할까요?` : `${name}님의 운영진 권한을 해제할까요?` }[act];
     if (ask && !(await UI.confirm({ title: `${name}님 · ${b.textContent.trim()}`, body: ask, ok: b.textContent.trim(), danger: ['suspend', 'delete'].includes(act) }))) return;

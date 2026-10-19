@@ -7,6 +7,7 @@ import { registerFiles, purgeFiles } from './files.js';
 import { registerSite } from './site.js';
 import { registerCommunity, purgeMedia } from './community.js';
 import { registerAccounts, purgeAccounts, CONSENT_VERSION, publicUser } from './accounts.js';
+import { registerInquiries } from './inquiries.js';
 import { statusError } from './auth.js';
 
 const CHANNEL = process.env.STUDECK_CHANNEL || 'lab';
@@ -24,6 +25,7 @@ registerFiles(app);
 registerSite(app);
 registerCommunity(app);
 registerAccounts(app);
+registerInquiries(app);
 
 
 app.get('/health', async () => {
@@ -47,10 +49,10 @@ app.post('/auth/signup', async (req, reply) => {
   if (typeof password !== 'string' || password.length < 8 || password.length > 128) return reply.code(400).send({ error: 'weak_password', hint: '8자 이상' });
   if (!admin && req.body?.consent !== CONSENT_VERSION) return reply.code(400).send({ error: 'consent_required', version: CONSENT_VERSION });
   const { rows } = await pool.query(
-    `INSERT INTO users (username, pw_hash, display_name, role, status, consent_version, consent_at) VALUES ($1, $2, $3, $4, $5, $6, now())
+    `INSERT INTO users (username, pw_hash, display_name, role, position, status, consent_version, consent_at) VALUES ($1, $2, $3, $4, $7, $5, $6, now())
      ON CONFLICT (username) DO NOTHING RETURNING *`,
     [name, await hashPassword(password), realName,
-      admin ? 'owner' : 'member', admin || autoApproved(name) ? 'approved' : 'pending', CONSENT_VERSION]);
+      admin ? 'owner' : 'member', admin || autoApproved(name) ? 'approved' : 'pending', CONSENT_VERSION, admin ? 'president' : 'member']);
   if (!rows[0]) return reply.code(409).send({ error: 'username_taken' });
   return reply.code(201).send({ user: publicUser(rows[0]) });
 });

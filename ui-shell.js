@@ -66,7 +66,7 @@
     if (n === 'club') { showShellView('view-club'); window.Club?.open(); }
     if (n === 'more') { showShellView('view-more'); renderMore(); }
   }
-  window.Shell = { goNav, showView, openStudy: tab => switchTab(tab) };
+  window.Shell = { goNav, showView, openStudy: tab => switchTab(tab), updateBadges: () => updateBadges() };
 
   document.querySelector('#nav').addEventListener('click', e => {
     const b = e.target.closest('[data-nav]'); if (b) goNav(b.dataset.nav);
@@ -111,27 +111,30 @@
       ${SERVER_MODE && st?.enabled ? `<button type="button" class="sd-card sd-row sd-btn-block account-card-v2" data-more="profile"><span class="sd-avatar" id="more-avatar">${escapeHtml(initials)}</span>
         <span class="sd-grow" style="text-align:left"><strong>${escapeHtml(name)}</strong><span class="sd-muted" style="display:block">${escapeHtml(st.username)} · ${role} · 프로필 편집</span></span>${sdIco('chevron-right')}</button>` : ''}
       ${SETTINGS.filter(s => !s.server || SERVER_MODE).map(s => menuRow(`data-cat="${s.cat}"`, s.ico, s.name, s.desc)).join('')}
-      ${isAdmin ? menuRow('data-cat="admin"', 'users-round', '운영진 관리', '가입 · 회원 · 방 승인', '<span id="more-admin-count"></span>') : ''}</main>`;
+      ${isAdmin ? menuRow('data-cat="admin"', 'users-round', '운영진 관리', '가입 · 회원 · 방 · 임원 신청 · 문의', '<span id="more-admin-count"></span>') : ''}
+      ${SERVER_MODE ? menuRow('data-more="inquiry"', 'message-circle-plus', '문의하기', '오류 신고 · 개선 제안') : ''}</main>`;
     if (isAdmin) { updateAdminCount(); updateMoreBadge(); }
     window.Club?.loadMyAvatar?.('more-avatar');
   }
+  // 관리자 대기 건수: 가입 + 방 + 임원 신청 + 새 문의
+  const pendingTotal = async () => { const c = await window.Admin.pendingCounts(); return c.signups + c.rooms + c.positions + c.inquiries; };
   async function updateAdminCount() {
     const el = $('more-admin-count'); if (!el) return;
-    const [u, r] = await Promise.all([window.api.adminUsers(), window.api.communityCall('GET', '/admin/rooms')]);
-    const n = (u?.ok ? u.users.filter(x => x.status === 'pending').length : 0) + (r?.ok ? r.rooms.length : 0);
+    const n = await pendingTotal();
     el.innerHTML = n ? `<span class="sd-unread">${n}</span>` : '';
   }
   async function updateMoreBadge() {
     const b = $('more-badge'); if (!SERVER_MODE || !['admin', 'owner'].includes(state.serverRole)) { b.hidden = true; return; }
-    const [u, r] = await Promise.all([window.api.adminUsers(), window.api.communityCall('GET', '/admin/rooms')]);
-    const n = (u?.ok ? u.users.filter(x => x.status === 'pending').length : 0) + (r?.ok ? r.rooms.length : 0);
+    const n = await pendingTotal();
     b.hidden = !n; b.textContent = n > 9 ? '9+' : String(n);
     $('btn-settings').setAttribute('aria-label', n ? `더보기와 설정, 승인 대기 ${n}건` : '더보기와 설정');
   }
   setTimeout(updateMoreBadge, 4000); setInterval(updateMoreBadge, 60000);
+  const updateBadges = () => { updateMoreBadge(); if ($('more-admin-count')) updateAdminCount(); };
   $('view-more').addEventListener('click', e => {
     const c = e.target.closest('[data-cat]'); if (c) return openSettings(c.dataset.cat);
     if (e.target.closest('[data-more="profile"]')) window.Club?.openProfileEditor?.();
+    if (e.target.closest('[data-more="inquiry"]')) window.Admin?.openInquiry();
   });
 
   // ---------- 설정: 카테고리 하나만 보여 준다 ----------
@@ -144,7 +147,7 @@
     baseOpenSettings();
     syncSettingControls();
     setNav('more');
-    if (cat === 'admin') window.Club?.renderRoomApprovals?.();
+    if (cat === 'admin') { window.Club?.renderRoomApprovals?.(); window.Admin?.render(); }
   };
   const closeSettings = () => { $('settings').classList.add('hidden'); goNav('more'); };
   $('btn-cancel').onclick = closeSettings;

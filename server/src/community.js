@@ -55,7 +55,8 @@ async function publicTimetable(uid) {
 export async function purgeMedia(log) {
   const { rows } = await pool.query(`DELETE FROM media m WHERE m.created_at < now() - interval '1 day'
     AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.image->>'sha' = m.sha256 AND NOT x.deleted)
-    AND NOT EXISTS (SELECT 1 FROM profiles p WHERE p.avatar_sha = m.sha256) RETURNING sha256`);
+    AND NOT EXISTS (SELECT 1 FROM profiles p WHERE p.avatar_sha = m.sha256)
+    AND NOT EXISTS (SELECT 1 FROM inquiries q WHERE q.image_sha = m.sha256) RETURNING sha256`);
   for (const { sha256: sha } of rows) { fs.rmSync(path.join(MEDIA_DIR, sha.slice(0, 2), sha), { force: true }); log?.info({ sha }, 'purged media'); }
 }
 
@@ -113,10 +114,10 @@ export function registerCommunity(app) {
 
   // ---------- 프로필 ----------
   app.get('/profiles', { preHandler: authenticate }, async () => {
-    const { rows } = await pool.query(`SELECT u.id, u.username, u.display_name, u.role, p.* FROM users u LEFT JOIN profiles p ON p.user_id = u.id
+    const { rows } = await pool.query(`SELECT u.id, u.username, u.display_name, u.role, u.position, p.* FROM users u LEFT JOIN profiles p ON p.user_id = u.id
       WHERE u.status = 'approved' ORDER BY u.display_name`);
     const online = onlineIds();
-    return { members: await Promise.all(rows.map(async r => ({ id: r.id, name: r.display_name, nickname: r.nickname || '', role: r.role, bio: r.bio || '',
+    return { members: await Promise.all(rows.map(async r => ({ id: r.id, name: r.display_name, nickname: r.nickname || '', role: r.role, position: r.position || 'member', bio: r.bio || '',
       avatar: r.avatar_sha || null, online: online.has(r.id),
       study: r.show_study ? await publicStudy(r.id) : null, timetable: r.show_timetable ? await publicTimetable(r.id) : null }))) };
   });

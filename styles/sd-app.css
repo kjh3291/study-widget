@@ -237,3 +237,31 @@ header button .sd-ico { width: 16px; height: 16px; }
 .sd-chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .sd-chip[aria-pressed="true"] span { color: var(--accent); }
 .done-body .sd-empty { min-height: 200px; }
+
+/* 직책·관리자 배지(관리자 먼저). 직책은 색만 살짝 다르게 */
+.sd-badge.role-badge, .sd-badge.pos-badge { font-size: 11px; line-height: 16px; padding: 1px 6px; vertical-align: 1px; font-weight: 500; }
+.sd-badge.pos-officer { background: color-mix(in srgb, var(--subject-2) 18%, var(--bg-surface)); color: var(--subject-2); }
+.sd-badge.pos-president { background: color-mix(in srgb, var(--rank-1) 20%, var(--bg-surface)); color: var(--rank-1); }
+.profile-badges { display: flex; gap: 4px; justify-content: center; margin-top: 4px; }
+.person .mt b .sd-badge { margin-left: 2px; }
+.pos-options .sd-radio-card[aria-disabled="true"] { opacity: var(--disabled-opacity); cursor: not-allowed; }
+
+/* 문의 */
+.inquiry-body { margin: 10px 0; padding: 12px; background: var(--bg-raised); border-radius: 10px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.inquiry-img { display: block; max-width: 100%; max-height: 240px; border-radius: 10px; margin-bottom: 10px; }
+.inquiry-reply { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 10px 10px 0; font-size: 13px; }
+.inquiry-reply p { margin-top: 4px; line-height: 1.6; }
+.inquiry-mine { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.inquiry-mine > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+.inquiry-mine > summary::-webkit-details-marker { display: none; }
+.inquiry-mine > summary .sd-grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.inquiry-mine > summary strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#inquiry-admin-list .sd-menu-row { min-height: 60px; padding: 10px 0; }
+
+/* 시간표 가독성: 진한 면 + 본문 색 글자 + 과목 색 왼쪽 줄 */
+#app .block { background: color-mix(in srgb, var(--subject-color) 30%, var(--bg-surface)); color: var(--text-primary); border: 0; border-left: 3px solid var(--subject-color); border-radius: 6px; padding: 5px 6px; }
+#app .block .b-name { font-weight: 700; font-size: 12.5px; line-height: 1.3; }
+#app .block .b-place, #app .block .b-prof { color: var(--text-secondary); opacity: 1; font-size: 11px; margin-top: 2px; }
+#app .block:hover { filter: brightness(1.08); }
+#app .dhead { color: var(--text-primary); font-weight: 600; font-size: 12.5px; }
+#app .hlabel { color: var(--text-secondary); font-size: 11.5px; }

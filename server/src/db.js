@@ -141,6 +141,39 @@ CREATE INDEX IF NOT EXISTS messages_room ON messages (room_id, id);
 -- 탈퇴 계정이 완전히 삭제(30일 후)되면 그 사람의 메시지도 함께 지운다(가입 동의 내용).
 ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_user_id_fkey;
 ALTER TABLE messages ADD CONSTRAINT messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+-- 직책(부원·임원·회장): 권한(role)과 따로. 권한은 role만 보고, 직책은 표시(나중에 기능 부여)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS position TEXT;
+UPDATE users SET position = CASE WHEN role = 'owner' THEN 'president' ELSE 'member' END WHERE position IS NULL;
+ALTER TABLE users ALTER COLUMN position SET DEFAULT 'member';
+-- 임원 신청(회장은 신청 불가)
+CREATE TABLE IF NOT EXISTS position_requests (
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  position    TEXT NOT NULL DEFAULT 'officer',
+  message     TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'pending',     -- pending | approved | rejected | cancelled
+  decided_by  INT REFERENCES users(id) ON DELETE SET NULL,
+  decided_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS position_requests_one_pending ON position_requests (user_id) WHERE status = 'pending';
+-- 문의(오류 신고·개선 제안): 운영진이 상태를 바꾸고 답장
+CREATE TABLE IF NOT EXISTS inquiries (
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category    TEXT NOT NULL DEFAULT 'bug',         -- bug | idea | etc
+  body        TEXT NOT NULL,
+  image_sha   TEXT,
+  app_version TEXT NOT NULL DEFAULT '',
+  platform    TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'new',         -- new | checking | done
+  reply       TEXT NOT NULL DEFAULT '',
+  replied_by  INT REFERENCES users(id) ON DELETE SET NULL,
+  replied_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS inquiries_status ON inquiries (status, created_at);
 CREATE TABLE IF NOT EXISTS media (
   sha256      TEXT PRIMARY KEY,
   mime        TEXT NOT NULL,

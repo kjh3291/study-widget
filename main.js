@@ -514,7 +514,8 @@ const SERVER_ERRORS = { bad_username: '아이디는 학번(숫자 8~10자리)입
   too_many: '시도가 너무 많습니다. 잠시 뒤 다시 시도하세요.', github_mismatch: '이 학번에 연결된 GitHub 계정과 다릅니다(또는 GitHub이 연결되지 않은 계정).',
   github_failed: 'GitHub 정보를 확인하지 못했습니다.', github_taken: '이 GitHub 계정은 다른 회원에게 이미 연결돼 있습니다.',
   owner_cannot_withdraw: '최고 관리자는 탈퇴할 수 없습니다.', outranked: '같거나 높은 등급의 회원은 바꿀 수 없습니다.', self: '자기 자신은 바꿀 수 없습니다.',
-  owner_only: '최고 관리자만 할 수 있습니다.', bad_state: '지금 상태에서는 할 수 없는 작업입니다.',
+  owner_only: '최고 관리자만 할 수 있습니다.', president_owner_only: '회장 지정·해제는 최고 관리자만 할 수 있어요.', bad_position: '직책을 골라 주세요.',
+  already_officer: '이미 임원 이상이에요.', request_pending: '이미 검토 중인 신청이 있어요.', too_short: '내용을 조금 더 적어 주세요(5자 이상).', bad_state: '지금 상태에서는 할 수 없는 작업입니다.',
   room_owner_only: '방장(또는 운영진)만 할 수 있어요.', cannot_leave_all: '전체방은 나갈 수 없어요.', not_found: '찾을 수 없어요(삭제됐거나 권한이 없어요).',
   empty: '내용을 입력하세요.', bad_kind: '방 종류를 골라 주세요.', bad_image: '사진을 다시 올려 주세요.', bad_avatar: '프로필 사진을 다시 올려 주세요.' };
 const serverError = (r, fallback) => SERVER_ERRORS[r.json.error] || r.json.message || fallback + ' (' + r.status + ')';
@@ -560,8 +561,10 @@ ipcMain.handle('admin-users', () => serverTry(async () => {
 }));
 ipcMain.handle('admin-action', (_e, { id, action, role } = {}) => serverTry(async () => {
   const s = loadConfig().sync || {};
-  if (!SERVER_MODE || !s.token || !['approve', 'reject', 'suspend', 'delete', 'restore', 'temp-password', 'role'].includes(action)) return { ok: false, error: '잘못된 요청입니다.' };
-  const r = await serverCall(s.url, 'POST', '/admin/users/' + Number(id) + '/' + action, action === 'role' ? { role } : {}, s.token);
+  if (!SERVER_MODE || !s.token || !['approve', 'reject', 'suspend', 'delete', 'restore', 'temp-password', 'role', 'position'].includes(action)) return { ok: false, error: '잘못된 요청입니다.' };
+  // 세 번째 값: role이면 권한, position·approve면 직책(부원 member·임원 officer·회장 president)
+  const body = action === 'role' ? { role } : (action === 'position' || action === 'approve') && role ? { position: role } : {};
+  const r = await serverCall(s.url, 'POST', '/admin/users/' + Number(id) + '/' + action, body, s.token);
   if (r.status !== 200) return { ok: false, error: serverError(r, '처리 실패') };
   return { ok: true, user: r.json.user, tempPassword: r.json.tempPassword };
 }));
@@ -609,11 +612,12 @@ ipcMain.handle('github-device-poll', (_e, deviceCode) => serverTry(async () => {
 }));
 // ---------- 커뮤니티(공지·채팅·프로필) ----------
 // 허용된 경로만 대신 호출한다(토큰은 main에서 붙임).
-const COMMUNITY_PATH = /^\/(?:(?:notices|rooms|messages|profiles|focus|admin\/rooms)(?:\/[\w-]+)*|me|me\/profile)(\?[\w=&-]*)?$/;
+const COMMUNITY_PATH = /^\/(?:(?:notices|rooms|messages|profiles|focus|inquiries|admin\/rooms|admin\/inquiries|admin\/position-requests)(?:\/[\w-]+)*|me|me\/profile|me\/inquiries|me\/position-request)(\?[\w=&-]*)?$/;
 ipcMain.handle('community-call', (_e, { method, path: p, body } = {}) => serverTry(async () => {
   if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || !COMMUNITY_PATH.test(String(p))) return { ok: false, error: '잘못된 요청입니다.' };
   return accountCall(method, p, body || {});
 }));
+ipcMain.handle('app-info', () => ({ version: app.getVersion(), platform: process.platform + ' ' + require('os').release(), arch: process.arch }));
 ipcMain.handle('community-socket-info', () => {
   const s = loadConfig().sync || {};
   if (!SERVER_MODE || !s.enabled || !s.token) return { ok: false };

@@ -4,11 +4,13 @@ import crypto from 'node:crypto';
 import { pool } from './db.js';
 import { hashPassword, verifyPassword, authenticate, requireAdmin, RANK } from './auth.js';
 import { clientIp, limits, tooMany } from './guard.js';
+import { sendTo } from './community.js';
 
 export const CONSENT_VERSION = '2026-10-v1';
 const KEEP_DAYS = 30;
 
-export const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name, role: u.role, status: u.status, createdAt: u.created_at,
+export const POSITIONS = ['member', 'officer', 'president'];   // 부원·임원·회장
+export const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name, role: u.role, position: u.position || 'member', status: u.status, createdAt: u.created_at,
   email: u.email || '', githubLogin: u.github_login || '', mustChangePassword: !!u.must_change_pw, deletedAt: u.deleted_at || null });
 
 const strongEnough = pw => typeof pw === 'string' && pw.length >= 8 && pw.length <= 128;
@@ -102,10 +104,15 @@ export function registerAccounts(app) {
   const done = (req, action, t, extra = {}) => { req.log.info({ admin: req.user.username, action, target: t.username }, 'admin action'); return { user: publicUser(t), ...extra }; };
   const setStatus = async (t, status) => (await pool.query('UPDATE users SET status = $1 WHERE id = $2 RETURNING *', [status, t.id])).rows[0];
 
+  // 승인: 가입 신청이면 직책을 함께 정한다(기본 부원, 회장은 최고 관리자만)
   app.post('/admin/users/:id/approve', { preHandler: requireAdmin }, async (req, reply) => {
     const t = await target(req, reply); if (!t) return;
     if (!['pending', 'suspended'].includes(t.status)) return reply.code(409).send({ error: 'bad_state' });
-    return done(req, 'approve', await setStatus(t, 'approved'));
+    const position = req.body?.position ?? (t.status === 'pending' ? 'member' : t.position);
+    if (!POSITIONS.includes(position)) return reply.code(400).send({ error: 'bad_position' });
+    if (position === 'president' && req.user.role !== 'owner') return reply.code(403).send({ error: 'president_owner_only' });
+    const { rows: [u] } = await pool.query(`UPDATE users SET status = 'approved', position = $2 WHERE id = $1 RETURNING *`, [t.id, position]);
+    return done(req, 'approve:' + position, u);
   });
   app.post('/admin/users/:id/reject', { preHandler: requireAdmin }, async (req, reply) => {
     const t = await target(req, reply); if (!t) return;
@@ -142,6 +149,63 @@ export function registerAccounts(app) {
     limits.loginFail.reset(t.username);
     return done(req, 'temp-password', u, { tempPassword: temp });
   });
+  // 직책 변경: 관리자는 자기보다 낮은 권한의 회원을 부원↔임원으로, 회장 지정·해제는 최고 관리자만(최고 관리자는 자기 직책도 바꿈)
+  app.post('/admin/users/:id/position', { preHandler: requireAdmin }, async (req, reply) => {
+    const position = req.body?.position;
+    if (!POSITIONS.includes(position)) return reply.code(400).send({ error: 'bad_position' });
+    const { rows: [t] } = await pool.query('SELECT * FROM users WHERE id = $1', [Number(req.params.id)]);
+    if (!t) return reply.code(404).send({ error: 'not_found' });
+    const owner = req.user.role === 'owner';
+    if (!owner && (t.id === req.user.id || (RANK[t.role] || 0) >= RANK[req.user.role])) return reply.code(403).send({ error: 'outranked' });
+    if ((position === 'president' || t.position === 'president') && !owner) return reply.code(403).send({ error: 'president_owner_only' });
+    if (t.status !== 'approved' && t.status !== 'suspended') return reply.code(409).send({ error: 'bad_state' });
+    const { rows: [u] } = await pool.query('UPDATE users SET position = $1 WHERE id = $2 RETURNING *', [position, t.id]);
+    // 직책이 바뀌면 그 사람의 대기 중 임원 신청은 정리
+    await pool.query(`UPDATE position_requests SET status = 'cancelled', decided_by = $2, decided_at = now() WHERE user_id = $1 AND status = 'pending'`, [t.id, req.user.id]);
+    sendTo([t.id], { type: 'account', what: 'position', position });
+    return done(req, 'position:' + position, u);
+  });
+
+  // ---------- 임원 신청(부원만, 회장은 신청 불가) ----------
+  const requestRow = r => r && ({ id: r.id, position: r.position, message: r.message, status: r.status, createdAt: r.created_at, decidedAt: r.decided_at,
+    user: r.username ? { id: r.user_id, username: r.username, name: r.display_name, position: r.user_position } : undefined });
+  const adminIds = async () => (await pool.query(`SELECT id FROM users WHERE role IN ('admin', 'owner') AND status = 'approved'`)).rows.map(r => r.id);
+  app.get('/me/position-request', { preHandler: authenticate }, async req => {
+    const { rows: [r] } = await pool.query('SELECT * FROM position_requests WHERE user_id = $1 ORDER BY id DESC LIMIT 1', [req.user.id]);
+    return { request: requestRow(r) || null };
+  });
+  app.post('/me/position-request', { preHandler: authenticate }, async (req, reply) => {
+    const { rows: [u] } = await pool.query('SELECT position FROM users WHERE id = $1', [req.user.id]);
+    if ((u.position || 'member') !== 'member') return reply.code(409).send({ error: 'already_officer' });
+    const message = String(req.body?.message || '').trim().slice(0, 300);
+    const { rows: [r] } = await pool.query(`INSERT INTO position_requests (user_id, position, message) VALUES ($1, 'officer', $2) ON CONFLICT DO NOTHING RETURNING *`, [req.user.id, message]);
+    if (!r) return reply.code(409).send({ error: 'request_pending' });
+    sendTo(await adminIds(), { type: 'admin', what: 'position-request' });
+    return { request: requestRow(r) };
+  });
+  app.delete('/me/position-request', { preHandler: authenticate }, async (req, reply) => {
+    const r = await pool.query(`UPDATE position_requests SET status = 'cancelled', decided_at = now() WHERE user_id = $1 AND status = 'pending'`, [req.user.id]);
+    if (!r.rowCount) return reply.code(404).send({ error: 'not_found' });
+    sendTo(await adminIds(), { type: 'admin', what: 'position-request' });
+    return { ok: true };
+  });
+  app.get('/admin/position-requests', { preHandler: requireAdmin }, async () => {
+    const { rows } = await pool.query(`SELECT p.*, u.username, u.display_name, u.position AS user_position FROM position_requests p JOIN users u ON u.id = p.user_id
+      WHERE p.status = 'pending' AND u.status = 'approved' ORDER BY p.created_at`);
+    return { requests: rows.map(requestRow) };
+  });
+  for (const [action, status] of [['approve', 'approved'], ['reject', 'rejected']]) {
+    app.post(`/admin/position-requests/:id/${action}`, { preHandler: requireAdmin }, async (req, reply) => {
+      const { rows: [r] } = await pool.query(`UPDATE position_requests SET status = $1, decided_by = $2, decided_at = now() WHERE id = $3 AND status = 'pending' RETURNING *`,
+        [status, req.user.id, Number(req.params.id)]);
+      if (!r) return reply.code(404).send({ error: 'not_found' });
+      if (status === 'approved') await pool.query(`UPDATE users SET position = 'officer' WHERE id = $1 AND position = 'member'`, [r.user_id]);
+      sendTo([r.user_id], { type: 'account', what: 'position-request', status });
+      req.log.info({ admin: req.user.username, action: 'position-request:' + action, request: r.id }, 'admin action');
+      return { ok: true };
+    });
+  }
+
   // 운영진 지정·해제: 최고 관리자만
   app.post('/admin/users/:id/role', { preHandler: requireAdmin }, async (req, reply) => {
     if (req.user.role !== 'owner') return reply.code(403).send({ error: 'owner_only' });
