@@ -57,7 +57,8 @@
       "review-ui.js",
       "ui-kit.js",
       "icons.css",
-      "fonts/**"
+      "fonts/**",
+      "assets/**"
     ],
     "win": {
       "target": [
