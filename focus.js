@@ -32,6 +32,10 @@
   function colorOf(name) {
     const set = state.focus?.colors?.[name];
     if (set >= 1 && set <= COLORS) return set;
+    // 시간표 과목은 순서대로 서로 잘 구분되는 색(청록·금·분홍·초록·보라·주황·파랑·회색), 나머지는 이름으로
+    const SPREAD = [1, 4, 6, 5, 3, 7, 2, 8];
+    const idx = (state.timetableSubjects || []).indexOf(name);
+    if (idx >= 0) return SPREAD[idx % COLORS];
     let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     return h % COLORS + 1;
   }

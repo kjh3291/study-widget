@@ -617,7 +617,7 @@ ipcMain.handle('community-call', (_e, { method, path: p, body } = {}) => serverT
   if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || !COMMUNITY_PATH.test(String(p))) return { ok: false, error: '잘못된 요청입니다.' };
   return accountCall(method, p, body || {});
 }));
-ipcMain.handle('app-info', () => ({ version: app.getVersion(), platform: process.platform + ' ' + require('os').release(), arch: process.arch }));
+ipcMain.handle('app-info', () => ({ version: require(path.join(__dirname, 'package.json')).version, platform: process.platform + ' ' + require('os').release(), arch: process.arch }));
 ipcMain.handle('community-socket-info', () => {
   const s = loadConfig().sync || {};
   if (!SERVER_MODE || !s.enabled || !s.token) return { ok: false };
