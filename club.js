@@ -375,7 +375,7 @@
   }
   function noticesHtml() {
     if (!S.notices.length) return '<div class="room-empty">아직 공지가 없어요</div>';
-    return `<div class="notice-list">${S.notices.map(n => `<article class="notice${n.pinned ? ' pinned' : ''}">
+    return `<div class="notice-list">${S.notices.map(n => `<article class="club-notice${n.pinned ? ' pinned' : ''}">
       <div class="notice-top">${n.pinned ? `<span class="pill soft">${ico('pin')}고정</span>` : ''}<b>${escapeHtml(n.title)}</b></div>
       <div class="notice-body">${linkify(escapeHtml(n.body)).replace(/\n/g, '<br>')}</div>
       <div class="notice-meta">${escapeHtml(n.author)} · ${timeLabel(n.createdAt)}${isAdmin() ? ` · <button class="link" data-notice-edit="${n.id}">고치기</button> · <button class="link danger" data-notice-del="${n.id}">삭제</button>` : ''}</div>
