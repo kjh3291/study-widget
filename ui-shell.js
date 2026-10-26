@@ -80,7 +80,19 @@
     window.Focus?.refresh();
   }
 
-  $('btn-done-list').onclick = () => openDoneSheet();   // 오늘 제목 옆: 완료한 일(체크 풀면 완료 취소)
+  $('btn-done-list').onclick = () => openDoneSheet();
+
+  // LMS 로그인이 풀리면(학교 세션 만료) 오늘 위와 학습 › LMS에 바로 보이게. 누르면 로그인 창
+  const lmsNeedsLogin = () => !!(state.lms && state.lms.courses && state.lms.courses.length && state.lms.sessionValid === false);
+  function updateLmsBanner() {
+    $('lms-banner').hidden = !lmsNeedsLogin();
+    const b = document.querySelector('#view-study [data-study="lms"] .sd-muted');
+    if (b) b.innerHTML = lmsNeedsLogin() ? '<span class="sd-danger-text">로그인이 필요해요</span>' : '과목 공지·과제 마감·수업자료';
+  }
+  $('lms-banner').onclick = () => lmsLogin();
+  const baseSummaryForLms = renderSummary;
+  renderSummary = function () { baseSummaryForLms(); updateLmsBanner(); };
+  setInterval(updateLmsBanner, 60000);   // 오늘 제목 옆: 완료한 일(체크 풀면 완료 취소)
 
   // ---------- 학습 ----------
   const sdIco = n => `<span class="sd-ico" data-icon="${n}" aria-hidden="true"></span>`;
@@ -91,6 +103,7 @@
       ${STUDY.map(s => menuRow(s.view ? `data-study-view="${s.view}"` : `data-study="${s.tab}"`, s.ico, s.name, s.desc, s.tab === 'lms' ? '<span id="study-lms-badge"></span>' : '')).join('')}</main>`;
     const lmsBadge = document.querySelector('.tabs [data-tab="lms"] .lms-dot');
     if (lmsBadge) $('study-lms-badge').innerHTML = '<span class="sd-badge sd-badge-accent">새 소식</span>';
+    updateLmsBanner();
   }
   $('view-study').addEventListener('click', e => {
     if (e.target.closest('[data-study-view="records"]')) return window.Focus.openRecords();

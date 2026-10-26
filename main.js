@@ -330,7 +330,14 @@ async function downloadMaterial(url, course, title, opts) {
   if (!got || !got.body) return { url, ok: false, error: 'download-fail' };
   const sig = sha1(got.body);
   const dir = path.join(STUDECK_DIR(), safeName(course), opts.kind === 'assign' ? '과제' : '수업자료');
-  const dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(dir, got.filename);
+  // 다른 LMS 항목이 이미 쓰는 파일 이름이면(교수님이 같은 이름으로 두 번 올림) ' (2)'를 붙여 따로 저장한다.
+  // 같은 경로를 두 항목이 번갈아 덮어쓰면 매번 '바뀜'으로 다시 받고 이전 자료가 쌓이기 때문
+  const avoid = new Set((opts.avoid || []).map((p) => path.resolve(p).toLowerCase()));
+  let dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(dir, got.filename);
+  if (opts.mode !== 'recheck' && avoid.has(path.resolve(dest).toLowerCase())) {
+    const ext = path.extname(dest), base = path.basename(dest, ext);
+    for (let i = 2; ; i++) { const c = path.join(dir, `${base} (${i})${ext}`); if (!avoid.has(path.resolve(c).toLowerCase()) && !fs.existsSync(c)) { dest = c; break; } }
+  }
   try {
     const existed = fs.existsSync(dest);
     if (!existed && opts.kind === 'assign' && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
@@ -351,7 +358,7 @@ async function downloadMaterial(url, course, title, opts) {
 }
 ipcMain.handle('lms-download', async (_e, items) => {
   const out = [];
-  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title, { mode: it.mode, dest: it.dest, prevSig: it.sig, kind: it.kind }));
+  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title, { mode: it.mode, dest: it.dest, prevSig: it.sig, kind: it.kind, avoid: it.avoid }));
   return out;
 });
 const CAT_DIR = { materials: '수업자료', aux: '보조자료', assignment: '과제' };

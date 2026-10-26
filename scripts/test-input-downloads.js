@@ -58,5 +58,19 @@ vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('),
   assert.equal(checked, 0);
   await downloadContext.syncDownloads([{ url: 'material', courseName: 'Course' }], { material: { path: material.path, checkedAt: Date.now() } }, 'material', true);
   assert.equal(checked, 1, 'LMS materials must download even when Git sync fails');
-  console.log('PASS: IME Enter adds once; same-name resubmission replaces with backup; every refresh checks assignments');
+  // 같은 이름 수업자료 두 개(다른 LMS 항목): 두 번째는 ' (2)'로 따로 저장 → 번갈아 덮어쓰며 '바뀜'으로 다시 받지 않음
+  body = Buffer.from('lecture A');
+  const a1 = await context.downloadMaterial('matA', 'Course', '', { mode: 'new' });
+  body = Buffer.from('lecture B');
+  const b1 = await context.downloadMaterial('matB', 'Course', '', { mode: 'new', avoid: [a1.path] });
+  assert.notEqual(b1.path, a1.path); assert.ok(path.basename(b1.path).endsWith(' (2).pdf'), b1.path);
+  assert.equal(fs.readFileSync(a1.path, 'utf8'), 'lecture A');
+  let sent = [];
+  downloadContext.window.api.lmsDownload = async items => { sent = items; return []; };
+  await downloadContext.syncDownloads([{ url: 'matA', courseName: 'Course' }, { url: 'matB', courseName: 'Course' }],
+    { matA: { path: a1.path, at: 1, checkedAt: 0 }, matB: { path: a1.path, at: 2, checkedAt: 0 } }, 'material', true);
+  const sa = sent.find(i => i.url === 'matA'), sb = sent.find(i => i.url === 'matB');
+  assert.equal(sa.mode, 'recheck', '먼저 받은 항목이 원래 경로를 가짐');
+  assert.equal(sb.mode, 'new'); assert.equal(JSON.stringify(sb.avoid.map(p => p.toLowerCase())), JSON.stringify([a1.path.toLowerCase()]), '겹친 항목은 새 이름으로 다시');
+  console.log('PASS: IME Enter adds once; same-name resubmission replaces with backup; same-name lecture files from different LMS items saved separately; every refresh checks assignments');
 })().finally(() => fs.rmSync(root, { recursive: true, force: true })).catch(e => { console.error(e); process.exitCode = 1; });

@@ -266,3 +266,11 @@ header button .sd-ico { width: 16px; height: 16px; }
 #app .dhead { color: var(--text-primary); font-weight: 600; font-size: 12.5px; }
 #app .hlabel { color: var(--text-secondary); font-size: 11.5px; }
 .sd-textarea, .sd-input { font-family: inherit; }
+
+/* LMS 로그인 필요 띠(오늘 위) */
+.lms-banner { width: 100%; display: flex; align-items: center; gap: 10px; margin: 8px 0 0; padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); border-radius: 12px;
+  background: var(--warning-soft); color: var(--text-primary); text-align: left; font-family: inherit; cursor: pointer; }
+.lms-banner > .sd-ico { color: var(--warning); }
+.lms-banner .sd-grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lms-banner strong { font-size: 13px; }
+.lms-banner .sd-btn { flex: none; pointer-events: none; }

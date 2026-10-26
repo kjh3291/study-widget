@@ -1199,6 +1199,7 @@ async function lmsLogin() {
   $('lms-status').textContent = '로그인 창에서 직접 로그인해주세요…';
   await window.api.lmsLogin();
   await doLmsRefresh(false);
+  renderSummary();   // 로그인 안내 띠 갱신
 }
 // 새로고침 결과에서 '새로 제출된' LMS 과제를 감지해 완료로 기록(+축하).
 // 완료 기록은 state.lmsDone에 영구 저장 → 목록에서 사라져도 기록 탭에 남는다.
@@ -1233,12 +1234,18 @@ async function syncDownloads(list, doneMap, kind, force) {
   let cand = (list || []).filter((m) => m && m.url);
   if (!force) cand = cand.filter((m) => state.matCourses[m.courseId] !== false); // 제외 과목만 빼고 전부
   const items = [];
+  // 경로별 주인: 같은 경로를 여러 항목이 쓰면 가장 먼저 받은 항목만 그 경로를 갖고, 나머지는 새 이름으로 다시 받는다
+  const owner = {};
+  Object.entries(doneMap).sort((a, b) => (a[1].at || 0) - (b[1].at || 0)).forEach(([url, r]) => { if (r && r.path) { const k = r.path.toLowerCase(); if (!owner[k]) owner[k] = url; } });
+  const avoidFor = (url) => Object.entries(owner).filter(([, u]) => u !== url).map(([p]) => p);
   cand.forEach((m) => {
-    const rec = doneMap[m.url];
+    let rec = doneMap[m.url];
     const course = cleanCourse(m.courseName) || '기타';
+    // 수업자료만: 다른 항목과 겹친 경로 → 새 이름으로(과제는 같은 이름 재제출이면 덮어쓰는 게 맞음)
+    if (kind === 'material' && rec && rec.path && owner[rec.path.toLowerCase()] !== m.url) rec = null;
     // 과제인데 기록 경로가 '과제' 폴더가 아니면(옛 버그로 수업자료에 저장됨) 신규로 재수집
     const wrongFolder = rec && rec.path && kind === 'assign' && !/[\\/]과제[\\/]/.test(rec.path);
-    if (!rec || wrongFolder) items.push({ url: m.url, course, title: m.title, kind, mode: 'new' });
+    if (!rec || wrongFolder) items.push({ url: m.url, course, title: m.title, kind, mode: 'new', avoid: kind === 'material' ? avoidFor(m.url) : [] });
     else if (kind === 'assign' || force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig });
   });
   if (!items.length) return { gotNew: [], changed: [] };
@@ -1251,8 +1258,8 @@ async function syncDownloads(list, doneMap, kind, force) {
     const it = byUrl[r.url]; if (!it) return;
     const prev = doneMap[r.url];
     doneMap[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now };
-    if (r.changed) changed.push({ course: it.course, title: r.filename || it.title, at: now, kind, changed: true });
-    else if (!prev) { if (!r.existed) gotNew.push({ course: it.course, title: r.filename || it.title, at: now, kind }); }
+    if (r.changed && it.mode === 'recheck') changed.push({ course: it.course, title: r.filename || it.title, at: now, kind, changed: true });
+    else if (!prev && !r.existed) gotNew.push({ course: it.course, title: r.filename || it.title, at: now, kind });
   });
   return { gotNew, changed };
 }
