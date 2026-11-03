@@ -895,7 +895,7 @@
         <div class="today-title-row"><h1>오늘</h1><button type="button" class="sd-btn sd-btn-small sd-btn-ghost" id="btn-done-list"><span class="sd-ico" data-icon="circle-check" aria-hidden="true"></span><span>완료한 일</span></button></div>
         <div id="summary" class="summary"></div>
       </div>
-      <div class="pad band-pad"><button type="button" class="lms-banner update-banner" id="update-banner" hidden><span class="sd-ico" data-icon="refresh-cw" aria-hidden="true"></span><span class="sd-grow"><strong id="update-title">새 버전이 있어요</strong><span class="sd-muted" id="update-desc">눌러서 업그레이드해요.</span></span><span class="sd-btn sd-btn-small sd-btn-primary" id="update-btn">업그레이드</span></button><section class="sd-card onboard" id="onboard" aria-labelledby="onboard-title" hidden></section><button type="button" class="lms-banner" id="lms-banner" hidden><span class="sd-ico" data-icon="circle-alert" aria-hidden="true"></span><span class="sd-grow"><strong>LMS 로그인이 필요해요</strong><span class="sd-muted">학교 로그인이 풀려서 새 수업자료·과제를 못 받고 있어요.</span></span><span class="sd-btn sd-btn-small sd-btn-primary">로그인</span></button></div>
+      <div class="pad band-pad"><button type="button" class="lms-banner update-banner" id="update-banner" hidden><span class="sd-ico" data-icon="refresh-cw" aria-hidden="true"></span><span class="sd-grow"><strong id="update-title">새 버전이 있어요</strong><span class="sd-muted" id="update-desc">눌러서 업그레이드해요.</span></span><span class="sd-btn sd-btn-small sd-btn-primary" id="update-btn">업그레이드</span></button><section class="sd-card onboard semester-card" id="semester-card" aria-labelledby="semester-title" hidden></section><section class="sd-card onboard" id="onboard" aria-labelledby="onboard-title" hidden></section><button type="button" class="lms-banner" id="lms-banner" hidden><span class="sd-ico" data-icon="circle-alert" aria-hidden="true"></span><span class="sd-grow"><strong>LMS 로그인이 필요해요</strong><span class="sd-muted">학교 로그인이 풀려서 새 수업자료·과제를 못 받고 있어요.</span></span><span class="sd-btn sd-btn-small sd-btn-primary">로그인</span></button></div>
       <div class="pad">
         <div class="add-box">
           <input type="text" id="td-text" placeholder="할 일을 적고 Enter…" autocomplete="off" />
@@ -1049,6 +1049,8 @@
     </section>
 
     <section class="set-cat" data-cat="study">
+      <button type="button" class="sd-menu-row" id="btn-semester-archive"><span class="sd-menu-icon"><span class="sd-ico" data-icon="archive" aria-hidden="true"></span></span>
+        <span class="sd-grow"><strong>지난 학기 기록</strong><span class="sd-muted" id="semester-archive-label">새 학기를 시작하면 지난 시간표·출석이 여기 보관돼요.</span></span><span class="sd-ico" data-icon="chevron-right" aria-hidden="true"></span></button>
       <div class="sd-setting-row"><div class="sd-setting-copy"><strong id="goal-label">하루 집중 목표</strong><p>30분씩 조절해요.</p></div>
         <div class="sd-setting-control"><div class="sd-stepper" role="group" aria-labelledby="goal-label">
           <button type="button" id="goal-minus" aria-label="목표 30분 줄이기">−</button><output id="goal-out" aria-live="polite">2시간</output><button type="button" id="goal-plus" aria-label="목표 30분 늘리기">＋</button></div>
@@ -1149,6 +1151,7 @@
 <script src="file-tree.js"></script>
 <script src="onboarding.js"></script>
 <script src="attendance.js"></script>
+<script src="semester.js"></script>
 <script src="my-files.js"></script>
 <script src="renderer.js"></script>
 <script src="ui-kit.js"></script>

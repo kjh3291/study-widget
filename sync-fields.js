@@ -4,6 +4,7 @@ const sharedFields = [
   'subjects', 'identifier', 'timetableFull', 'timetableSource', 'newMaterials', 'notifyState',
   'theme', 'clockFormat', 'focusGoalMin', 'focusDayStart', 'notifyPrefs', 'rolloverOverdue',
   'lmsAuto', 'autoDownload', 'matCourses', 'opacity', 'alwaysOnTop',
+  'currentTerm', 'semesterArchive',   // 새 학기 도우미(semester.js): 지금 학기, 지난 학기 시간표·출석 보관함
 ];
 function sharedSnapshot(data) {
   const result = {};

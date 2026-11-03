@@ -130,7 +130,7 @@ function hideToast() { const b = $('toast'); if (b) b.innerHTML = ''; }
 
 // ---------- 상단 요약 바 ----------
 function renderSummary() {
-  renderOnboarding();
+  renderOnboarding(); renderSemesterCard();
   const bar = $('summary'); if (!bar) return;
   const today = todayStr();
   const todayCount = activeItems().filter((i) => !i.done && i.due === today).length;
@@ -409,7 +409,7 @@ function openSyncConflicts() {
   const ov = document.createElement('div'); ov.id = 'sync-conflicts';
   ov.style.cssText = 'position:absolute;inset:0;z-index:40;background:var(--bg);padding:16px;overflow:auto;font-size:12px;';
   ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '동기화 충돌 확인');
-  const names = { todos: '할 일', events: '일정', focus: '집중 기록', attendance: '출석', readIds: '읽은 공지', starredLms: '중요 과제', lmsDone: '완료 과제', subjects: '과목', identifier: '시간표 공유 링크', timetableFull: '시간표', timetableSource: '시간표 입력 방식', newMaterials: '새 자료', notifyState: '알림 기록', notifyPrefs: '알림 설정', theme: '테마', clockFormat: '시계 표시', focusGoalMin: '집중 목표', focusDayStart: '집중 날짜 기준', rolloverOverdue: '지난 할 일 이월', lmsAuto: 'LMS 자동 갱신', autoDownload: '자료 자동 다운로드', matCourses: '자료 수집 과목', opacity: '투명도', alwaysOnTop: '항상 위에 표시', text: '내용', title: '제목', done: '완료 여부', due: '마감일', dueTime: '마감 시간', subject: '과목', starred: '중요 표시', repeat: '반복', subs: '세부 할 일', start: '시작', end: '종료', sessions: '공부 기록', minutes: '공부 시간', morningHour: '아침 알림 시간', deadlineAlerts: '마감 알림', professor: '교수', times: '수업 시간', place: '강의실', name: '이름' };
+  const names = { todos: '할 일', events: '일정', focus: '집중 기록', attendance: '출석', readIds: '읽은 공지', starredLms: '중요 과제', lmsDone: '완료 과제', subjects: '과목', identifier: '시간표 공유 링크', timetableFull: '시간표', timetableSource: '시간표 입력 방식', newMaterials: '새 자료', notifyState: '알림 기록', notifyPrefs: '알림 설정', theme: '테마', clockFormat: '시계 표시', focusGoalMin: '집중 목표', focusDayStart: '집중 날짜 기준', rolloverOverdue: '지난 할 일 이월', currentTerm: '지금 학기', semesterArchive: '지난 학기 기록', lmsAuto: 'LMS 자동 갱신', autoDownload: '자료 자동 다운로드', matCourses: '자료 수집 과목', opacity: '투명도', alwaysOnTop: '항상 위에 표시', text: '내용', title: '제목', done: '완료 여부', due: '마감일', dueTime: '마감 시간', subject: '과목', starred: '중요 표시', repeat: '반복', subs: '세부 할 일', start: '시작', end: '종료', sessions: '공부 기록', minutes: '공부 시간', morningHour: '아침 알림 시간', deadlineAlerts: '마감 알림', professor: '교수', times: '수업 시간', place: '강의실', name: '이름' };
   const text = syncCompareText;
   ov.innerHTML = '<h2 style="font-size:15px">양쪽 변경 비교</h2><p>선택하기 전에는 자동으로 덮어쓰지 않습니다. 파일은 두 버전을 모두 보관할 수도 있습니다.</p>';
   const choices = {};
@@ -1694,6 +1694,49 @@ $('onboard').addEventListener('click', (e) => {
   else if (id === 'club') { setOnboarding({ clubVisited: true }); window.Shell?.goNav('club'); }
 });
 document.querySelector('#nav [data-nav="club"]')?.addEventListener('click', () => { if (!(state.onboarding || {}).clubVisited) setOnboarding({ clubVisited: true }); });
+// 새 학기 도우미(semester.js): 3월·9월이 되면 오늘 화면에 '새 학기 준비' 카드. 지난 학기 시간표·출석은 보관함으로
+function semesterState() { return { currentTerm: state.currentTerm, timetableFull: state.timetableFull, attendance: state.attendance, semesterArchive: state.semesterArchive, semesterSnooze: state.semesterSnooze }; }
+function applySemester(patch) {
+  Object.assign(state, patch);
+  if ('timetableFull' in patch) renderTimetable(state.timetableFull || []);
+  if ('attendance' in patch) renderAttendance();
+  persist(patch);
+  renderSemesterCard();
+}
+function renderSemesterCard() {
+  const box = $('semester-card'); if (!box || !window.Semester) return;
+  const c = Semester.check(semesterState(), todayStr());
+  if (c.setTerm && c.setTerm !== state.currentTerm) { state.currentTerm = c.setTerm; persist({ currentTerm: c.setTerm }); }
+  box.hidden = !c.prompt; if (!c.prompt) return;
+  box.innerHTML = `<div class="onboard-head"><h2 id="semester-title">${escapeHtml(c.toLabel)}가 시작됐어요</h2>
+      <button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-sem-later>나중에</button></div>
+    <p class="sd-muted" style="margin:0">${escapeHtml(c.fromLabel)} 시간표·출석을 '지난 학기 기록'에 보관하고 새 시간표를 넣을 수 있게 비워요. 할 일·공부 기록·자료 폴더는 그대로예요.</p>
+    <div class="sd-row" style="justify-content:flex-start;gap:8px"><button type="button" class="sd-btn sd-btn-small sd-btn-primary" data-sem-start>새 학기 준비하기</button></div>`;
+}
+$('semester-card').addEventListener('click', async (e) => {
+  if (e.target.closest('[data-sem-later]')) { state.semesterSnooze = addDaysStr(todayStr(), 3); persist({ semesterSnooze: state.semesterSnooze }); renderSemesterCard(); showToast('3일 뒤에 다시 알려 드릴게요.'); return; }
+  if (!e.target.closest('[data-sem-start]')) return;
+  const c = Semester.check(semesterState(), todayStr()); if (!c.prompt) return;
+  if (!(await UI.confirm({ title: `${c.toLabel}를 시작할까요?`, body: `${c.fromLabel} 시간표(${state.timetableFull.length}과목)와 출석 기록을 지난 학기 기록에 보관하고 비워요. 언제든 설정 › 학습 › 지난 학기 기록에서 다시 볼 수 있어요.`, ok: '새 학기 시작' }))) return;
+  const before = semesterState();
+  applySemester(Semester.start(before, todayStr()));
+  showToast(`${c.toLabel}를 시작했어요. 시간표를 넣어 주세요.`, '실행 취소', () => applySemester(Semester.undo({ ...semesterState() }, c.from)));
+  window.Shell?.goNav('timetable');
+});
+function openSemesterArchive() {
+  const list = Semester.summary(semesterState());
+  const s = UI.sheet('지난 학기 기록', list.length ? `<div class="sd-stack">${list.map((a) => `<div class="frow sd-file-row" data-term="${escapeHtml(a.term)}"><div class="sd-grow"><strong>${escapeHtml(a.label)}</strong>
+      <span class="sd-muted">${a.subjects.length}과목${a.subjects.length ? ' · ' + escapeHtml(a.subjects.slice(0, 4).join(', ')) + (a.subjects.length > 4 ? ' 외' : '') : ''} · 결석 ${a.absent} · 지각 ${a.late}</span></div>
+      <button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-sem-restore>이 학기로 되돌리기</button></div>`).join('')}</div>`
+    : '<p class="sd-muted">아직 보관한 학기가 없어요. 3월·9월에 새 학기를 시작하면 지난 시간표·출석이 여기 보관돼요.</p>');
+  s.el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-sem-restore]'); if (!b) return;
+    const term = b.closest('[data-term]').dataset.term;
+    if (!(await UI.confirm({ title: `${Semester.termLabel(term)}로 되돌릴까요?`, body: '지금 시간표·출석을 지우고 그 학기 시간표·출석을 다시 꺼내요. 잘못 시작했을 때만 쓰세요.', ok: '되돌리기', danger: true }))) return;
+    applySemester(Semester.undo(semesterState(), term)); s.close(); showToast(`${Semester.termLabel(term)}로 되돌렸어요.`);
+  });
+}
+$('btn-semester-archive').onclick = openSemesterArchive;
 // 새 버전 업그레이드 띠(updater.js): 있으면 오늘 화면 위에. 누르면 받기 → 다 받으면 저장·동기화 뒤 설치하고 다시 시작
 function showUpdate(st) {
   const b = $('update-banner'); if (!b || !st) return;
@@ -2759,6 +2802,9 @@ if (IS_LAB) {
   $('inp-rollover').checked = state.rolloverOverdue;
   state.lmsDone = (cfg.lmsDone && typeof cfg.lmsDone === 'object') ? cfg.lmsDone : {};
   state.onboarding = (cfg.onboarding && typeof cfg.onboarding === 'object') ? cfg.onboarding : {};   // 첫 실행 안내(이 기기 전용)
+  state.currentTerm = typeof cfg.currentTerm === 'string' ? cfg.currentTerm : '';
+  state.semesterArchive = (cfg.semesterArchive && typeof cfg.semesterArchive === 'object') ? cfg.semesterArchive : {};
+  state.semesterSnooze = typeof cfg.semesterSnooze === 'string' ? cfg.semesterSnooze : '';   // '나중에'(이 기기)
   state.materialsDone = (cfg.materialsDone && typeof cfg.materialsDone === 'object') ? cfg.materialsDone : {};
   state.assignDone = (cfg.assignDone && typeof cfg.assignDone === 'object') ? cfg.assignDone : {};
   // v1.1.10: 과제 파일이 잘못된 폴더(수업자료)로 저장되던 기록 1회 초기화 → 다음 새로고침에 '과제' 폴더로 재수집
