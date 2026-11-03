@@ -5,10 +5,9 @@ const PX_PER_HOUR = 52;
 const $ = (id) => document.getElementById(id);
 // 운영(prod)/실험실(lab) 채널: 실험실은 GitHub 대신 실험실 서버로 동기화한다.
 const IS_LAB = new URLSearchParams(location.search).get('channel') === 'lab';
-// 서버 모드: 학번 로그인·서버 동기화·파일·커뮤니티. 꺼져 있으면 예전 GitHub 동기화 화면.
+// 서버 모드: 학번 로그인·서버 동기화·파일·커뮤니티(v1.5부터 항상).
 const SERVER_MODE = new URLSearchParams(location.search).get('server') === '1';
 const SYNC_NAME = SERVER_MODE ? '서버' : 'GitHub';
-$(SERVER_MODE ? 'git-box' : 'server-box')?.remove();
 if (!SERVER_MODE) $('auth-gate')?.remove();
 if (SERVER_MODE) $('server-box').hidden = false;
 if (!IS_LAB) document.querySelectorAll('#auth-gate .lab-badge').forEach(e => e.remove()); // 시작 화면 로고의 LAB 표시는 실험실만
@@ -1323,7 +1322,7 @@ async function downloadNewMaterials(force) {
   window.api.notify('LMS 파일 ' + tagged.length + '개 업데이트', tagged.slice(0, 5).map((g) => `${g.changed ? '[수정] ' : g.kind === 'assign' ? '[과제] ' : ''}${g.course} · ${g.title}`).join('\n'));
   updateLmsBadge();
   if (currentTab === 'lms') renderLms();
-  scheduleGitSync();  // 새 파일 받았으면 GitHub 동기화 예약
+  scheduleGitSync();  // 새 파일 받았으면 서버 동기화 예약
 }
 
 async function doLmsRefresh(silent) {
@@ -2165,7 +2164,7 @@ async function updateMatLocationLabel() {
 }
 $('btn-mat-location').onclick = openMaterialLocationPanel;
 updateMatLocationLabel();
-// GitHub 동기화
+// 서버 동기화 상태(함수 이름은 예전 그대로)
 async function refreshGitStatus() {
   try {
     const s = await window.api.gitSyncStatus();
@@ -2176,26 +2175,11 @@ async function refreshGitStatus() {
       if (!$('admin-box').hidden) refreshAdminList();
       if (s?.enabled) refreshFileUsage();
     }
-    if (s && s.repo && $('inp-git-repo') && !$('inp-git-repo').value) $('inp-git-repo').value = s.repo;
     state.syncEnabled = !!s?.enabled;
     if (s?.enabled) showSyncStatus(s);
     else $('git-sync-msg').textContent = '연결 안 됨';
   } catch (e) {}
 }
-if ($('btn-git-connect')) $('btn-git-connect').onclick = async () => {
-  const repo = $('inp-git-repo').value.trim(), token = $('inp-git-token').value.trim();
-  if (!repo || !token) { $('git-sync-msg').textContent = '저장소(owner/이름)와 토큰을 입력하세요.'; return; }
-  $('git-sync-msg').textContent = '연결·동기화 중…';
-  let r = await window.api.gitConnect(repo, token);
-  if (r && r.ok) { state.syncEnabled = true; r = await initSync(); }
-  if (!r?.ok) $('git-sync-msg').textContent = r?.error || '연결 실패';
-  $('inp-git-token').value = '';
-};
-if ($('btn-git-sync')) $('btn-git-sync').onclick = async () => {
-  $('git-sync-msg').textContent = '동기화 중…';
-  const r = await initSync();
-  if (!r?.ok) $('git-sync-msg').textContent = r?.error || '동기화 실패';
-};
 // 실험실: 시작 화면(로그인·가입 신청) + 설정의 서버 계정·운영진 승인. 비밀번호는 저장하지 않는다.
 const STUDENT_ID_RE = /^(\d{8,10}|[a-z][a-z0-9_]{2,23})$/; // 학번(운영진 계정 아이디는 서버가 따로 허용·확인)
 function showGate(on, message = '', tone = '') {

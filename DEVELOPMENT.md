@@ -23,7 +23,7 @@
   - 서버 테스트 대상은 `scripts/lab-target.js`. 기본은 실험실 서버(SSH). `STUDECK_TEST_SERVER`(주소)·`STUDECK_TEST_PSQL`(DB 접속 문자열)·`STUDECK_TEST_RESTART`(api 재시작 명령)를 주면 다른 서버(클라우드의 로컬 PostgreSQL+서버)로 전체를 돌릴 수 있다. Electron 테스트는 리눅스에서 `xvfb-run -a`, root면 `--no-sandbox`.
 - 서버 배포: 서버에서 `~/studeck/<lab|prod>`에서 `git pull` 후 `server/`에서 `docker compose up -d --build`. 운영 배포 전 `server/scripts/backup.sh ~/studeck/prod`.
 - 복구: `server/scripts/restore.sh ~/studeck/<lab|prod> --check`로 최근 백업이 멀쩡한지(회원·파일 수) 확인만 할 수 있다. `restore.sh ~/studeck/<스택> [STAMP]`는 스택 이름을 입력해야 진행하고, 지금 상태를 먼저 백업한 뒤 DB(한 트랜잭션)·파일을 그 시점으로 되돌린다. 리허설은 실험실에서만.
-- 서버 모드(`channel.js`의 `serverSync`): 학번 로그인·서버 동기화·파일·커뮤니티. `STUDECK_SERVER_SYNC=0`이면 예전 GitHub 동기화(회귀 테스트용).
+- 서버 동기화(학번 로그인·데이터·보조자료·커뮤니티)만 있다. 예전 GitHub 동기화 코드는 v1.5(lab-next)에서 지웠다. 예전 기기의 `Studeck/.studeck/config.json`은 처음 켤 때 기준값으로만 읽는다.
 
 ## 자료 저장 기준 (2026-11 ~)
 - **수업자료·과제**: LMS에서 다시 받을 수 있으므로 **각 기기에만** 저장(서버에 올리지 않음). 저장 위치는 설정 › 파일 › 자료 저장 위치(이 기기 전용).

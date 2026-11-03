@@ -71,7 +71,6 @@
 .sd-menu-row > .sd-ico:last-child { color: var(--text-muted); }
 #sync-bar .sd-actions { flex-wrap: nowrap; }
 #sync-bar .sd-actions .sd-btn { flex: none; }
-#git-box { display: flex; flex-direction: column; gap: 6px; padding: 16px 0; }
 .sd-time-picker > span { color: var(--text-muted); font-size: 18px; }
 .sd-time-column { max-height: 152px; overflow-y: auto; scrollbar-width: none; }
 .sd-time-column:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -62,8 +62,7 @@ app.on('browser-window-created', (_e, win) => {
         if (Object.keys(cfg.pendingShared || {}).length) throw new Error('미전송 남음: ' + Object.keys(cfg.pendingShared));
         if (JSON.stringify(cfg).includes(${JSON.stringify(pw)})) throw new Error('비밀번호가 설정에 저장됨');
         const st = await window.api.gitSyncStatus();
-        const gh = await window.api.gitConnect('a/b', 'x');
-        if (gh.ok) throw new Error('실험실에서 GitHub 연결이 허용됨');
+        if (window.api.gitConnect || document.getElementById('git-box')) throw new Error('GitHub 동기화 연결이 남아 있음');   // v1.5에서 지움
         // 로그아웃 → 시작 화면으로 복귀, 데이터는 기기에 남음
         window.confirm = () => true; UI.testAutoConfirm = true;
         $('btn-srv-logout').click();
@@ -88,7 +87,7 @@ app.on('browser-window-created', (_e, win) => {
 app.on('will-quit', () => {
   clearTimeout(timeout);
   if (!verified) process.exitCode = 1;
-  else console.log('PASS: 실험실 시작 화면(에타 없음) → 학번·비밀번호 확인·동의 검사 → 가입 신청 → 로그인 → 할 일·보조자료 파일 서버 업로드(수업자료 제외) → 다른 기기에서 확인, 비밀번호 미저장, GitHub 차단, 로그아웃 시 시작 화면 복귀');
+  else console.log('PASS: 실험실 시작 화면(에타 없음) → 학번·비밀번호 확인·동의 검사 → 가입 신청 → 로그인 → 할 일·보조자료 파일 서버 업로드(수업자료 제외) → 다른 기기에서 확인, 비밀번호 미저장, GitHub 동기화 없음, 로그아웃 시 시작 화면 복귀');
 });
 app.on('quit', () => { try { fs.rmSync(temp, { recursive: true, force: true }); } catch { /* temp cleanup */ } });
 require('../main');

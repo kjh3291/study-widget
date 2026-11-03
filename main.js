@@ -1,17 +1,13 @@
 const { app, BrowserWindow, ipcMain, screen, Notification, shell, net, session, dialog } = require('electron');
 const { CHANNEL, IS_LAB, PROFILE } = require('./channel'); // userData 분리를 위해 가장 먼저
-const SERVER_MODE = !!PROFILE.serverSync; // 서버 동기화(계정·데이터·파일·커뮤니티). 꺼져 있으면 예전 GitHub 동기화
+const SERVER_MODE = true; // 서버 동기화(계정·데이터·파일·커뮤니티). 예전 GitHub 동기화는 v1.5에서 지움(화면 코드의 분기 호환용으로 이름만 남김)
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
 const lms = require('./lms');
 const { trackChanges, initializeOutbox, sharedSnapshot } = require('./sync-model');
 const { atomicJSON, readShared } = require('./sync-storage');
 const { createSyncService } = require('./sync-service');
-const { autoResolve, describeConflicts, resolveConflicts } = require('./sync-conflicts');
-const { preserveMaterial, archiveGitChanges } = require('./material-history');
-const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
-const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
+const { preserveMaterial } = require('./material-history');
 const { findSameFile, freePath } = require('./material-dedupe');
 const lmsRemember = require('./lms-remember');
 const { setupUpdater } = require('./updater');
@@ -365,7 +361,7 @@ async function downloadMaterial(url, course, title, opts) {
   const result = (p, extra) => ({ url, ok: true, path: p, filename: path.basename(p), sig, changed: false, ...extra });
   try {
     const existed = fs.existsSync(dest);
-    if (!existed && isAssign && !target.custom && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
+    if (!existed && isAssign && !target.custom && opts.mode === 'recheck' && opts.dest) {   // 내가 지운 제출 파일은 다시 받지 않음
       return result(dest, { existed: true, deleted: true });
     }
     const oldSig = existed ? sha1(fs.readFileSync(dest)) : null;
@@ -477,117 +473,17 @@ function migrateFolders() {
   } catch (e) { console.error('migrateFolders fail', e); }
 }
 
-// ---------- GitHub 동기화 (파일: 수업자료/보조자료/과제) ----------
-function git(args, cwd) {
-  // credential.helper='' → Windows Git Credential Manager를 꺼서 로그인 팝업 방지(토큰은 원격 URL에 있음).
-  // GIT_TERMINAL_PROMPT/GCM 환경변수 → 어떤 대화형 자격증명 프롬프트도 뜨지 않게.
-  const full = ['-c', 'credential.helper=', ...args];
-  const env = Object.assign({}, process.env, {
-    GIT_TERMINAL_PROMPT: '0',
-    GCM_INTERACTIVE: 'never',
-    GIT_ASKPASS: '',
-    SSH_ASKPASS: '',
-  });
-  return new Promise((resolve) => {
-    execFile('git', full, { cwd, windowsHide: true, timeout: 120000, env, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
-      resolve({ ok: !err, out: (stdout || '').toString(), err: (stderr || (err && err.message) || '').toString() });
-    });
-  });
-}
-const gitRemote = (repo, token) => `https://x-access-token:${token}@github.com/${repo}.git`;
-const redact = (s, token) => (token ? String(s || '').split(token).join('***') : String(s || ''));
-async function ensureRepo(dir, repo, token) {
-  fs.mkdirSync(dir, { recursive: true });
-  const checked = async (args) => {
-    const r = await git(args, dir);
-    if (!r.ok) throw new Error(redact(r.err || r.out || 'Git 실행 실패', token));
-  };
-  if (!fs.existsSync(path.join(dir, '.git'))) {
-    await checked(['init']);
-    await checked(['symbolic-ref', 'HEAD', 'refs/heads/main']);
-  }
-  await checked(['config', 'user.email', 'studeck@local']);
-  await checked(['config', 'user.name', 'Studeck']);
-  const ignorePath = path.join(dir, '.gitignore');
-  const old = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, 'utf8') : '';
-  const missing = ['.studeck-migrated', '.studeck/backups/', '.DS_Store', '/삭제한 파일/', '/*/수업자료/', '/*/수업자료/'.normalize('NFD')].filter(x => !old.split(/\r?\n/).includes(x));
-  if (missing.length) fs.appendFileSync(ignorePath, (old && !old.endsWith('\n') ? '\n' : '') + missing.join('\n') + '\n');
-  await checked(['rm', '-r', '--cached', '--ignore-unmatch', '--', '삭제한 파일']);
-  await untrackLocalMaterials(dir);
-  const remote = await git(['remote', 'get-url', 'origin'], dir);
-  await checked(['remote', remote.ok ? 'set-url' : 'add', 'origin', gitRemote(repo, token)]);
-}
-let syncQueue = Promise.resolve();
-function gitSync(dir, repo, token) {
-  const run = async () => {
-    await ensureRepo(dir, repo, token);
-    const fail = r => ({ ok: false, error: redact([r.err, r.out].filter(Boolean).join('\n') || 'Git 실행 실패', token).slice(-1000) });
-    const conflicts = await git(['diff', '--name-only', '--diff-filter=U'], dir);
-    if (!conflicts.ok) return fail(conflicts);
-    if (conflicts.out.trim()) {
-      await autoResolve(dir);
-      if ((await git(['ls-files', '-u'], dir)).out.trim()) return { ok: false, error: '파일 충돌을 먼저 해결해야 합니다. 자동 업로드를 중단했습니다.' };
-    }
-    readShared(path.join(dir, '.studeck/config.json'));
-    await archiveGitChanges(dir);
-    const add = await git(['add', '-A'], dir);
-    if (!add.ok) return fail(add);
-    const diff = await git(['diff', '--cached', '--quiet'], dir);
-    if (!diff.ok) {
-      const commit = await git(['commit', '-m', 'studeck sync ' + new Date().toISOString().slice(0, 19)], dir);
-      if (!commit.ok) return fail(commit);
-    }
-    const remote = await git(['ls-remote', '--heads', 'origin', 'main'], dir);
-    if (!remote.ok) return fail(remote);
-    if (remote.out.trim()) {
-      // Explicit merge policy is required by modern Git for independently initialized devices.
-      const fetched = await git(['fetch', 'origin', 'main'], dir);
-      if (!fetched.ok) return fail(fetched);
-      const incoming = await filterIncomingMaterials(dir);
-      await archiveGitChanges(dir, true, incoming);
-      const stagedHistory = await git(['add', '-A'], dir);
-      if (!stagedHistory.ok) return fail(stagedHistory);
-      if (!(await git(['diff', '--cached', '--quiet'], dir)).ok) {
-        const historyCommit = await git(['commit', '-m', 'Preserve previous materials'], dir);
-        if (!historyCommit.ok) return fail(historyCommit);
-      }
-      await preserveIncomingDeletions(dir, incoming);
-      const pull = await git(['merge', '--allow-unrelated-histories', incoming, '--no-edit'], dir);
-      if (!pull.ok) {
-        await autoResolve(dir);
-        if ((await git(['ls-files', '-u'], dir)).out.trim()) return fail(pull);
-        // A merge can fail without creating conflict entries (e.g. a locked file).
-        const check = await git(['merge-base', '--is-ancestor', incoming, 'HEAD'], dir);
-        if (!check.ok) return fail(pull);
-      }
-    }
-    readShared(path.join(dir, '.studeck/config.json'));
-    const push = await git(['push', '-u', 'origin', 'main'], dir);
-    return push.ok ? { ok: true } : fail(push);
-  };
-  const result = syncQueue.then(run);
-  syncQueue = result.catch(() => {});
-  return result;
-}
+// 예전 GitHub 동기화(v1.3 이하)가 Studeck 폴더에 남긴 공유 데이터. 동기화 코드는 지웠고, 그 시절 기기를 처음 켤 때 기준값으로만 읽는다
 const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json');
 const notifySync = status => { if (win && !win.isDestroyed()) win.webContents.send('sync-status', status); };
 // 서버 모드: 같은 병합 엔진에 전송부만 서버로 바꾼다(보조자료 파일은 fileSync가 따로 맞춤).
 const serverStore = SERVER_MODE ? createServerStore({ file: path.join(app.getPath('userData'), 'server-mirror.json') }) : null;
 // 서버 모드: 보조자료 파일을 서버 개인 공간과 맞춘다(서버에서 지워진 파일은 기기 휴지통으로).
 const fileSync = SERVER_MODE ? createFileSync({ root: STUDECK_DIR, stateFile: path.join(app.getPath('userData'), 'file-sync.json'), trash: p => shell.trashItem(p) }) : null;
-const syncService = createSyncService(SERVER_MODE ? {
+const syncService = createSyncService({
   load: loadConfig, save: saveConfig,
   read: serverStore.read, write: serverStore.write, transport: serverStore.transport,
   conflicts: async () => null, resolveFiles: async () => {}, dirty: async () => false, autoResolve: 'local',
-  notify: notifySync,
-} : {
-  load: loadConfig, save: saveConfig,
-  read: () => readShared(SYNC_DATA_PATH()),
-  write: value => atomicJSON(SYNC_DATA_PATH(), value, path.join(STUDECK_DIR(), '.studeck/backups/writes')),
-  transport: s => gitSync(STUDECK_DIR(), s.repo, s.token),
-  conflicts: () => describeConflicts(STUDECK_DIR()),
-  resolveFiles: choice => resolveConflicts(STUDECK_DIR(), choice),
-  dirty: async () => { const r = await git(['status', '--porcelain'], STUDECK_DIR()); if (!r.ok) throw new Error('파일 상태 확인 실패'); return !!r.out.trim(); },
   notify: notifySync,
 });
 // ---------- 실험실 서버 계정(가입·로그인·로그아웃). 비밀번호는 저장하지 않고 기기 토큰만 둔다. ----------
@@ -761,19 +657,12 @@ ipcMain.handle('server-logout', () => serverTry(async () => {
   saveConfig(c);
   return { ok: true };
 }));
-ipcMain.handle('git-connect', async (_e, { repo, token } = {}) => {
-  if (SERVER_MODE) return { ok: false, error: '이 버전은 GitHub 동기화 대신 Studeck 서버로 동기화합니다.' };
-  if (syncService.isRunning()) return { ok: false, error: '진행 중인 동기화가 끝난 뒤 연결을 바꿔 주세요.' };
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || '') || !token) return { ok: false, error: '저장소(owner/repo)와 토큰을 확인해 주세요.' };
-  const c = loadConfig(); c.sync = { repo, token, enabled: true }; saveConfig(c);
-  return { ok: true };
-});
-// 실험실은 서버(데이터 → 파일 순서), 운영은 GitHub
+// 서버 동기화(데이터 → 보조자료 파일 순서). IPC 이름(git-sync)은 예전 그대로 둔다
 ipcMain.handle('git-sync', async (_e, resolution) => {
   // 처음 서버와 맞추는 기기: 서버가 비어 있으면 이 기기 데이터를 올리고(첫 기기),
   // 이미 데이터가 있으면 서버 데이터로 시작한다(다른 기기의 옛 데이터로 덮어쓰지 않음).
   const pre = loadConfig().sync || {};
-  if (SERVER_MODE && pre.enabled && pre.token && serverStore.isFresh(pre) && !syncService.isRunning()) {
+  if (pre.enabled && pre.token && serverStore.isFresh(pre) && !syncService.isRunning()) {
     const first = await serverStore.transport(pre);
     if (!first.ok) return { ok: false, error: first.error };
     if (Object.keys(serverStore.read()).length) {
@@ -782,7 +671,7 @@ ipcMain.handle('git-sync', async (_e, resolution) => {
     }
   }
   const result = await syncService.run(resolution);
-  if (!SERVER_MODE || !result?.ok) return result;
+  if (!result?.ok) return result;
   const conn = loadConfig().sync || {};
   if (!conn.enabled || !conn.token) return result;
   const files = await fileSync.run(conn);
@@ -843,10 +732,8 @@ ipcMain.handle('files-restore', (_e, p) => serverTry(async () => ({ ok: true, ..
 ipcMain.handle('files-revert', (_e, { path: p, vid } = {}) => serverTry(async () => ({ ok: true, ...(await fileApi('POST', '/files/revert', { path: p, vid })) })));
 ipcMain.handle('git-sync-status', () => {
   const s = (loadConfig().sync) || {};
-  if (SERVER_MODE) return { ...syncService.status(), enabled: !!s.enabled, mode: 'server', server: PROFILE.serverUrl, username: s.username || '', displayName: s.displayName || '', role: s.role || 'member', hasToken: !!s.token };
-  return { ...syncService.status(), enabled: !!s.enabled, repo: s.repo || '', hasToken: !!s.token, gitDir: fs.existsSync(path.join(STUDECK_DIR(), '.git')) };
+  return { ...syncService.status(), enabled: !!s.enabled, mode: 'server', server: PROFILE.serverUrl, username: s.username || '', displayName: s.displayName || '', role: s.role || 'member', hasToken: !!s.token };
 });
-ipcMain.handle('git-disconnect', () => { if (syncService.isRunning()) return { ok: false, error: '동기화 중입니다.' }; const c = loadConfig(); c.sync = { enabled: false, repo: c.sync?.repo || '', token: '' }; saveConfig(c); return { ok: true }; });
 
 // 주기적 자동 백업: config.json을 7일마다 backups/에 복사, 최근 5개 유지
 function autoBackup() {

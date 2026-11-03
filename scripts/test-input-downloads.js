@@ -21,7 +21,7 @@ assert.equal(names.safeName('팀.pdf'.normalize('NFD')), '팀.pdf');
 let body = Buffer.from('first submission');
 const hash = b => crypto.createHash('sha1').update(b).digest('hex');
 const { preserveMaterial } = require('../material-history');
-const context = { wasDeletedFile: require('../deleted-files').wasDeletedFile, preserveMaterial, ...require('../material-dedupe'), fs, path, STUDECK_DIR: () => root, materialTarget: (course, kind) => require('../material-folders').resolveTarget(cfg, course, kind, root, s => s), MATERIAL_BACKUP_DIR: () => path.join(root, '.userData-backups'), safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
+const context = { preserveMaterial, ...require('../material-dedupe'), fs, path, STUDECK_DIR: () => root, materialTarget: (course, kind) => require('../material-folders').resolveTarget(cfg, course, kind, root, s => s), MATERIAL_BACKUP_DIR: () => path.join(root, '.userData-backups'), safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('), source.indexOf("ipcMain.handle('lms-download'")), context);
 (async () => {

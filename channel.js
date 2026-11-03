@@ -31,8 +31,7 @@ const PROFILE = IS_LAB ? {
   appUserModelId: 'cbnu.study.widget',
   icon: 'icon.ico',
   serverUrl: process.env.STUDECK_SERVER_URL || 'https://cosmicsevertest.tailcb1558.ts.net', // 운영: Tailscale Funnel 공개 주소(HTTPS)
-  // v1.4.0부터 운영도 서버 동기화(학번 로그인). false면 예전 GitHub 동기화. STUDECK_SERVER_SYNC=0으로 끌 수 있음.
-  serverSync: process.env.STUDECK_SERVER_SYNC !== '0',
+  serverSync: true,   // v1.4.0부터 서버 동기화(학번 로그인). 예전 GitHub 동기화는 v1.5에서 지움
   githubClientId: process.env.STUDECK_GITHUB_CLIENT_ID || GITHUB_CLIENT_ID,
 };
 
