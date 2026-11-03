@@ -812,7 +812,9 @@ ipcMain.handle('files-tree', () => serverTry(async () => {
 // 내 자료에서 파일 열기·폴더에서 보기. Studeck 폴더나 사용자가 정한 자료 위치 안의 파일만, 실행 파일은 열지 않는다
 function allowedFile(p) {
   const c = loadConfig();
-  const roots = [STUDECK_DIR(), c.materialsRoot, ...Object.values(c.materialsFolders || {})].filter(Boolean).map((r) => path.resolve(r));
+  // 과목별 위치가 상대 경로면 전체 위치 기준(material-folders.js와 같은 규칙)
+  const roots = [STUDECK_DIR(), c.materialsRoot, ...Object.values(c.materialsFolders || {}).map((f) => (f && !path.isAbsolute(f) && c.materialsRoot ? path.join(c.materialsRoot, f) : f))]
+    .filter((r) => r && path.isAbsolute(r)).map((r) => path.resolve(r));
   const abs = path.resolve(String(p || ''));
   const inside = roots.some((r) => { const rel = path.relative(r, abs); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); });
   if (!inside || /\.(exe|bat|cmd|com|lnk|vbs|ps1|sh|app|scr|msi|jar|js)$/i.test(abs)) return null;
