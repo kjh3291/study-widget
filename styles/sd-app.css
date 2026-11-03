@@ -274,3 +274,7 @@ header button .sd-ico { width: 16px; height: 16px; }
 .lms-banner .sd-grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .lms-banner strong { font-size: 13px; }
 .lms-banner .sd-btn { flex: none; pointer-events: none; }
+/* 새 버전 업그레이드 띠(LMS 로그인 띠와 같은 모양, 강조색) */
+.update-banner { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface, transparent)); }
+.update-banner > .sd-ico { color: var(--accent); }
+.update-banner[aria-busy="true"] { cursor: progress; }

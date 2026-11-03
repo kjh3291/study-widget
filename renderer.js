@@ -456,7 +456,7 @@ function askOfflineExit(message) {
     ov.querySelector('#exit-stay').focus();
   });
 }
-async function requestQuit() {
+async function requestQuit(after) {
   if (_quitting) return;
   _quitting = true;
   try {
@@ -468,7 +468,7 @@ async function requestQuit() {
       if ((!result?.ok || result.pending || epoch !== _editEpoch) && !await askOfflineExit(result?.error || '아직 업로드하지 않은 변경이 있습니다.')) return;
     }
     await flushSaves();
-    window.api.close();
+    if (typeof after === 'function') await after(); else window.api.close();
   } catch (error) { showToast('기기에 저장하지 못해 종료를 멈췄습니다: ' + error.message); }
   finally { _quitting = false; }
 }
@@ -1659,7 +1659,34 @@ $('btn-close').onclick = requestQuit;
 $('sync-now').onclick = () => state.syncEnabled ? initSync() : openSettings();
 $('sync-resolve').onclick = openSyncConflicts;
 window.api.onSyncStatus(showSyncStatus);
-window.api.onRequestQuit(requestQuit);
+window.api.onRequestQuit(() => requestQuit());
+// 새 버전 업그레이드 띠(updater.js): 있으면 오늘 화면 위에. 누르면 받기 → 다 받으면 저장·동기화 뒤 설치하고 다시 시작
+function showUpdate(st) {
+  const b = $('update-banner'); if (!b || !st) return;
+  const show = ['available', 'downloading', 'ready', 'installing'].includes(st.state);
+  b.hidden = !show; if (!show) return;
+  const v = st.version ? `v${st.version}` : '새 버전';
+  const manual = st.mode === 'manual';
+  b.setAttribute('aria-busy', String(st.state === 'downloading' || st.state === 'installing'));
+  $('update-title').textContent = st.state === 'downloading' ? `${v} 받는 중… ${st.percent || 0}%` : st.state === 'ready' || st.state === 'installing' ? `${v} 설치 중… 곧 다시 시작해요` : `새 버전 ${v}이 있어요`;
+  $('update-desc').textContent = st.error || (manual ? '눌러서 내려받기 페이지를 열어요. 받은 파일로 설치하면 돼요.' : st.state === 'available' ? `지금 v${st.current}. 누르면 받아서 설치하고 다시 시작해요(할 일·설정은 그대로).` : '저장하고 동기화한 뒤 설치해요.');
+  $('update-btn').textContent = manual ? '받으러 가기' : st.state === 'available' ? '업그레이드' : st.state === 'downloading' ? `${st.percent || 0}%` : '설치 중';
+  // 다 받았으면 저장·동기화를 마친 뒤 설치(한 번만)
+  if (st.state === 'ready' && !showUpdate.installing && showUpdate.requested) {
+    showUpdate.installing = true;
+    requestQuit(() => window.api.updateInstall()).finally(() => { showUpdate.installing = false; });
+  }
+}
+if (window.api.onUpdateStatus) {
+  window.api.onUpdateStatus(showUpdate);
+  window.api.updateStatus().then(showUpdate).catch(() => {});
+  $('update-banner').onclick = async () => {
+    showUpdate.requested = true;
+    const r = await window.api.updateStart();
+    if (r && r.ready) window.api.updateStatus().then(showUpdate);
+    else if (r && !r.ok && r.error) showToast(r.error);
+  };
+}
 // 미니 목록도 아래 공용 할 일 핸들러를 사용합니다.
 // 미니 모드에서도 우클릭 메뉴/더블클릭 편집 동작하게
 $('mini-list').addEventListener('contextmenu', (e) => {

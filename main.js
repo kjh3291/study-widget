@@ -14,6 +14,7 @@ const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files')
 const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
 const { findSameFile, freePath } = require('./material-dedupe');
 const lmsRemember = require('./lms-remember');
+const { setupUpdater } = require('./updater');
 const { resolveTarget } = require('./material-folders');
 const FileTree = require('./file-tree');
 const { createServerStore, serverCall } = require('./server-sync');
@@ -902,6 +903,8 @@ if (!gotLock) {
         saveConfig(now);
       }
       createWindow();
+      // 새 버전 업그레이드(운영 설치판만, updater.js)
+      setupUpdater({ app, shell, ipcMain, isLab: IS_LAB, send: (st) => { if (win && !win.isDestroyed()) win.webContents.send('update-status', st); }, beforeInstall: () => { allowQuit = true; } });
     }
     catch (error) { dialog.showErrorBox('설정 파일 확인 필요', error.message + '\n기존 설정 파일은 보존했습니다.'); allowQuit = true; app.quit(); }
   });
