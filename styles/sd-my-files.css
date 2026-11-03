@@ -1,0 +1,92 @@
+
+.sd-files-scope{font:14px/1.5 system-ui,'Malgun Gothic',sans-serif;color:light-dark(#242832,#edf0f5);padding:14px;border-radius:12px}
+.sd-files-scope *{box-sizing:border-box}
+.sd-files-scope .sd-preview-tools{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px;padding-right:80px}
+.sd-files-scope select{font:inherit;padding:6px;background:light-dark(#fff,#232631);color:inherit;border:1px solid light-dark(#ccd0da,#4a5060);border-radius:6px}
+.sd-files-scope .sd-preview-tools>span{font-size:12px}
+.sd-files-scope .sd-compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;max-width:920px;margin:auto}
+.sd-files-scope .sd-platform{font-size:13px;font-weight:600;margin:0 0 8px}
+.sd-files-scope .sd-window{--sd-bg:var(--cosmic-files-background,light-dark(#fafbfc,#191c24));--sd-panel:var(--cosmic-files-surface,light-dark(#fff,#20242e));--sd-ink:var(--cosmic-files-text,light-dark(#262c38,#edf0f5));--sd-muted:var(--cosmic-files-text-muted,light-dark(#606a79,#adb7c8));--sd-line:var(--cosmic-files-border,light-dark(#dce0e8,#373e4c));--sd-soft:var(--cosmic-files-surface-subtle,light-dark(#eef0f5,#2b303e));background:var(--sd-bg);color:var(--sd-ink);border:1px solid var(--sd-line);border-radius:16px;overflow:hidden;max-width:480px;margin:auto}
+.sd-files-scope button{font:inherit;color:inherit;cursor:pointer}
+.sd-files-scope .sd-header{display:flex;align-items:center;gap:20px;padding:12px 16px;border-bottom:1px solid var(--sd-line);background:var(--sd-panel)}
+.sd-files-scope .sd-back{border:0;background:none;padding:8px 0;color:var(--sd-muted)}
+.sd-files-scope h2{font-size:17px;margin:0;font-weight:650}
+.sd-files-scope .sd-sheet{background:var(--sd-panel);min-height:655px;padding:18px 16px 24px}
+.sd-files-scope .sd-usage-label{display:flex;justify-content:space-between;gap:8px;font-weight:600}
+.sd-files-scope .sd-usage-label small{font-size:12px;font-weight:400;color:var(--sd-muted)}
+.sd-files-scope .sd-progress{height:5px;border-radius:4px;background:var(--sd-soft);margin:10px 0}
+.sd-files-scope .sd-progress span{display:block;width:7.1%;height:100%;background:light-dark(#686e91,#a0a8d3);border-radius:4px}
+.sd-files-scope .sd-note{font-size:12px;color:var(--sd-muted);margin:0;word-break:keep-all}
+.sd-files-scope .sd-breadcrumb{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:24px;font-size:13px}
+.sd-files-scope .sd-breadcrumb button{border:0;background:none;padding:8px 0;text-decoration:underline;text-underline-offset:4px}
+.sd-files-scope .sd-breadcrumb span{color:var(--sd-muted)}
+.sd-files-scope .sd-list-heading{display:flex;justify-content:space-between;align-items:center;margin:12px 0 4px;color:var(--sd-muted);font-size:12px}
+.sd-files-scope .sd-file-row{padding:15px 0;border-bottom:1px solid var(--sd-line)}
+.sd-files-scope .sd-file-title{display:flex;gap:10px;align-items:center;min-width:0}
+.sd-files-scope .sd-file-type{background:var(--sd-soft);color:var(--sd-muted);font-size:10px;min-width:32px;text-align:center;border-radius:5px;padding:8px 3px}
+.sd-files-scope .sd-filename{font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.sd-files-scope .sd-meta{color:var(--sd-muted);font-size:12px;margin-top:7px}
+.sd-files-scope .sd-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;font-size:12px}
+.sd-files-scope .sd-chip{border-radius:5px;padding:3px 7px;font-size:11px;font-weight:600;background:var(--sd-soft);color:var(--sd-muted)}
+.sd-files-scope .sd-chip.orange{background:light-dark(#fff0dc,#49351e);color:light-dark(#8f4900,#ffbd70)}
+.sd-files-scope .sd-chip.red{background:light-dark(#ffebeb,#49282d);color:light-dark(#ad2929,#ffa0a6)}
+.sd-files-scope .sd-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;align-items:center}
+.sd-files-scope .sd-actions button,.sd-files-scope .sd-retry{border:1px solid var(--sd-line);background:var(--sd-panel);border-radius:6px;padding:6px 10px;font-size:12px;min-height:32px}
+.sd-files-scope .sd-actions button:first-child{background:var(--sd-soft)}
+.sd-files-scope details{font-size:12px;color:var(--sd-muted)}
+.sd-files-scope summary{cursor:pointer;padding:7px 0}
+.sd-files-scope .sd-menu-row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;text-align:left;border:0;border-bottom:1px solid var(--sd-line);background:transparent;padding:18px 0}
+.sd-files-scope .sd-folder-info strong{display:block;font-size:14px;font-weight:600}
+.sd-files-scope .sd-folder-info small{display:block;color:var(--sd-muted);font-size:12px;margin-top:3px}
+.sd-files-scope .sd-folder-end{display:flex;align-items:center;gap:7px}
+.sd-files-scope .sd-banner{background:var(--sd-soft);border-radius:7px;padding:12px;margin:14px 0;font-size:12px}
+.sd-files-scope .sd-banner strong{display:block;margin-bottom:4px}
+.sd-files-scope .sd-retry{margin-top:8px}
+.sd-files-scope .sd-empty{padding:70px 8px;text-align:center;color:var(--sd-muted)}
+.sd-files-scope .sd-empty strong{display:block;color:var(--sd-ink);margin:12px 0 6px}
+.sd-files-scope .sd-skeleton{height:95px;background:var(--sd-soft);border-radius:7px;margin-top:12px}
+.sd-files-scope .sd-tabs{display:flex;justify-content:space-around;border-top:1px solid var(--sd-line);padding:15px 4px;color:var(--sd-muted);font-size:12px;background:var(--sd-bg)}
+.sd-files-scope .sd-feedback{font-size:12px;color:var(--sd-muted);margin-top:12px}
+@media(max-width:760px){.sd-files-scope .sd-compare{grid-template-columns:1fr}.sd-files-scope{padding:8px}}
+@media(pointer:coarse){.sd-files-scope button,.sd-files-scope summary{min-height:44px}}
+
+.sd-files-scope{color-scheme:light dark}
+.sd-files-scope .sd-window[data-theme="light"]{color-scheme:light}
+.sd-files-scope .sd-window[data-theme="dark"]{color-scheme:dark}
+.sd-files-scope .sd-file-list{list-style:none;padding:0;margin:0}
+.sd-files-scope .sd-tabs button{border:0;background:transparent;padding:8px 4px;font:inherit;color:inherit;min-height:44px}
+.sd-files-scope button:focus-visible,.sd-files-scope summary:focus-visible,.sd-files-scope select:focus-visible{outline:2px solid var(--cosmic-files-focus,light-dark(#555cb0,#b9bfff));outline-offset:3px}
+.sd-files-scope .sd-preview-tools{padding-right:0}
+.sd-files-scope .sd-progress span{background:var(--cosmic-files-progress,light-dark(#686e91,#a0a8d3))}
+.sd-files-scope .sd-chip.orange{background:var(--cosmic-files-warning-bg,light-dark(#fff0dc,#49351e));color:var(--cosmic-files-warning-text,light-dark(#8f4900,#ffbd70))}
+.sd-files-scope .sd-chip.red{background:var(--cosmic-files-danger-bg,light-dark(#ffebeb,#49282d));color:var(--cosmic-files-danger-text,light-dark(#ad2929,#ffa0a6))}
+.sd-files-scope .sd-window{display:flex;flex-direction:column}
+.sd-files-scope .sd-sheet{flex:1}
+.sd-files-scope .sd-filename:focus-within{white-space:normal;overflow-wrap:anywhere}
+
+/* ---- Studeck 앱 연결(디자인 원본 위에 덧붙임) ----
+   COSMIC 토큰 연결: 앱 테마(다크·라이트·CBNU)를 그대로 따른다 */
+.sd-files-scope{
+  --cosmic-files-background:var(--bg);--cosmic-files-surface:var(--bg);--cosmic-files-text:var(--text);--cosmic-files-text-muted:var(--muted);
+  --cosmic-files-border:var(--line);--cosmic-files-surface-subtle:var(--surface2);--cosmic-files-progress:var(--accent);--cosmic-files-focus:var(--accent);
+  --cosmic-files-warning-bg:color-mix(in srgb,var(--warn) 16%,transparent);--cosmic-files-warning-text:var(--warn);
+  --cosmic-files-danger-bg:var(--danger-soft);--cosmic-files-danger-text:var(--danger);
+  font-family:inherit;color:var(--text);padding:0}
+/* 설정 하위 화면(UI.panel) 안에서는 뒤로 버튼·제목·하단 탭을 앱이 이미 그리므로 숨긴다 */
+.sd-panel .sd-files-scope .sd-header,.sd-panel .sd-files-scope .sd-tabs{display:none}
+.sd-panel .sd-files-scope .sd-window{border:0;border-radius:0;max-width:none;background:transparent}
+.sd-panel .sd-files-scope .sd-sheet{min-height:0;padding:4px 0 24px;background:transparent}
+.sd-panel .sd-files-scope .sd-breadcrumb{margin-top:16px}
+.sd-files-scope .sd-file-sub{color:var(--muted);font-weight:400}
+/* 앱 컴포넌트와 이름이 겹치는 클래스(sd-sheet·sd-file-row·sd-chip·sd-empty·sd-skeleton·sd-menu-row) 되돌리기 — 이 화면 안에서만 */
+.sd-files-scope .sd-sheet{width:auto;max-height:none;overflow:visible;border:0;border-radius:0;box-shadow:none}
+.sd-files-scope .sd-sheet::before{content:none}
+.sd-files-scope .sd-file-row{display:block;gap:0}
+.sd-files-scope .sd-chip{flex:none;min-height:0;border:0;border-radius:5px;padding:3px 7px;font-size:11px;font-weight:700;cursor:default;white-space:nowrap}
+.sd-files-scope .sd-empty{display:block;min-height:0}
+.sd-files-scope .sd-skeleton{height:95px}
+.sd-files-scope .sd-menu-row{color:var(--text);min-height:0;border-radius:0}
+.sd-files-scope .sd-menu-row:hover{background:var(--surface2)}
+.sd-files-scope .sd-menu-row>.sd-ico:first-child{width:20px;height:20px;color:var(--muted)}
+.sd-files-scope .sd-actions{max-width:none}
+.sd-files-scope .sd-actions button:first-child{border-color:transparent;background:var(--surface2)}

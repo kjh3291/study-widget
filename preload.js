@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('api', {
   filesOverview: () => ipcRenderer.invoke('files-overview'),
   filesTree: () => ipcRenderer.invoke('files-tree'),
   openMyFile: (opts) => ipcRenderer.invoke('open-my-file', opts),
+  myFilesLocal: (items) => ipcRenderer.invoke('my-files-local', items),
   filesVersions: (p) => ipcRenderer.invoke('files-versions', p),
   filesRestore: (p) => ipcRenderer.invoke('files-restore', p),
   filesRevert: (p, vid) => ipcRenderer.invoke('files-revert', { path: p, vid }),

@@ -820,6 +820,15 @@ function allowedFile(p) {
   if (!inside || /\.(exe|bat|cmd|com|lnk|vbs|ps1|sh|app|scr|msi|jar|js)$/i.test(abs)) return null;
   return abs;
 }
+// 내 자료: 이 기기에 있는지·크기·수정 시각(Studeck 폴더·자료 위치 안의 파일만). items: [{ id, rel?, abs? }]
+ipcMain.handle('my-files-local', (_e, items = []) => {
+  const out = {};
+  for (const it of (Array.isArray(items) ? items : []).slice(0, 5000)) {
+    const target = allowedFile(it.rel ? path.join(STUDECK_DIR(), ...String(it.rel).split('/')) : it.abs);
+    try { const st = target && fs.statSync(target); out[it.id] = st && st.isFile() ? { size: st.size, mtime: Math.trunc(st.mtimeMs) } : null; } catch (e) { out[it.id] = null; }
+  }
+  return out;
+});
 ipcMain.handle('open-my-file', async (_e, { rel, abs, reveal } = {}) => {
   const target = allowedFile(rel ? path.join(STUDECK_DIR(), ...String(rel).split('/')) : abs);
   if (!target) return { ok: false, error: '열 수 없는 파일이에요.' };

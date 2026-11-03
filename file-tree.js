@@ -118,6 +118,39 @@
     return out;
   }
 
-  const api = { termNotices, serverEntries, lmsEntries, expiryChip, buildTree, findFolder, nextExpiry, CAT_ORDER };
+  // 날짜 → 학기 이름(3~8월 1학기, 9~12월 2학기, 1~2월은 전년도 2학기) — 서버가 학기를 알려 주지 않는 이 기기 파일용
+  function semesterOf(ms) {
+    if (!ms) return '';
+    const d = new Date(ms), y = d.getFullYear(), m = d.getMonth() + 1;
+    return m >= 3 && m <= 8 ? `${y}년 1학기` : m >= 9 ? `${y}년 2학기` : `${y - 1}년 2학기`;
+  }
+  // GPT 디자인 컴포넌트(my-files.js, SdMyFiles.mount)가 받는 데이터로 바꾼다.
+  //   entries: serverEntries + lmsEntries, local: { [항목 id]: { size, mtime } | null }(이 기기에 있는지·크기), usage: 서버 사용량
+  const CAT_LABEL = { 보조자료: '보조자료', 수업자료: '수업자료', 과제: '과제(내 제출물)' };
+  const fileId = e => e.source === 'server' ? 'srv:' + e.path : e.source === 'local' ? 'loc:' + e.localPath : 'lms:' + e.url;
+  function toDesignData(entries, { local = {}, usage = null, now = Date.now() } = {}) {
+    const pad = n => String(n).padStart(2, '0');
+    const ymd = ms => { if (!ms) return ''; const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+    const courses = [...new Set(entries.map(e => e.course))].sort((a, b) => a.localeCompare(b, 'ko')).map(name => ({ id: name, name }));
+    const files = entries.map(e => {
+      const id = fileId(e), L = local[id];
+      const sub = e.source === 'server' ? e.path.split('/').slice(2).join('/') : e.name;   // 보조자료 안 하위 폴더는 '1단원/풀이.txt'처럼
+      const ext = (e.name.match(/\.([a-z0-9]{1,5})$/i) || [])[1];
+      const modified = e.source === 'server' ? e.updatedAt : (L && L.mtime) || e.updatedAt;
+      return {
+        id, course: e.course, category: CAT_LABEL[e.cat] || e.cat, name: sub, type: ext ? ext.toUpperCase() : 'FILE',
+        bytes: e.size || (L && L.size) || 0,
+        semester: e.term || semesterOf(modified), modified: ymd(modified) || '-',
+        local: e.source === 'lms' ? false : L === undefined ? true : !!L,   // 확인 안 한 것(undefined)은 받아 둔 것으로, null은 이 기기에 없음
+        server: e.source === 'server' && !e.expired,
+        lms: e.source !== 'server', url: e.url || '',
+        cleanupDays: e.source === 'server' && !e.expired && e.expiresAt ? Math.max(0, Math.ceil((e.expiresAt - now) / DAY)) : null,
+        rel: e.source === 'server' ? e.path : '', abs: e.localPath || '',
+      };
+    });
+    return { usage: usage ? usage.used : 0, quota: usage ? usage.limit : 0, courses, files };
+  }
+
+  const api = { toDesignData, semesterOf, fileId, termNotices, serverEntries, lmsEntries, expiryChip, buildTree, findFolder, nextExpiry, CAT_ORDER };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FileTree = api;
 })(typeof window !== 'undefined' ? window : globalThis);
