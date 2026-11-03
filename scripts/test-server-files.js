@@ -1,10 +1,11 @@
 // 실험실 서버 파일 저장소 점검: 업로드·받기·버전·늦은 도착·휴지통·복구·되돌리기·크기 제한·격리.
 // 사용: node scripts/test-server-files.js [서버주소=http://100.96.247.43:8444]  (운영 주소 금지)
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { serverCall } = require('../server-sync');
 
-const URL = process.argv[2] || 'http://100.96.247.43:8444';
+const URL = process.argv[2] || LAB.URL;
 if (/:8443\b|ts\.net/.test(URL)) { console.error('운영 서버에는 실행하지 않습니다.'); process.exit(1); }
 const id = () => '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0');
 const pw = crypto.randomBytes(12).toString('base64url');

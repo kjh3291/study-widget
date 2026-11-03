@@ -1,5 +1,6 @@
 // 실험실 앱의 커뮤니티 연결층 점검(실제 main+preload+renderer, 임시 프로필):
 // 로그인 → 실시간 연결 → 다른 회원 메시지 수신 → 앱에서 메시지·사진 보내기 → 사진 받아 보기 → 재연결.
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const { app } = require('electron');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), crypto = require('node:crypto');
 process.env.STUDECK_CHANNEL = 'lab'; process.env.STUDECK_KEEP_USERDATA = '1';
@@ -8,7 +9,7 @@ fs.mkdirSync(path.join(temp, 'Desktop'));
 app.setPath('userData', temp); app.setPath('desktop', path.join(temp, 'Desktop'));
 fs.writeFileSync(path.join(temp, 'config.json'), JSON.stringify({ lmsAuto: false, autoDownload: false, assignFix1: true, materialsFix2: true }));
 const { serverCall } = require('../server-sync');
-const URL = 'http://100.96.247.43:8444', CONSENT = '2026-10-v1';
+const URL = LAB.URL, CONSENT = '2026-10-v1';
 const id = () => '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0');
 const me = id(), other = id(), pw = crypto.randomBytes(12).toString('base64url');
 let verified = false;
@@ -46,7 +47,7 @@ app.on('browser-window-created', (_e, win) => {
     } catch (e) { console.error(e); }
     finally {
       const { execFileSync } = require('node:child_process');
-      try { execFileSync('ssh', ['kimti4', `cd ~/studeck/lab/server && docker compose exec -T db psql -U studeck -d studeck -At -c "DELETE FROM users WHERE username IN ('${me}','${other}')"`]); } catch (e) { console.error('cleanup', e.message); }
+      try { LAB.sql(`DELETE FROM users WHERE username IN ('${me}','${other}')`); } catch (e) { console.error('cleanup', e.message); }
       clearTimeout(timeout);
       if (verified) console.log('PASS: 앱 커뮤니티 연결 — 실시간 수신, 메시지·사진 보내기, 사진 받아 보기(캐시), 허용 안 된 경로 차단');
       app.exit(verified ? 0 : 1);

@@ -1,11 +1,12 @@
 // 실험실 서버 집중(열품타식) 점검: 새벽 5시 기준 공부 날짜, 실시간 공부 중 표시(공개한 사람만), 오늘·이번 주 랭킹, 스터디방 랭킹
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { serverCall } = require('../server-sync');
 
-const URL = 'http://100.96.247.43:8444', WS = 'ws://100.96.247.43:8444/ws', CONSENT = '2026-10-v1';
-const sql = q => execFileSync('ssh', ['kimti4', `cd ~/studeck/lab/server && docker compose exec -T db psql -U studeck -d studeck -At -c "${q}"`]).toString().trim();
+const URL = LAB.URL, WS = LAB.WS, CONSENT = '2026-10-v1';
+const sql = LAB.sql;
 const pw = crypto.randomBytes(12).toString('base64url');
 const PASS = m => console.log('PASS: ' + m);
 const made = [];

@@ -1,13 +1,14 @@
 // 실험실 서버 커뮤니티 점검: 공지·채팅방·메시지 실시간 전달·사진·프로필 공개 범위·권한.
 // 시험 계정(99…)을 만들고 하나를 실험실 DB에서 운영진으로 올린 뒤 끝나면 지운다. (실험실 서버 SSH 필요)
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { execFileSync } = require('node:child_process');
 const { serverCall } = require('../server-sync');
 
-const URL = 'http://100.96.247.43:8444', WS = 'ws://100.96.247.43:8444/ws', CONSENT = '2026-10-v1';
-const sql = q => execFileSync('ssh', ['kimti4', `cd ~/studeck/lab/server && docker compose exec -T db psql -U studeck -d studeck -At -c "${q}"`]).toString().trim();
+const URL = LAB.URL, WS = LAB.WS, CONSENT = '2026-10-v1';
+const sql = LAB.sql;
 const pw = crypto.randomBytes(12).toString('base64url');
 const PASS = m => console.log('PASS: ' + m);
 const made = [], msgIds = [];
@@ -100,7 +101,7 @@ function tinyPng() {
 
     // 프로필: 공부 시간·시간표는 켰을 때만 공개
     await B.send('POST', '/sync', { since: 0, changes: [
-      { kind: 'setting', id: 'focus', data: { v: { sessions: [{ date: new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10), minutes: 95, task: '자료구조' }] } }, updatedAt: Date.now() },
+      { kind: 'setting', id: 'focus', data: { v: { sessions: [{ date: new Date(Date.now() + (9 - 5) * 3600e3).toISOString().slice(0, 10), minutes: 95, task: '자료구조' }] } }, updatedAt: Date.now() },
       { kind: 'course', id: 'name:자료구조', data: { o: 0, v: { name: '자료구조', times: [{ day: 1, start: '09:00', end: '10:30' }], professor: '비공개 정보' } }, updatedAt: Date.now() }] });
     let mem = (await A.get('/profiles')).json.members.find(m => m.id === B.id);
     assert.equal(mem.study, null); assert.equal(mem.timetable, null); assert.equal(mem.online, true);
@@ -114,7 +115,7 @@ function tinyPng() {
     lb.close(); await la.waitFor(e => e.type === 'presence' && e.userId === B.id && !e.online, 'B 접속 종료');
     PASS('접속 종료 알림');
     // 서버 재시작 때 도는 정리 작업이 쓰이는 사진을 지우지 않아야 함
-    execFileSync('ssh', ['kimti4', 'cd ~/studeck/lab/server && docker compose restart api >/dev/null 2>&1']);
+    LAB.restartApi();
     let st = 0; for (let i = 0; i < 30 && st !== 200; i++) { await new Promise(r => setTimeout(r, 500)); st = await fetch(URL + '/media/' + up.json.sha, { headers: { authorization: 'Bearer ' + A.token } }).then(r => r.status).catch(() => 0); }
     assert.equal(st, 200, '정리 작업 후에도 메시지에 쓰인 사진 유지');
     PASS('서버 재시작(정리 작업) 후에도 쓰이는 사진은 남음');

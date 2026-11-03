@@ -1,11 +1,12 @@
 // 두 기기 파일 동기화 시나리오(실험실 서버). 임시 폴더 2개를 기기 A·B의 Studeck 폴더로 쓴다.
 // 사용: node scripts/test-file-sync.js [서버주소=http://100.96.247.43:8444]
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto');
 const { createFileSync } = require('../file-sync');
 const { serverCall } = require('../server-sync');
 
-const URL = process.argv[2] || 'http://100.96.247.43:8444';
+const URL = process.argv[2] || LAB.URL;
 if (/:8443\b|ts\.net/.test(URL)) { console.error('운영 서버에는 실행하지 않습니다.'); process.exit(1); }
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'studeck-file-sync-'));
 const user = '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0'), password = crypto.randomBytes(12).toString('base64url');

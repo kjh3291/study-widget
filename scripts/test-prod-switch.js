@@ -2,13 +2,14 @@
 // ① 첫 기기(윈도우): 예전 GitHub 동기화 설정·데이터·파일 → 로그인 → 서버로 전부 올라감, GitHub 토큰 삭제
 // ② 두 번째 기기(맥): 다른 옛 데이터 → 로그인 → 서버 데이터로 시작, 다른 로컬 파일은 '서버 전환 전 보관'으로
 // 사용: node scripts/test-prod-switch.js   (실험실 서버·SSH 필요)
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto');
 const { spawnSync, execFileSync } = require('node:child_process');
 const { serverCall } = require('../server-sync');
 const electron = require('electron');
 
-const URL = 'http://100.96.247.43:8444';
+const URL = LAB.URL;
 const user = '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0'), pw = crypto.randomBytes(12).toString('base64url');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'studeck-switch-'));
 const PASS = m => console.log('PASS: ' + m);
@@ -24,7 +25,7 @@ function profile(name, config, files) {
 }
 function run(p) {
   const result = path.join(p.dir, 'result.json');
-  const r = spawnSync(electron, [path.join(__dirname, 'test-prod-switch-app.cjs')], { env: { ...process.env, PROFILE_DIR: p.dir, USER: user, PW: pw, RESULT_FILE: result,
+  const r = spawnSync(electron, [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), path.join(__dirname, 'test-prod-switch-app.cjs')], { env: { ...process.env, PROFILE_DIR: p.dir, USER: user, PW: pw, RESULT_FILE: result,
     STUDECK_SERVER_URL: URL, STUDECK_CHANNEL: 'prod' }, timeout: 120000, encoding: 'utf8' });
   const out = JSON.parse(fs.readFileSync(result, 'utf8'));
   if (out.error) throw new Error(out.error + '\n' + r.stderr?.slice(-500));
@@ -52,9 +53,10 @@ function run(p) {
     assert.ok(!w.configText.includes('ghp_FAKE_OLD_TOKEN'), 'GitHub 토큰이 설정에서 지워져야 함');
     PASS('운영 앱(v1.4) 첫 실행: 예전 GitHub 설정 → 로그인 전 시작 화면, GitHub 토큰 삭제');
     assert.deepEqual(await serverTodos(), ['w1', 'w2', 'w3']);
-    assert.deepEqual(await serverFiles(), { '자료구조/보조자료/정리노트.pdf': Buffer.byteLength('윈도우 노트'), '자료구조/과제/HW1.docx': Buffer.byteLength('윈도우 과제') });
+    // 2026-11부터 서버에는 보조자료만(과제·수업자료는 LMS에서 다시 받을 수 있어 기기에만)
+    assert.deepEqual(await serverFiles(), { '자료구조/보조자료/정리노트.pdf': Buffer.byteLength('윈도우 노트') });
     assert.equal(w.pending.length, 0);
-    PASS('첫 기기(윈도우) 로그인 → 할 일·일정·시간표·보조자료·과제가 서버로(수업자료 제외)');
+    PASS('첫 기기(윈도우) 로그인 → 할 일·일정·시간표·보조자료가 서버로(수업자료·과제는 기기에만)');
 
     // ② 맥: 서로 다른 옛 데이터·파일
     const mac = profile('mac', {
@@ -67,15 +69,14 @@ function run(p) {
     assert.deepEqual(await serverTodos(), ['w1', 'w2', 'w3'], '서버는 맥 옛 데이터로 바뀌지 않음');
     PASS('두 번째 기기(맥) 로그인 → 서버 데이터로 시작(맥의 옛 할 일은 올라가지 않음)');
     const files = await serverFiles();
-    assert.equal(files['자료구조/과제/HW1.docx'], Buffer.byteLength('윈도우 과제')); assert.equal(files['오토마타/보조자료/맥전용.pdf'], undefined);
-    assert.equal(fs.readFileSync(path.join(mac.studeck, '자료구조', '과제', 'HW1.docx'), 'utf8'), '윈도우 과제');
+    assert.equal(files['자료구조/과제/HW1.docx'], undefined); assert.equal(files['오토마타/보조자료/맥전용.pdf'], undefined);
+    assert.equal(fs.readFileSync(path.join(mac.studeck, '자료구조', '과제', 'HW1.docx'), 'utf8'), '맥의 옛 과제 내용', '과제는 기기 것 그대로(서버와 맞추지 않음)');
     const kept = path.join(mac.studeck, '.studeck', '서버 전환 전 보관');
-    assert.equal(fs.readFileSync(path.join(kept, '자료구조', '과제', 'HW1.docx'), 'utf8'), '맥의 옛 과제 내용');
     assert.equal(fs.readFileSync(path.join(kept, '오토마타', '보조자료', '맥전용.pdf'), 'utf8'), '맥에만 있는 파일');
-    PASS('맥 파일: 서버 것으로 맞추고, 다르거나 맥에만 있던 파일은 기기 안 "서버 전환 전 보관"에 남김(서버엔 안 올림)');
+    PASS('맥 보조자료: 서버 것으로 맞추고, 맥에만 있던 파일은 기기 안 "서버 전환 전 보관"에 남김(서버엔 안 올림), 과제는 기기 것 그대로');
     console.log('ALL PASS');
   } finally {
-    try { execFileSync('ssh', ['kimti4', `cd ~/studeck/lab/server && docker compose exec -T db psql -U studeck -d studeck -At -c "DELETE FROM users WHERE username='${user}'"`]); } catch (e) { console.error('cleanup', e.message); }
+    try { LAB.sql(`DELETE FROM users WHERE username='${user}'`); } catch (e) { console.error('cleanup', e.message); }
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 })().catch(e => { console.error('FAIL:', e.message); process.exitCode = 1; });

@@ -20,6 +20,7 @@
 - **실험실**: `lab` 브랜치 · 실험실 서버(tailnet 전용) · **Studeck Lab** 앱(`npm run dist:lab`, 별도 설정·`Studeck-Lab` 폴더). 새 기능·수정은 **항상 여기서 먼저** 구현·테스트한다.
 - **운영**: `main` 브랜치 · 운영 서버(`https://cosmicsevertest.tailcb1558.ts.net`, Tailscale Funnel) · **Studeck** 앱. 실험실에서 테스트를 통과하고 사용자가 확인한 것만 `lab → main`(fast-forward)으로 옮긴다. 운영 서버·운영 DB는 직접 실험하지 않는다.
 - 테스트: `npm test` · `npm run test:ui` · `npm run test:server`(실험실 서버·SSH 필요, 끝나면 시험 계정 자동 정리) · `node scripts/test-prod-switch.js`(운영 앱으로 전환 리허설).
+  - 서버 테스트 대상은 `scripts/lab-target.js`. 기본은 실험실 서버(SSH). `STUDECK_TEST_SERVER`(주소)·`STUDECK_TEST_PSQL`(DB 접속 문자열)·`STUDECK_TEST_RESTART`(api 재시작 명령)를 주면 다른 서버(클라우드의 로컬 PostgreSQL+서버)로 전체를 돌릴 수 있다. Electron 테스트는 리눅스에서 `xvfb-run -a`, root면 `--no-sandbox`.
 - 서버 배포: 서버에서 `~/studeck/<lab|prod>`에서 `git pull` 후 `server/`에서 `docker compose up -d --build`. 운영 배포 전 `server/scripts/backup.sh ~/studeck/prod`.
 - 복구: `server/scripts/restore.sh ~/studeck/<lab|prod> --check`로 최근 백업이 멀쩡한지(회원·파일 수) 확인만 할 수 있다. `restore.sh ~/studeck/<스택> [STAMP]`는 스택 이름을 입력해야 진행하고, 지금 상태를 먼저 백업한 뒤 DB(한 트랜잭션)·파일을 그 시점으로 되돌린다. 리허설은 실험실에서만.
 - 서버 모드(`channel.js`의 `serverSync`): 학번 로그인·서버 동기화·파일·커뮤니티. `STUDECK_SERVER_SYNC=0`이면 예전 GitHub 동기화(회귀 테스트용).
