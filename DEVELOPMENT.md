@@ -23,6 +23,13 @@
 - 서버 배포: 서버에서 `~/studeck/<lab|prod>`에서 `git pull` 후 `server/`에서 `docker compose up -d --build`. 운영 배포 전 `server/scripts/backup.sh ~/studeck/prod`.
 - 서버 모드(`channel.js`의 `serverSync`): 학번 로그인·서버 동기화·파일·커뮤니티. `STUDECK_SERVER_SYNC=0`이면 예전 GitHub 동기화(회귀 테스트용).
 
+## 자료 저장 기준 (2026-11 ~)
+- **수업자료·과제**: LMS에서 다시 받을 수 있으므로 **각 기기에만** 저장(서버에 올리지 않음). 저장 위치는 설정 › 파일 › 자료 저장 위치(이 기기 전용).
+- **보조자료**: 서버 개인 공간에 저장(사람마다 `QUOTA_MB`, 기본 2GB). 지운 파일·이전 버전은 30일 보관.
+- **학기 정리**: 서버에 올린 날 이후 첫 종강일(`TERM_ENDS`, 기본 06-30·12-31) + `TERM_GRACE_DAYS`(기본 30일)이 지나면 서버에서 내용·이전 버전을 지우고 행을 `expired`로 남긴다. 기기는 자기 파일을 지우지 않고 다시 올리지도 않는다(고치면 새 학기 파일로 올라감). 예전 앱(v1.4.0)이 같은 내용을 다시 올려도 서버가 거절한다.
+- 실험실 서버에는 시험용 `POST /files/expire-now {at}`(내 파일만, 주어진 시각 기준)이 있다. 운영 채널에서는 열리지 않는다.
+- 웹 버전(아직 없음)에서는 수업자료·과제를 서버에 두지 않으므로 LMS 원본 링크로 바로 받게 한다(`file-tree.js`의 `lmsEntries('web')`).
+
 ## 운영 전환 절차 (v1.4.0, GitHub 동기화 → 서버)
 1. 실험실에서 위 테스트 모두 통과, `node scripts/test-prod-switch.js` 통과.
 2. 운영 서버 백업 → `main` ← `lab` fast-forward → 운영 서버 `git pull` + `docker compose up -d --build`.
@@ -69,6 +76,10 @@
 - `lms-notices.js` — LMS 공지 제목에서 마감일 읽기·D-day 칩(순수 계산, `scripts/test-lms-notices.js`)
 - `lms-remember.js` — LMS 로그인 창 학번 기억(학번만, `userData/lms-remember.json`, 동기화 안 함)
 - `material-dedupe.js` — 수업자료 중복 저장 방지(같은 내용 파일 찾기)
+- `material-folders.js` — 자료 저장 위치(기본·전체·과목별)
+- `file-tree.js` — '내 자료' 폴더 보기 계산(앱: 이 기기 파일, 웹: LMS 링크, 학기 정리 표시)
+- `file-sync.js` — 보조자료 ↔ 서버 동기화(학기 정리 반영)
+- `server/src/terms.js` — 학기 정리 규칙
 - `renderer.js` — 모든 UI/상태(할 일/일정/LMS/기록/출석/집중화면/동기화 로직)
 - `preload.js` — IPC 브리지
 - `index.html` — 마크업/CSS

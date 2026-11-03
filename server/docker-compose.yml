@@ -32,6 +32,8 @@ services:
       FILES_DIR: /data/files
       FILE_MAX_MB: ${FILE_MAX_MB:-50}
       QUOTA_MB: ${QUOTA_MB:-2048}
+      TERM_ENDS: ${TERM_ENDS:-06-30,12-31}
+      TERM_GRACE_DAYS: ${TERM_GRACE_DAYS:-30}
       DOWNLOAD_MIN_VERSION: ${DOWNLOAD_MIN_VERSION:-}
       PORT: "3000"
     volumes:

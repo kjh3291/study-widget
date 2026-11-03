@@ -79,5 +79,32 @@ async function account() {
   const usage = await A.json('/files/usage');
   assert.ok(usage.used > 0 && usage.limit >= 1024 * 1024 * 1024);
   PASS('위험한 경로 거부, 50MB 초과 거부, 사용량 표시');
+  // 학기 단위 정리: 실험실 손잡이(/files/expire-now)로 '1년 뒤'를 흉내 낸다
+  const C = await account();
+  const T = '알고리즘/보조자료/학기노트.pdf';
+  const tv = Buffer.from('이번 학기 노트'), tv2 = Buffer.from('고친 노트');
+  await C.put(T, tv, 5000); await C.put(T, Buffer.from('이번 학기 노트 v0'), 4000);   // 버전 하나
+  await C.put(T, tv, 6000);
+  const before = (await C.json('/files?since=0')).files.find(f => f.path === T);
+  assert.equal(before.expired, false); assert.ok(before.expiresAt > Date.now()); assert.match(before.term, /^\d{4}년 [12]학기$/);
+  const u0 = await C.json('/files/usage');
+  assert.deepEqual(u0.terms, { ends: ['06-30', '12-31'], graceDays: 30 });
+  let ex = await C.json('/files/expire-now', { method: 'POST', body: JSON.stringify({ at: Date.now() }) });
+  assert.equal(ex.expired, 0, '아직 기한 전이면 정리 안 함');
+  ex = await C.json('/files/expire-now', { method: 'POST', body: JSON.stringify({ at: before.expiresAt + 1000 }) });
+  assert.equal(ex.expired, 1);
+  const row = (await C.json('/files?since=0')).files.find(f => f.path === T);
+  assert.equal(row.expired, true); assert.equal(row.deleted, false, '삭제(휴지통)가 아니라 정리 — 기기는 자기 파일을 지우지 않음');
+  assert.ok(row.rev > before.rev, '다른 기기에 정리 사실이 전달됨');
+  assert.equal((await C.get(T)).status, 404, '내용은 서버에서 지워짐');
+  assert.equal((await C.json('/files/versions?path=' + encodeURIComponent(T))).versions.length, 0, '이전 버전도 정리');
+  assert.equal((await C.json('/files/usage')).used, 0, '사용량에서 빠짐');
+  assert.equal((await C.json('/files/trash')).trash.length, 0, '휴지통에도 안 보임');
+  r = await C.put(T, tv, 7000); assert.equal(r.json.result, 'expired', '같은 내용을 다시 올려도(예전 앱) 저장하지 않음');
+  assert.equal((await C.json('/files/usage')).used, 0);
+  r = await C.put(T, tv2, 8000); assert.equal(r.json.result, 'stored', '고친 파일은 새 학기 파일로 저장');
+  assert.equal(r.json.file.expired, false); assert.ok(r.json.file.expiresAt > before.expiresAt - 1000);
+  assert.equal((await C.get(T)).buf.toString(), '고친 노트');
+  PASS('학기 정리 — 종강+유예가 지나면 서버 내용·이전 버전 삭제, 행은 expired로 남아 기기에 전달, 같은 내용 재업로드는 거절, 고친 파일은 새 학기로');
   console.log('ALL PASS');
 })().catch(e => { console.error('FAIL:', e.message); process.exitCode = 1; });

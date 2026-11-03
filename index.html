@@ -1097,7 +1097,9 @@
         <span class="sd-grow"><strong>자료 저장 위치</strong><span class="sd-muted" id="mat-location-label">LMS 수업자료·과제를 받을 폴더 (이 기기에만)</span></span><span class="sd-ico" data-icon="chevron-right" aria-hidden="true"></span></button>
       <div class="sd-storage srv-only"><div class="sd-row"><h3>서버 사용량</h3><span class="sd-muted" id="srv-usage">확인 중…</span></div>
         <div class="sd-progress" role="progressbar" aria-label="서버 사용량" id="srv-usage-bar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span style="--progress:0%"></span></div>
-        <p class="sd-muted">보조자료·과제만 서버에 저장되고, 지운 파일과 이전 버전은 30일 보관돼요. 수업자료는 각 기기가 LMS에서 받아요.</p></div>
+        <p class="sd-muted">보조자료만 서버에 저장돼요(지운 파일·이전 버전은 30일 보관). 학기가 끝나면 30일 뒤 서버에서 정리되고, 기기 파일은 남아요. 수업자료·과제는 LMS에서 받아 각 기기에만 저장해요.</p></div>
+      <button type="button" class="sd-menu-row" id="btn-my-files"><span class="sd-menu-icon"><span class="sd-ico" data-icon="folder" aria-hidden="true"></span></span>
+        <span class="sd-grow"><strong>내 자료</strong><span class="sd-muted">과목별 보조자료(서버)·수업자료·과제를 폴더로 봐요.</span></span><span class="sd-ico" data-icon="chevron-right" aria-hidden="true"></span></button>
       <button type="button" class="sd-menu-row srv-only" id="btn-srv-files"><span class="sd-menu-icon"><span class="sd-ico" data-icon="history" aria-hidden="true"></span></span>
         <span class="sd-grow"><strong>휴지통 · 이전 버전</strong><span class="sd-muted">지운 파일을 복구하고 이전 상태로 되돌려요.</span></span><span class="sd-ico" data-icon="chevron-right" aria-hidden="true"></span></button>
     </section>
@@ -1136,6 +1138,7 @@
 <script src="community-client.js"></script>
 <script src="review.js"></script>
 <script src="lms-notices.js"></script>
+<script src="file-tree.js"></script>
 <script src="renderer.js"></script>
 <script src="ui-kit.js"></script>
 <script src="focus.js"></script>

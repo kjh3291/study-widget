@@ -1,0 +1,99 @@
+// '내 자료' 폴더 보기 계산(화면과 분리, node 테스트: scripts/test-file-tree.js)
+// 과목 › 보조자료·수업자료·과제 › 파일. 어디에 있는 자료인지(source)에 따라 할 수 있는 일이 다르다.
+//   보조자료  source 'server' — 서버에 있는 내 파일(기기에도 받아 둠). 학기 정리 예정일·정리됨 표시
+//   수업자료  앱:  source 'local' — 이 기기에 받은 파일(열기·폴더에서 보기)
+//             웹:  source 'lms'   — 서버에 없으니 LMS 원본 링크로 바로 받기
+//   과제      앱:  'local' / 웹: 'lms'(내 제출물 링크)
+(function (root) {
+  const CAT_ORDER = ['보조자료', '수업자료', '과제'];
+  const DAY = 86400000;
+  const baseName = p => String(p || '').split(/[\\/]/).pop();
+
+  // 서버 파일 목록(file-sync의 remote) → 항목. 삭제(휴지통)는 빼고, 학기 정리된 것은 '이 기기에만'으로 남긴다
+  function serverEntries(remote) {
+    return Object.entries(remote || {}).filter(([p, f]) => f && !f.deleted && p.split('/')[1] === '보조자료').map(([p, f]) => ({
+      path: p, name: baseName(p), course: p.split('/')[0], cat: '보조자료', source: 'server',
+      size: f.size || 0, updatedAt: f.updatedAt || 0, expiresAt: f.expiresAt || 0, expired: !!f.expired, term: f.term || '',
+    }));
+  }
+
+  // 수업자료·과제: 앱은 이 기기에 받은 기록(materialsDone/assignDone), 웹은 LMS 목록(링크)
+  function lmsEntries(mode, { lms, materialsDone, assignDone, cleanCourse = s => s } = {}) {
+    const out = [];
+    if (mode === 'web') {
+      const add = (list, cat) => (list || []).forEach(m => {
+        if (!m || !m.url) return;
+        const course = cleanCourse(m.courseName) || '기타';
+        out.push({ path: `${course}/${cat}/${m.title || '자료'}`, name: m.title || '자료', course, cat, source: 'lms', url: m.url });
+      });
+      add(lms && lms.materials, '수업자료');
+      add(lms && lms.assignFiles, '과제');
+      return out;
+    }
+    const add = (done, cat) => Object.entries(done || {}).forEach(([url, r]) => {
+      if (!r || !r.path || r.missing) return;
+      const course = r.course || '기타', name = baseName(r.path);
+      out.push({ path: `${course}/${cat}/${name}`, name, course, cat, source: 'local', localPath: r.path, url, updatedAt: r.at || 0 });
+    });
+    add(materialsDone, '수업자료');
+    add(assignDone, '과제');
+    // 같은 파일을 여러 LMS 항목이 같이 쓰면(중복 저장 방지) 한 번만 보인다
+    const seen = new Set();
+    return out.filter(e => { const k = e.localPath.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+
+  // 정리 예정 칩: 정리됨 / D-n(30일 이내) / null
+  function expiryChip(e, now) {
+    if (e.source !== 'server') return null;
+    if (e.expired) return { label: '이 기기에만', tone: 'past', title: '학기 정리로 서버에서 지웠어요. 이 기기 파일은 남아 있어요.' };
+    if (!e.expiresAt) return null;
+    const days = Math.ceil((e.expiresAt - now) / DAY);
+    if (days > 30) return null;
+    const d = new Date(e.expiresAt - 1);   // 정리 직전 날(보관 마지막 날)
+    return { label: days <= 0 ? '곧 정리' : `D-${days} 정리`, tone: days <= 7 ? 'urgent' : 'soon', title: `${d.getMonth() + 1}/${d.getDate()}까지 서버에 보관, 그 뒤 서버에서만 지워져요` };
+  }
+
+  // 항목들 → 트리. folder = { name, path, folders: [], files: [], count, size }
+  function buildTree(entries) {
+    const rootNode = { name: '', path: '', folders: [], files: [], count: 0, size: 0 };
+    const get = (node, name) => {
+      let f = node.folders.find(x => x.name === name);
+      if (!f) { f = { name, path: node.path ? node.path + '/' + name : name, folders: [], files: [], count: 0, size: 0 }; node.folders.push(f); }
+      return f;
+    };
+    for (const e of entries) {
+      const parts = e.path.split('/');
+      let node = rootNode;
+      const chain = [rootNode];
+      for (const part of parts.slice(0, -1)) { node = get(node, part); chain.push(node); }
+      node.files.push(e);
+      chain.forEach(n => { n.count++; n.size += e.size || 0; });
+    }
+    const sortNode = (n, depth) => {
+      n.folders.sort((a, b) => depth === 1
+        ? (CAT_ORDER.indexOf(a.name) + 1 || 9) - (CAT_ORDER.indexOf(b.name) + 1 || 9)   // 과목 안: 보조자료·수업자료·과제 순
+        : a.name.localeCompare(b.name, 'ko'));
+      n.files.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+      n.folders.forEach(f => sortNode(f, depth + 1));
+    };
+    sortNode(rootNode, 0);
+    return rootNode;
+  }
+  // 'A/B' 경로의 폴더(없으면 null)
+  function findFolder(tree, p) {
+    if (!p) return tree;
+    let node = tree;
+    for (const part of p.split('/')) { node = node.folders.find(f => f.name === part); if (!node) return null; }
+    return node;
+  }
+  // 폴더 안에서 가장 빠른 정리 예정(정리 안 된 서버 파일 기준)
+  function nextExpiry(folder) {
+    let best = 0;
+    const walk = n => { n.files.forEach(f => { if (f.source === 'server' && !f.expired && f.expiresAt && (!best || f.expiresAt < best)) best = f.expiresAt; }); n.folders.forEach(walk); };
+    walk(folder);
+    return best;
+  }
+
+  const api = { serverEntries, lmsEntries, expiryChip, buildTree, findFolder, nextExpiry, CAT_ORDER };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FileTree = api;
+})(typeof window !== 'undefined' ? window : globalThis);

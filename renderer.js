@@ -2176,7 +2176,7 @@ const fmtSize = n => n >= 1024 * 1024 * 1024 ? (n / 1024 / 1024 / 1024).toFixed(
 async function refreshFileUsage() {
   if (!SERVER_MODE || !state.syncEnabled || !$('srv-usage')) return;
   const r = await window.api.filesOverview();
-  $('srv-usage').textContent = r?.ok ? `보조자료·과제 파일 ${r.current.length}개 · ${fmtSize(r.usage.used)} / ${fmtSize(r.usage.limit)}` : (r?.error || '파일 정보를 불러오지 못했습니다');
+  $('srv-usage').textContent = r?.ok ? `보조자료 파일 ${r.current.length}개 · ${fmtSize(r.usage.used)} / ${fmtSize(r.usage.limit)}` : (r?.error || '파일 정보를 불러오지 못했습니다');
   if (r?.ok && $('srv-usage-bar')) { const pct = Math.min(100, Math.round(r.usage.used / r.usage.limit * 100)); $('srv-usage-bar').firstElementChild.style.setProperty('--progress', pct + '%'); $('srv-usage-bar').setAttribute('aria-valuenow', pct); }
   return r;
 }
@@ -2240,6 +2240,68 @@ async function openFilesPanel() {
   render();
 }
 if (SERVER_MODE) $('btn-srv-files').onclick = openFilesPanel;
+// 내 자료: 과목 › 보조자료(서버) · 수업자료 · 과제를 폴더처럼 본다(file-tree.js).
+// 앱은 이 기기에 받은 수업자료·과제를 열고, 웹(나중)은 서버에 없는 수업자료를 LMS 원본 링크로 바로 받게 한다
+const FILE_VIEW_MODE = window.api && window.api.openMyFile ? 'app' : 'web';
+async function openMyFilesPanel(startPath = '') {
+  const P = UI.panel('my-files-panel', '내 자료', '설정');
+  const ico = (n) => `<span class="sd-ico" data-icon="${n}" aria-hidden="true"></span>`;
+  let cwd = startPath, tree = null, info = null;
+  const load = async () => {
+    const r = SERVER_MODE && state.syncEnabled && window.api.filesTree ? await window.api.filesTree() : null;
+    info = r;
+    const entries = [...FileTree.serverEntries(r?.ok ? r.remote : {}),
+      ...FileTree.lmsEntries(FILE_VIEW_MODE, { lms: state.lms, materialsDone: state.materialsDone, assignDone: state.assignDone, cleanCourse })];
+    tree = FileTree.buildTree(entries);
+  };
+  const SRC = { server: '서버 · 이 기기', local: '이 기기', lms: 'LMS' };
+  const when = (t) => t ? new Date(t).toLocaleDateString() : '';
+  const render = () => {
+    const now = Date.now();
+    let folder = FileTree.findFolder(tree, cwd);
+    if (!folder) { cwd = ''; folder = tree; }
+    const u = info?.ok && info.usage;
+    P.sub.hidden = false;
+    P.sub.textContent = (u ? `보조자료 ${fmtSize(u.used)} / ${fmtSize(u.limit)} · ` : '') +
+      (u?.terms ? `종강(${u.terms.ends.map((e) => e.replace(/^0/, '').replace('-0', '-').replace('-', '/')).join('·')}) ${u.terms.graceDays}일 뒤 서버에서 정리돼요. 기기 파일은 남아요.` : '수업자료·과제는 LMS에서 받아 이 기기에만 저장돼요.');
+    const crumbs = ['', ...cwd.split('/').filter(Boolean).map((_, i, a) => a.slice(0, i + 1).join('/'))];
+    const crumbHtml = crumbs.map((c, i) => `${i ? `<span class="sd-muted" aria-hidden="true">›</span>` : ''}<button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-go="${escapeHtml(c)}" ${c === cwd ? 'aria-current="page"' : ''}>${escapeHtml(c ? c.split('/').pop() : '내 자료')}</button>`).join('');
+    const folderRow = (f) => {
+      const exp = FileTree.nextExpiry(f), chip = exp ? FileTree.expiryChip({ source: 'server', expiresAt: exp }, now) : null;
+      return `<button type="button" class="sd-menu-row" data-go="${escapeHtml(f.path)}"><span class="sd-menu-icon">${ico('folder')}</span>
+        <span class="sd-grow"><strong>${escapeHtml(f.name)}</strong><span class="sd-muted">${f.count}개${f.size ? ' · ' + fmtSize(f.size) : ''}</span></span>
+        ${chip ? `<span class="n-due ${chip.tone}" title="${escapeHtml(chip.title)}">${escapeHtml(chip.label)}</span>` : ''}${ico('chevron-right')}</button>`;
+    };
+    const fileRow = (e) => {
+      const chip = FileTree.expiryChip(e, now);
+      const meta = [SRC[e.source], e.size ? fmtSize(e.size) : '', e.term && !e.expired ? e.term : '', e.updatedAt && e.source === 'server' ? when(e.updatedAt) + ' 수정' : ''].filter(Boolean).join(' · ');
+      const acts = e.source === 'lms'
+        ? `<a class="sd-btn sd-btn-small" href="${escapeHtml(e.url)}" target="_blank" rel="noopener">${ico('external-link')}LMS에서 받기</a>`
+        : `<button type="button" class="sd-btn sd-btn-small" data-open>${ico('folder-open')}열기</button><button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-reveal title="폴더에서 보기">${ico('folder')}</button>`;
+      return `<div class="frow sd-file-row" data-rel="${e.source === 'server' ? escapeHtml(e.path) : ''}" data-abs="${escapeHtml(e.localPath || '')}">
+        <div class="sd-grow"><strong class="sd-truncate" title="${escapeHtml(e.name)}">${escapeHtml(e.name)}</strong><span class="sd-muted">${escapeHtml(meta)}</span></div>
+        ${chip ? `<span class="n-due ${chip.tone}" title="${escapeHtml(chip.title)}">${escapeHtml(chip.label)}</span>` : ''}${acts}</div>`;
+    };
+    const empty = !folder.folders.length && !folder.files.length;
+    const offline = SERVER_MODE && info && !info.ok;
+    P.body.innerHTML = `<nav class="sd-row sd-gap" aria-label="폴더 위치" style="flex-wrap:wrap;gap:2px;justify-content:flex-start;align-items:center">${crumbHtml}</nav>
+      ${offline ? `<p class="sd-muted sd-gap">서버 목록을 불러오지 못해 이 기기 자료만 보여요. (${escapeHtml(info.error || '')})</p>` : ''}
+      ${folder.folders.map(folderRow).join('')}${folder.files.map(fileRow).join('')}
+      ${empty ? `<div class="sd-empty">${ico('folder-open')}<h3>아직 자료가 없어요.</h3><p>${cwd ? '이 폴더는 비어 있어요.' : 'LMS에 로그인하면 수업자료가, 보조자료 폴더에 넣은 파일은 서버에 저장돼요.'}</p></div>` : ''}`;
+  };
+  P.el.addEventListener('click', async (e) => {
+    const go = e.target.closest('[data-go]');
+    if (go) { cwd = go.dataset.go; render(); P.body.querySelector('[aria-current]')?.focus({ preventScroll: true }); return; }
+    const row = e.target.closest('.frow'); if (!row) return;
+    const reveal = !!e.target.closest('[data-reveal]');
+    if (!reveal && !e.target.closest('[data-open]')) return;
+    const r = await window.api.openMyFile(row.dataset.rel ? { rel: row.dataset.rel, reveal } : { abs: row.dataset.abs, reveal });
+    if (!r?.ok) showToast(r?.error || '열지 못했어요');
+  });
+  P.body.innerHTML = '<div class="sd-skeleton-row"><span class="sd-skeleton" style="flex:1"></span></div><span class="sd-sr-only" role="status">불러오는 중</span>';
+  await load(); render();
+}
+$('btn-my-files').onclick = () => openMyFilesPanel();
 // 실험실: GitHub 기기 인증 · 내 계정 · 회원 관리
 // GitHub 기기 인증: 코드를 보여 주고 github.com/login/device에서 입력할 때까지 기다린다. 토큰을 돌려주거나 취소 시 null.
 function githubDeviceFlow() {

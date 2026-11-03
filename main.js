@@ -569,9 +569,9 @@ function gitSync(dir, repo, token) {
 }
 const SYNC_DATA_PATH = () => path.join(STUDECK_DIR(), '.studeck', 'config.json');
 const notifySync = status => { if (win && !win.isDestroyed()) win.webContents.send('sync-status', status); };
-// 서버 모드: 같은 병합 엔진에 전송부만 서버로 바꾼다(보조자료·과제 파일은 fileSync가 따로 맞춤).
+// 서버 모드: 같은 병합 엔진에 전송부만 서버로 바꾼다(보조자료 파일은 fileSync가 따로 맞춤).
 const serverStore = SERVER_MODE ? createServerStore({ file: path.join(app.getPath('userData'), 'server-mirror.json') }) : null;
-// 서버 모드: 보조자료·과제 파일을 서버 개인 공간과 맞춘다(서버에서 지워진 파일은 기기 휴지통으로).
+// 서버 모드: 보조자료 파일을 서버 개인 공간과 맞춘다(서버에서 지워진 파일은 기기 휴지통으로).
 const fileSync = SERVER_MODE ? createFileSync({ root: STUDECK_DIR, stateFile: path.join(app.getPath('userData'), 'file-sync.json'), trash: p => shell.trashItem(p) }) : null;
 const syncService = createSyncService(SERVER_MODE ? {
   load: loadConfig, save: saveConfig,
@@ -798,10 +798,32 @@ async function fileApi(method, url, body) {
 }
 ipcMain.handle('files-overview', () => serverTry(async () => {
   const [usage, trash] = await Promise.all([fileApi('GET', '/files/usage'), fileApi('GET', '/files/trash')]);
-  const current = Object.entries(fileSync.remoteFiles()).filter(([, f]) => !f.deleted).map(([p, f]) => ({ path: p, size: f.size, updatedAt: f.updatedAt }))
+  const current = Object.entries(fileSync.remoteFiles()).filter(([, f]) => !f.deleted && !f.expired).map(([p, f]) => ({ path: p, size: f.size, updatedAt: f.updatedAt }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
   return { ok: true, usage, trash: trash.trash, current };
 }));
+// 내 자료 폴더 보기: 서버 보조자료 목록(마지막 동기화 기준, 학기 정리 포함) + 사용량·학기 규칙
+ipcMain.handle('files-tree', () => serverTry(async () => {
+  const usage = await fileApi('GET', '/files/usage').catch(() => null);
+  return { ok: true, usage, remote: fileSync.remoteFiles() };
+}));
+// 내 자료에서 파일 열기·폴더에서 보기. Studeck 폴더나 사용자가 정한 자료 위치 안의 파일만, 실행 파일은 열지 않는다
+function allowedFile(p) {
+  const c = loadConfig();
+  const roots = [STUDECK_DIR(), c.materialsRoot, ...Object.values(c.materialsFolders || {})].filter(Boolean).map((r) => path.resolve(r));
+  const abs = path.resolve(String(p || ''));
+  const inside = roots.some((r) => { const rel = path.relative(r, abs); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); });
+  if (!inside || /\.(exe|bat|cmd|com|lnk|vbs|ps1|sh|app|scr|msi|jar|js)$/i.test(abs)) return null;
+  return abs;
+}
+ipcMain.handle('open-my-file', async (_e, { rel, abs, reveal } = {}) => {
+  const target = allowedFile(rel ? path.join(STUDECK_DIR(), ...String(rel).split('/')) : abs);
+  if (!target) return { ok: false, error: '열 수 없는 파일이에요.' };
+  if (!fs.existsSync(target)) return { ok: false, error: '이 기기에 아직 없는 파일이에요. 동기화한 뒤 다시 열어 주세요.' };
+  if (reveal) { shell.showItemInFolder(target); return { ok: true }; }
+  const err = await shell.openPath(target);
+  return err ? { ok: false, error: err } : { ok: true };
+});
 ipcMain.handle('files-versions', (_e, p) => serverTry(async () => ({ ok: true, ...(await fileApi('GET', '/files/versions?path=' + encodeURIComponent(p))) })));
 ipcMain.handle('files-restore', (_e, p) => serverTry(async () => ({ ok: true, ...(await fileApi('POST', '/files/restore', { path: p })) })));
 ipcMain.handle('files-revert', (_e, { path: p, vid } = {}) => serverTry(async () => ({ ok: true, ...(await fileApi('POST', '/files/revert', { path: p, vid })) })));

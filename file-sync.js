@@ -1,4 +1,6 @@
-// 보조자료·과제 파일을 서버 개인 공간과 맞춘다(실험실 앱).
+// 보조자료 파일을 서버 개인 공간과 맞춘다. 수업자료·과제는 LMS에서 다시 받을 수 있어서 각 기기에만 둔다(서버 용량 절약).
+// 학기 정리: 서버가 파일을 expired로 알리면(종강 + 유예 지남) 이 기기 파일은 그대로 두고 다시 올리지 않는다.
+//   이 기기에서 그 파일을 고치면 새 학기 파일로 다시 올린다.
 // 마지막으로 맞춘 상태(base)와 비교해 바뀐 쪽만 전송한다. 양쪽이 모두 바뀌면 둘 다 서버에 올려
 // 나중 수정이 현재 파일이 되고 다른 쪽은 서버의 "이전 버전"으로 남는다(선택 창 없음).
 // 서버에서 지워진 파일은 이 기기의 휴지통(Windows 휴지통/macOS 휴지통)으로 옮긴다.
@@ -7,7 +9,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { atomicJSON } = require('./sync-storage');
 
-const SYNCED = new Set(['보조자료', '과제']);            // 과목/<분류>/... 중 서버에 올리는 분류
+const SYNCED = new Set(['보조자료']);                    // 과목/<분류>/... 중 서버에 올리는 분류
+const isSynced = p => SYNCED.has(String(p).split('/')[1]);
 const SKIP_DIRS = new Set(['.gradle', 'build', 'node_modules', '.idea', '.git', '.studeck', '__pycache__']);
 const SKIP_FILES = /^(\.DS_Store|Thumbs\.db|desktop\.ini|~\$.*|.*\.tmp|.*\.crdownload)$/i;
 const VIDEO = /\.(mp4|mov|avi|mkv|webm|wmv|m4v)$/i;
@@ -69,18 +72,18 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
       // 1. 서버 변경분 받기
       for (;;) {
         const page = await api(conn, 'GET', '/files?since=' + st.cursor);
-        for (const f of page.files) st.remote[f.path] = { sha: f.sha256, size: f.size, updatedAt: f.updatedAt, deleted: f.deleted };
+        for (const f of page.files) st.remote[f.path] = { sha: f.sha256, size: f.size, updatedAt: f.updatedAt, deleted: f.deleted, expired: !!f.expired, expiresAt: f.expiresAt || 0, term: f.term || '' };
         st.cursor = page.cursor;
         if (!page.more) break;
       }
       save();
       // 처음 맞추는 기기인데 서버에 이미 파일이 있으면 "서버 데이터로 시작":
       // 서버와 내용이 다르거나 서버에 없는 이 기기 파일은 올리지 않고 .studeck/서버 전환 전 보관/ 으로 옮겨 둔다.
-      if (fresh && Object.values(st.remote).some(f => !f.deleted)) {
+      if (fresh && Object.entries(st.remote).some(([p, f]) => isSynced(p) && !f.deleted && !f.expired)) {
         const keep = path.join(dir, '.studeck', '서버 전환 전 보관');
         for (const [p, f] of Object.entries(scanLocal(dir, Infinity).files)) {
           const r = st.remote[p];
-          if (r && !r.deleted && r.size === f.size && sha256File(f.abs) === r.sha) continue;
+          if (r && !r.deleted && r.size === f.size && sha256File(f.abs) === r.sha) continue;   // 서버와 같음(정리된 파일도 같으면 그대로)
           const dest = path.join(keep, ...p.split('/'));
           fs.mkdirSync(path.dirname(dest), { recursive: true });
           fs.renameSync(f.abs, fs.existsSync(dest) ? dest + '-' + Date.now() : dest);
@@ -95,7 +98,7 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
         f.sha = b && b.size === f.size && b.mtimeMs === f.mtimeMs ? b.sha : sha256File(f.abs);
       }
       const absOf = p => path.join(dir, ...p.split('/'));
-      const remoteSha = p => (st.remote[p] && !st.remote[p].deleted ? st.remote[p].sha : null);
+      const remoteSha = p => (st.remote[p] && !st.remote[p].deleted && !st.remote[p].expired ? st.remote[p].sha : null);
       const record = (p, sha) => {
         if (!sha) { delete st.base[p]; return; }
         const s = fs.statSync(absOf(p));
@@ -103,7 +106,7 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
       };
       const upload = async (p, f) => {
         const r = await api(conn, 'PUT', '/files/content' + q(p) + '&updatedAt=' + f.mtimeMs, fs.readFileSync(f.abs));
-        st.remote[p] = { sha: r.file.sha256, size: r.file.size, updatedAt: r.file.updatedAt, deleted: r.file.deleted };
+        st.remote[p] = { sha: r.file.sha256, size: r.file.size, updatedAt: r.file.updatedAt, deleted: r.file.deleted, expired: !!r.file.expired, expiresAt: r.file.expiresAt || 0, term: r.file.term || '' };
         if (r.result === 'stored') stats.uploaded++;
         return r;
       };
@@ -117,9 +120,20 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
         record(p, st.remote[p].sha);
       };
       // 3. 파일별 판단
-      const all = new Set([...Object.keys(local), ...Object.keys(st.remote), ...Object.keys(st.base)]);
+      // 보조자료만 판단한다. 예전 앱이 서버에 올린 과제는 건드리지 않는다(지우면 다른 기기의 과제 파일이 휴지통으로 가므로) — 학기 정리로 사라진다
+      const all = new Set([...Object.keys(local), ...Object.keys(st.remote), ...Object.keys(st.base)].filter(isSynced));
       for (const p of all) {
         try {
+          const R = st.remote[p];
+          if (R && R.expired && !R.deleted) {
+            // 학기 정리된 파일: 이 기기 파일은 지우지 않는다. 내용이 같으면 그대로, 고쳤으면 새 학기 파일로 올린다
+            const L0 = local[p];
+            if (!L0) { record(p, null); continue; }
+            if (L0.sha === R.sha) { record(p, L0.sha); stats.expiredKept = (stats.expiredKept || 0) + 1; continue; }
+            const r = await upload(p, L0);
+            if (r.file.sha256 === L0.sha && !r.file.deleted && !r.file.expired) record(p, L0.sha);
+            continue;
+          }
           const L = local[p], baseSha = st.base[p]?.sha || null, rSha = remoteSha(p), lSha = L?.sha || null;
           const localChanged = lSha !== baseSha, remoteChanged = rSha !== baseSha;
           if (lSha && lSha === rSha) { record(p, lSha); continue; }        // 이미 같음
@@ -161,7 +175,9 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
     }
   }
 
-  return { run, reset: () => atomicJSON(stateFile, empty('')), remoteFiles: () => load().remote };
+  // 서버에 있는 보조자료(정리·삭제된 것 제외)와, 학기 정리로 서버에서만 빠진 파일 목록
+  const remoteFiles = () => Object.fromEntries(Object.entries(load().remote).filter(([p]) => isSynced(p)));
+  return { run, reset: () => atomicJSON(stateFile, empty('')), remoteFiles };
 }
 
-module.exports = { createFileSync, scanLocal };
+module.exports = { createFileSync, scanLocal, SYNCED, isSynced };

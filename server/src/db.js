@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS items_history (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS items_history_item ON items_history (user_id, kind, id, recorded_at);
--- 개인 파일(보조자료·과제): 현재 파일 1행 + 이전 버전들. 내용은 디스크에 sha256 이름으로 보관(같은 내용은 1번만).
+-- 개인 파일(보조자료. 예전 앱은 과제도 올림): 현재 파일 1행 + 이전 버전들. 내용은 디스크에 sha256 이름으로 보관(같은 내용은 1번만).
 CREATE SEQUENCE IF NOT EXISTS file_rev;
 CREATE TABLE IF NOT EXISTS files (
   user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS files (
   PRIMARY KEY (user_id, path)
 );
 CREATE INDEX IF NOT EXISTS files_user_rev ON files (user_id, rev);
+-- 학기 단위 정리: stored_at(서버에 마지막으로 저장한 시각) 기준 종강 + 유예가 지나면 expired(내용은 지우고 행은 남겨 기기에 알림)
+ALTER TABLE files ADD COLUMN IF NOT EXISTS stored_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE files ADD COLUMN IF NOT EXISTS expired BOOLEAN NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS file_versions (
   vid         SERIAL PRIMARY KEY,
   user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

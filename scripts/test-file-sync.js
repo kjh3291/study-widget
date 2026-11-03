@@ -32,8 +32,8 @@ async function device(name) {
 (async () => {
   await serverCall(URL, 'POST', '/auth/signup', { username: user, password, displayName: '파일동기화', consent: '2026-10-v1' });
   const A = await device('A'), B = await device('B');
-  const NOTE = '자료구조/보조자료/정리노트.pdf', HW = '자료구조/과제/HW1.docx', DEEP = '선형대수학/보조자료/1단원/풀이.txt';
-  A.write(NOTE, '노트 v1'); A.write(HW, '과제 v1'); A.write(DEEP, '풀이');
+  const NOTE = '자료구조/보조자료/정리노트.pdf', HW = '자료구조/보조자료/HW1 풀이.docx', MYHW = '자료구조/과제/HW1.docx', DEEP = '선형대수학/보조자료/1단원/풀이.txt';
+  A.write(NOTE, '노트 v1'); A.write(HW, '과제 v1'); A.write(DEEP, '풀이'); A.write(MYHW, '내가 낸 과제');
   A.write('자료구조/수업자료/강의.pdf', 'LMS에서 받은 자료'); A.write('자료구조/보조자료/.DS_Store', 'x'); A.write('자료구조/보조자료/녹화.mp4', 'video');
   A.write('APP/보조자료/proj/build/out.bin', 'build cache');
   let r = await A.sync();
@@ -42,7 +42,8 @@ async function device(name) {
   assert.equal(r.downloaded, 3);
   assert.equal(B.read(NOTE), '노트 v1'); assert.equal(B.read(DEEP), '풀이');
   assert.equal(B.read('자료구조/수업자료/강의.pdf'), null); assert.equal(B.read('APP/보조자료/proj/build/out.bin'), null);
-  PASS('보조자료·과제(하위 폴더 포함)만 전달, 수업자료·빌드 캐시·.DS_Store·동영상은 제외');
+  assert.equal(B.read(MYHW), null, '과제(LMS에 있음)는 서버에 올리지 않음');
+  PASS('보조자료(하위 폴더 포함)만 전달, 수업자료·과제·빌드 캐시·.DS_Store·동영상은 제외');
 
   B.write(NOTE, '노트 v2 (B 수정)', Date.now());
   assert.equal((await B.sync()).uploaded, 1);
@@ -81,6 +82,29 @@ async function device(name) {
   r = await A.sync(); assert.equal(r.uploaded + r.downloaded + r.removedRemote + r.trashedLocal, 1); // DEEP 복구분만
   r = await A.sync(); assert.equal(r.uploaded + r.downloaded + r.removedRemote + r.trashedLocal, 0);
   PASS('변경 없으면 아무것도 전송하지 않음');
+  // 예전 앱이 서버에 올려 둔 과제: 새 앱은 건드리지 않음(서버에서 지우면 다른 기기의 과제가 휴지통으로 가기 때문)
+  const OLDHW = '자료구조/과제/예전앱.docx';
+  await fetch(URL + '/files/content?path=' + encodeURIComponent(OLDHW) + '&updatedAt=1', { method: 'PUT', headers: { authorization: 'Bearer ' + A.token, 'content-type': 'application/octet-stream' }, body: '예전 앱 과제' });
+  r = await A.sync(); assert.equal(r.downloaded + r.removedRemote, 0);
+  assert.equal(A.read(OLDHW), null);
+  assert.equal((await fetch(URL + '/files/content?path=' + encodeURIComponent(OLDHW), { headers: { authorization: 'Bearer ' + A.token } })).status, 200, '서버의 예전 과제는 그대로(학기 정리로 사라짐)');
+  PASS('예전 앱이 올린 과제는 받지도 지우지도 않음');
+
+  // 학기 정리: 서버에서 정리돼도 두 기기의 파일은 그대로, 다시 올리지 않음. 고치면 새 학기 파일로
+  const now = Date.now();
+  const ex = await fetch(URL + '/files/expire-now', { method: 'POST', headers: { authorization: 'Bearer ' + A.token, 'content-type': 'application/json' }, body: JSON.stringify({ at: now + 400 * 86400000 }) }).then(x => x.json());
+  assert.ok(ex.expired >= 3, JSON.stringify(ex));
+  const trashA = A.trashCount(), trashB = B.trashCount();
+  r = await A.sync(); assert.equal(r.uploaded + r.removedRemote + r.trashedLocal, 0); assert.ok(r.expiredKept >= 2);
+  r = await B.sync(); assert.equal(r.uploaded + r.removedRemote + r.trashedLocal, 0);
+  assert.equal(A.read(NOTE), '노트 v3 (B가 계속 수정)'); assert.equal(B.read(DEEP), '풀이'); assert.equal(A.trashCount(), trashA); assert.equal(B.trashCount(), trashB);
+  r = await A.sync(); assert.equal(r.uploaded, 0, '다음 동기화에도 다시 올리지 않음');
+  const usage = await fetch(URL + '/files/usage', { headers: { authorization: 'Bearer ' + A.token } }).then(x => x.json());
+  assert.equal(usage.used, 0, '서버 용량 비워짐');
+  A.write(NOTE, '새 학기에 고친 노트', Date.now() + 300000);
+  r = await A.sync(); assert.equal(r.uploaded, 1);
+  r = await B.sync(); assert.equal(B.read(NOTE), '새 학기에 고친 노트');
+  PASS('학기 정리 → 기기 파일은 그대로·다시 올리지 않음·서버 용량 비워짐, 고친 파일은 새 학기 파일로 다시 공유');
   console.log('ALL PASS (' + user + ')');
 })().catch(e => { console.error('FAIL:', e.stack || e.message); process.exitCode = 1; })
   .finally(() => fs.rmSync(tmp, { recursive: true, force: true }));
