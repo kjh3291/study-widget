@@ -1142,6 +1142,7 @@ function renderLms() {
         <span class="subj-dot" style="background:${colorFor(cn)}"></span>
         <span class="name" title="${escapeHtml(cn)}">${escapeHtml(cn)}</span>
         ${hasUnread ? '<span class="unread-dot"></span>' : ''}
+        ${dueChipHtml(window.LmsNotices && LmsNotices.nearestChip(byCourse[cn], todayStr()))}
         <span class="acc-count">${byCourse[cn].length}</span>
         ${courseUrlByName[cn] ? `<button class="mini-read" data-gocourse="${escapeHtml(courseUrlByName[cn])}" title="과목 페이지 열기">바로가기</button>` : ''}
         ${hasUnread ? `<button class="mini-read" data-readcourse="${escapeHtml(cn)}" title="이 과목 공지 모두 읽음">읽음</button>` : ''}
@@ -1171,16 +1172,26 @@ function renderLms() {
   box.innerHTML = html;
   updateLmsBadge();
 }
+// 공지 한 줄(A안): 안 읽음 점 · 제목(안 읽으면 굵게) / 아래 한 줄에 과목 · 올린 날짜 · 마감 D-day 칩
+function dueChipHtml(c) {
+  return c ? `<span class="n-due ${c.tone}" title="${escapeHtml(c.title)}">${escapeHtml(c.label)}</span>` : '';
+}
 function noticeRow(n, showCourse) {
   const cn = cleanCourse(n.courseName);
   const unread = !isRead(n.id);
-  return `<div class="notice ${unread ? 'unread' : ''}" data-open="${escapeHtml(n.url)}" data-nid="${escapeHtml(n.id)}">
-    <div class="n-head">
-      ${unread ? '<span class="unread-dot"></span>' : ''}
-      ${showCourse ? `<span class="n-course" title="${escapeHtml(cn)}">${escapeHtml(cn || 'LMS')}</span>` : ''}
-      <span class="n-date">${escapeHtml(n.date || '')}</span>
+  const N = window.LmsNotices, today = todayStr();
+  const chip = N ? N.deadlineChip(N.parseDeadline(n.title, n.date, today), today) : null;
+  const posted = N ? N.postedLabel(n.date, today) : (n.date || '');
+  return `<div class="notice ${unread ? 'is-unread' : ''}" data-open="${escapeHtml(n.url)}" data-nid="${escapeHtml(n.id)}">
+    <span class="n-dot">${unread ? '<span class="unread-dot" aria-label="안 읽음"></span>' : ''}</span>
+    <div class="n-main">
+      <span class="n-title" title="${escapeHtml(n.title)}">${escapeHtml(n.title)}</span>
+      <div class="n-meta">
+        ${showCourse ? `<span class="n-course" title="${escapeHtml(cn)}">${escapeHtml(cn || 'LMS')}</span>` : ''}
+        ${posted ? `<span class="n-date" title="${escapeHtml(n.date || '')}">${escapeHtml(posted)}</span>` : ''}
+        ${dueChipHtml(chip)}
+      </div>
     </div>
-    <span class="n-title" title="${escapeHtml(n.title)}">${escapeHtml(n.title)}</span>
   </div>`;
 }
 

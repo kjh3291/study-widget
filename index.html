@@ -338,12 +338,20 @@
   .lms-bar .status b { color: var(--text); font-weight: 700; }
   .lms-section-title { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800; margin: 14px 0 7px; color: var(--text); }
   .lms-section-title .ico { display: flex; color: var(--muted); }
-  .notice { display: flex; flex-direction: column; gap: 3px; padding: 9px 4px; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer; }
+  .notice { display: flex; align-items: flex-start; gap: 7px; padding: 9px 4px; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer; }
   .notice:hover { background: var(--hover); }
-  .notice .n-head { display: flex; align-items: center; gap: 6px; }
-  .notice .n-course { font-size: 9.5px; font-weight: 700; color: var(--info); background: var(--info-soft); padding: 1px 6px; border-radius: 5px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .notice .n-date { font-size: 9.5px; color: var(--muted); margin-left: auto; flex: none; }
-  .notice .n-title { font-size: 12px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .notice .n-dot { flex: none; width: 6px; display: flex; justify-content: center; padding-top: 6px; }
+  .notice .n-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .notice .n-title { font-size: 12px; line-height: 1.35; color: var(--sub, var(--text)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .notice .n-meta { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 10px; color: var(--muted); }
+  .notice .n-meta:empty { display: none; }
+  .notice .n-course { font-size: 9.5px; font-weight: 700; color: var(--info); background: var(--info-soft); padding: 1px 6px; border-radius: 5px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .notice .n-date { flex: none; }
+  .n-due { flex: none; font-size: 9.5px; font-weight: 800; padding: 1px 6px; border-radius: 5px; line-height: 1.5; white-space: nowrap; background: var(--hover); color: var(--muted); }
+  .n-due.urgent { color: var(--danger); background: var(--danger-soft); }
+  .n-due.soon { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .n-due.later { color: var(--info); background: var(--info-soft); }
+  .n-due.past { color: var(--muted); background: transparent; padding-left: 0; }
   .prog-course { font-size: 11.5px; font-weight: 700; margin: 8px 0 3px; display: flex; align-items: center; gap: 6px; }
   .prog-course .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .prog-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); padding: 3px 8px; }
@@ -462,7 +470,7 @@
 
   /* 미확인(읽음) */
   .unread-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
-  .notice.unread .n-title { font-weight: 700; color: var(--text); }
+  .notice.is-unread .n-title { font-weight: 700; color: var(--text); }   /* 동아리 채팅 숫자 배지(.unread)와 이름이 겹치지 않게 is-unread */
   .tabs button.has-badge { position: relative; }
   .tabs button.has-badge::after { content: attr(data-badge); position: absolute; top: 3px; right: 6px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--accent); color: var(--on-accent); font-size: 9px; font-weight: 800; line-height: 14px; text-align: center; }
 
@@ -1123,6 +1131,7 @@
 <script src="syllabus.js"></script>
 <script src="community-client.js"></script>
 <script src="review.js"></script>
+<script src="lms-notices.js"></script>
 <script src="renderer.js"></script>
 <script src="ui-kit.js"></script>
 <script src="focus.js"></script>
