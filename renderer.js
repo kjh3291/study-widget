@@ -1211,6 +1211,7 @@ async function lmsLogin() {
   await window.api.lmsLogin();
   await doLmsRefresh(false);
   renderSummary();   // 로그인 안내 띠 갱신
+  loadLmsRemember();  // 방금 기억한 학번 표시
 }
 // 새로고침 결과에서 '새로 제출된' LMS 과제를 감지해 완료로 기록(+축하).
 // 완료 기록은 state.lmsDone에 영구 저장 → 목록에서 사라져도 기록 탭에 남는다.
@@ -1912,6 +1913,16 @@ $('btn-cancel').onclick = () => { $('settings-err').textContent = ''; $('setting
 $('inp-opacity').oninput = () => { state.opacity = Number($('inp-opacity').value); window.api.setOpacity(state.opacity / 100); persist({ opacity: state.opacity }); };
 $('inp-top').onchange = () => { state.alwaysOnTop = $('inp-top').checked; window.api.setAlwaysOnTop(state.alwaysOnTop); persist({ alwaysOnTop: state.alwaysOnTop }); };
 $('inp-lms-auto').onchange = () => { state.lmsAuto = $('inp-lms-auto').checked; persist({ lmsAuto: state.lmsAuto }); };
+// LMS 학번 기억(이 기기 전용, 동기화 안 함): 끄면 기억한 학번도 지운다
+function showLmsRemember(r) {
+  if (!r) return;
+  $('inp-lms-remember').checked = !!r.enabled;
+  $('lms-remember-desc').textContent = r.enabled
+    ? (r.masked ? `기억한 학번 ${r.masked} · 이 기기에만 저장, 비밀번호는 저장하지 않아요.` : '다음 로그인 때 입력한 학번을 이 기기에만 기억해요. 비밀번호는 저장하지 않아요.')
+    : '끄면 기억한 학번을 지워요.';
+}
+async function loadLmsRemember() { try { if (window.api.lmsRememberGet) showLmsRemember(await window.api.lmsRememberGet()); } catch (e) {} }
+$('inp-lms-remember').onchange = async () => { try { showLmsRemember(await window.api.lmsRememberSet($('inp-lms-remember').checked)); } catch (e) {} };
 $('inp-morning').onchange = () => { const h = parseInt(($('inp-morning').value || '8').split(':')[0], 10); state.notifyPrefs.morningHour = isNaN(h) ? 8 : h; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-deadline').onchange = () => { state.notifyPrefs.deadlineAlerts = $('inp-deadline').checked; persist({ notifyPrefs: state.notifyPrefs }); };
 $('inp-rollover').onchange = () => { state.rolloverOverdue = $('inp-rollover').checked; persist({ rolloverOverdue: state.rolloverOverdue }); if (state.rolloverOverdue) rolloverOverdue(); rerenderTodoAreas(); };
@@ -2500,6 +2511,7 @@ if (IS_LAB) {
   state.notifyState = Object.assign({ lastSummaryDate: '', firedIds: [], seenNotices: [] }, cfg.notifyState || {});
   state.lmsAuto = cfg.lmsAuto !== false;
   $('inp-lms-auto').checked = state.lmsAuto;
+  loadLmsRemember();
   state.theme = ['light', 'cbnu', 'baekjoon', 'gray'].includes(cfg.theme) ? cfg.theme : 'dark';
   applyTheme();
   state.focus = cfg.focus && Array.isArray(cfg.focus.sessions) ? cfg.focus : { sessions: [] };

@@ -66,6 +66,9 @@
 ## 파일 지도(핵심)
 - `main.js` — Electron 메인(창/IPC/다운로드/폴더/단일인스턴스/백업/GitHub 동기화 git 호출)
 - `lms.js` — 충북대 coursemos 스크래핑/다운로드/디버그 덤프
+- `lms-notices.js` — LMS 공지 제목에서 마감일 읽기·D-day 칩(순수 계산, `scripts/test-lms-notices.js`)
+- `lms-remember.js` — LMS 로그인 창 학번 기억(학번만, `userData/lms-remember.json`, 동기화 안 함)
+- `material-dedupe.js` — 수업자료 중복 저장 방지(같은 내용 파일 찾기)
 - `renderer.js` — 모든 UI/상태(할 일/일정/LMS/기록/출석/집중화면/동기화 로직)
 - `preload.js` — IPC 브리지
 - `index.html` — 마크업/CSS

@@ -100,7 +100,8 @@ function getPool(n) {
 
 // ---------- 로그인 창 (사용자가 직접 로그인) ----------
 let loginWin = null;
-function openLoginWindow() {
+// opts.fillScript: 로그인 페이지마다 넣을 학번 채우기 스크립트(lms-remember.js) · opts.onConsole(message): 그 스크립트가 알린 값
+function openLoginWindow(opts = {}) {
   return new Promise((resolve) => {
     if (loginWin && !loginWin.isDestroyed()) {
       loginWin.focus();
@@ -137,6 +138,14 @@ function openLoginWindow() {
         }, 400);
       }
     };
+    if (opts.fillScript) {
+      // 로그인 화면(학교 SSO 포함)이 뜰 때마다 아이디 칸에 학번 채우기 — 비밀번호 칸은 건드리지 않는다
+      loginWin.webContents.on('did-finish-load', () => {
+        if (!loginWin || loginWin.isDestroyed() || !isLoginUrl(loginWin.webContents.getURL())) return;
+        loginWin.webContents.executeJavaScript(opts.fillScript, false).catch(() => {});
+      });
+    }
+    if (opts.onConsole) loginWin.webContents.on('console-message', (e, level, message) => opts.onConsole((e && e.message) || message || ''));
     loginWin.webContents.on('did-navigate', check);
     loginWin.webContents.on('did-navigate-in-page', check);
     loginWin.on('closed', () => {

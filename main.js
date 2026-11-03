@@ -13,6 +13,7 @@ const { preserveMaterial, archiveGitChanges } = require('./material-history');
 const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
 const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
 const { findSameFile, freePath } = require('./material-dedupe');
+const lmsRemember = require('./lms-remember');
 const { createServerStore, serverCall } = require('./server-sync');
 const { createFileSync, scanLocal } = require('./file-sync');
 
@@ -156,9 +157,25 @@ ipcMain.on('notify', (_e, { title, body } = {}) => {
 });
 
 // ---------- LMS IPC ----------
+const LMS_REMEMBER_PATH = path.join(app.getPath('userData'), 'lms-remember.json');
 ipcMain.handle('lms-login', async () => {
-  const r = await lms.openLoginWindow();
+  const mem = lmsRemember.load(LMS_REMEMBER_PATH);
+  let typed = '';
+  const r = await lms.openLoginWindow(mem.enabled ? {
+    fillScript: lmsRemember.fillScript(mem.id),
+    onConsole: (msg) => { const v = lmsRemember.idFromConsole(msg); if (v) typed = v; },
+  } : {});
+  // 로그인에 성공했을 때만(창을 그냥 닫은 경우 제외) 학번 저장
+  if (mem.enabled && r && r.ok && !r.closed && !r.already && typed && typed !== mem.id) {
+    try { lmsRemember.save(LMS_REMEMBER_PATH, { enabled: true, id: typed }); } catch (e) {}
+  }
   return r;
+});
+ipcMain.handle('lms-remember-get', () => { const m = lmsRemember.load(LMS_REMEMBER_PATH); return { enabled: m.enabled, masked: lmsRemember.maskId(m.id) }; });
+ipcMain.handle('lms-remember-set', (_e, enabled) => {
+  // 끄면 기억한 학번도 지운다
+  const m = lmsRemember.save(LMS_REMEMBER_PATH, { enabled: !!enabled, id: enabled ? lmsRemember.load(LMS_REMEMBER_PATH).id : '' });
+  return { enabled: m.enabled, masked: lmsRemember.maskId(m.id) };
 });
 
 ipcMain.handle('lms-status', async () => {

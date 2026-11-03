@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('api', {
   minimize: () => ipcRenderer.send('minimize-app'),
   notify: (title, body) => ipcRenderer.send('notify', { title, body }),
   lmsLogin: () => ipcRenderer.invoke('lms-login'),
+  lmsRememberGet: () => ipcRenderer.invoke('lms-remember-get'),
+  lmsRememberSet: (enabled) => ipcRenderer.invoke('lms-remember-set', !!enabled),
   lmsStatus: () => ipcRenderer.invoke('lms-status'),
   lmsRefresh: () => ipcRenderer.invoke('lms-refresh'),
   lmsOpen: (url) => ipcRenderer.send('lms-open', url),
