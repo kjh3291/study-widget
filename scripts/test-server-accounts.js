@@ -1,14 +1,15 @@
 // 실험실 서버 계정 규칙 점검: 역할 등급·승인·정지·삭제(30일)·복구·임시 비밀번호·비밀번호 변경·탈퇴·GitHub 확인 실패.
 // 시험 계정(99…)을 만들고 그중 하나를 실험실 DB에서 잠시 최고 관리자로 올렸다가 끝나면 모두 지운다.
 // 사용: node scripts/test-server-accounts.js   (실험실 서버 SSH 필요, 운영 금지)
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { serverCall } = require('../server-sync');
 
-const URL = 'http://100.96.247.43:8444';
+const URL = LAB.URL;
 const CONSENT = '2026-10-v1';
-const sql = q => execFileSync('ssh', ['kimti4', `cd ~/studeck/lab/server && docker compose exec -T db psql -U studeck -d studeck -At -c "${q}"`]).toString().trim();
+const sql = LAB.sql;
 const fresh = p => p + String(crypto.randomInt(0, 1e8)).padStart(8, '0');
 const pw = crypto.randomBytes(12).toString('base64url');
 const PASS = m => console.log('PASS: ' + m);

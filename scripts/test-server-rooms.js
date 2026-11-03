@@ -1,13 +1,14 @@
 // 실험실 서버 채팅방 정책 점검(2026-10-18 결정):
 // 전체방 자동 참여·나가기 불가 / 친목 바로 생성, 스터디·이벤트는 운영진 승인 / 공개(참여)·비공개(초대) /
 // 메시지·실시간은 방 멤버만 / 방별 안 읽은 수·읽음 / 전체방 고정 + 최근 메시지순
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { serverCall } = require('../server-sync');
 
-const URL = 'http://100.96.247.43:8444', WS = 'ws://100.96.247.43:8444/ws', CONSENT = '2026-10-v1';
-const sql = q => execFileSync('ssh', ['kimti4', `cd ~/studeck/lab/server && docker compose exec -T db psql -U studeck -d studeck -At -c "${q}"`]).toString().trim();
+const URL = LAB.URL, WS = LAB.WS, CONSENT = '2026-10-v1';
+const sql = LAB.sql;
 const pw = crypto.randomBytes(12).toString('base64url');
 const PASS = m => console.log('PASS: ' + m);
 const made = [];

@@ -1,6 +1,7 @@
 // 실험실 앱 계정 화면 점검(실제 main+renderer, 임시 프로필): 임시 비밀번호 → 새 비밀번호 강제,
 // 내 계정 화면·탈퇴, 최고 관리자의 회원 관리(복구·운영진 지정). 시험 계정은 끝나면 실험실 DB에서 지운다.
 // 사용: npx electron scripts/test-lab-accounts.cjs [스크린샷 폴더]
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const { app } = require('electron');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
@@ -10,9 +11,9 @@ fs.mkdirSync(path.join(temp, 'Desktop'));
 app.setPath('userData', temp); app.setPath('desktop', path.join(temp, 'Desktop'));
 fs.writeFileSync(path.join(temp, 'config.json'), JSON.stringify({ lmsAuto: false, autoDownload: false, assignFix1: true, materialsFix2: true, bounds: { x: 0, y: 0, width: 430, height: 760 } }));
 const { serverCall } = require('../server-sync');
-const URL = 'http://100.96.247.43:8444', CONSENT = '2026-10-v1';
+const URL = LAB.URL, CONSENT = '2026-10-v1';
 const shots = process.argv.find(a => a.startsWith('--shots='))?.slice(8);
-const sql = q => execFileSync('ssh', ['kimti4', `cd ~/studeck/lab/server && docker compose exec -T db psql -U studeck -d studeck -At -c "${q}"`]).toString().trim();
+const sql = LAB.sql;
 const id = () => '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0');
 const owner = id(), member = id(), pw = crypto.randomBytes(12).toString('base64url'), newPw = crypto.randomBytes(12).toString('base64url');
 let verified = false;

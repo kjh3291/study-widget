@@ -1,6 +1,7 @@
 // 실험실 서버 대상 두 기기 동기화 시나리오. 실제 sync-service + server-sync를 두 벌 만들어
 // 기기 A·B처럼 주고받는다. 사용: node scripts/test-server-sync.js [서버주소=http://100.96.247.43:8444]
 // 실험실 서버(AUTO_APPROVE)에서만 실행한다. 매 실행마다 새 시험 계정을 만든다.
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -10,7 +11,7 @@ const { createSyncService } = require('../sync-service');
 const { trackChanges, initializeOutbox } = require('../sync-model');
 const { createServerStore, serverCall } = require('../server-sync');
 
-const URL = process.argv[2] || 'http://100.96.247.43:8444';
+const URL = process.argv[2] || LAB.URL;
 if (/:8443\b/.test(URL)) { console.error('운영 서버에는 실행하지 않습니다.'); process.exit(1); }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'studeck-server-sync-'));

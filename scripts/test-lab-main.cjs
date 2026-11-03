@@ -1,5 +1,6 @@
 // 실험실 앱(main+preload+renderer)을 임시 프로필로 띄워 실험실 서버와 실제로 주고받는지 확인한다.
 // 사용: npx electron scripts/test-lab-main.cjs   (Tailscale로 실험실 서버에 연결돼 있어야 함)
+const LAB = require('./lab-target');   // 서버 주소·DB 확인 방법(기본 실험실 서버)
 const { app } = require('electron');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), crypto = require('node:crypto');
 process.env.STUDECK_CHANNEL = 'lab';
@@ -14,7 +15,7 @@ fs.writeFileSync(path.join(desktop, 'Studeck-Lab', '테스트과목', '수업자
 app.setPath('userData', temp); app.setPath('desktop', desktop);
 fs.writeFileSync(path.join(temp, 'config.json'), JSON.stringify({ lmsAuto: false, autoDownload: false, rolloverOverdue: false, assignFix1: true, materialsFix2: true }));
 const { serverCall } = require('../server-sync');
-const URL = 'http://100.96.247.43:8444';
+const URL = LAB.URL;
 const user = '99' + String(crypto.randomInt(0, 1e8)).padStart(8, '0'), pw = crypto.randomBytes(12).toString('base64url');
 let verified = false;
 const timeout = setTimeout(() => { console.error('lab main test timed out'); app.exit(1); }, 40000);
