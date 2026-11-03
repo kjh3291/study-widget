@@ -132,6 +132,7 @@ function hideToast() { const b = $('toast'); if (b) b.innerHTML = ''; }
 
 // ---------- 상단 요약 바 ----------
 function renderSummary() {
+  renderOnboarding();
   const bar = $('summary'); if (!bar) return;
   const today = todayStr();
   const todayCount = activeItems().filter((i) => !i.done && i.due === today).length;
@@ -1660,6 +1661,31 @@ $('sync-now').onclick = () => state.syncEnabled ? initSync() : openSettings();
 $('sync-resolve').onclick = openSyncConflicts;
 window.api.onSyncStatus(showSyncStatus);
 window.api.onRequestQuit(() => requestQuit());
+// 첫 실행 안내(onboarding.js): 오늘 화면 위 '시작하기' 체크리스트. 실제로 하면 체크되고, 다 하거나 닫으면 사라진다
+function renderOnboarding() {
+  const box = $('onboard'); if (!box || !window.Onboarding) return;
+  const s = { lms: state.lms, timetableFull: state.timetableFull, todos: state.todos, onboarding: state.onboarding || {}, serverMode: SERVER_MODE, focusSessions: state.focus && state.focus.sessions };
+  box.hidden = !Onboarding.visible(s); if (box.hidden) return;
+  const list = Onboarding.steps(s), n = list.filter((x) => x.done).length;
+  const ico = (name) => `<span class="sd-ico" data-icon="${name}" aria-hidden="true"></span>`;
+  box.innerHTML = `<div class="onboard-head"><h2 id="onboard-title">Studeck 시작하기 <span class="sd-muted">${n}/${list.length}</span></h2>
+      <button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-onboard-close>닫기</button></div>
+    <div class="sd-progress" role="progressbar" aria-label="시작하기 진행" aria-valuemin="0" aria-valuemax="${list.length}" aria-valuenow="${n}"><span style="--progress:${Math.round(n / list.length * 100)}%"></span></div>
+    <ol class="onboard-steps">${list.map((x) => `<li class="${x.done ? 'done' : ''}"><button type="button" data-onboard="${x.id}" ${x.done ? 'aria-disabled="true"' : ''}>
+      ${ico(x.done ? 'circle-check' : 'chevron-right')}<span class="sd-grow"><strong>${escapeHtml(x.title)}</strong>${x.done ? '' : `<span class="sd-muted">${escapeHtml(x.desc)}</span>`}</span></button></li>`).join('')}</ol>`;
+}
+function setOnboarding(patch) { state.onboarding = { ...(state.onboarding || {}), ...patch }; persist({ onboarding: state.onboarding }); renderOnboarding(); }
+$('onboard').addEventListener('click', (e) => {
+  if (e.target.closest('[data-onboard-close]')) { setOnboarding({ dismissed: true }); showToast('시작하기를 닫았어요. 사용법은 동아리 안내문에서 다시 볼 수 있어요.'); return; }
+  const b = e.target.closest('[data-onboard]'); if (!b || b.getAttribute('aria-disabled') === 'true') return;
+  const id = b.dataset.onboard;
+  if (id === 'lms') lmsLogin();
+  else if (id === 'timetable') window.Shell?.goNav('timetable');
+  else if (id === 'todo') $('td-text')?.focus();
+  else if (id === 'focus') window.Focus?.open();   // 공부 기록이 한 번 생기면 저절로 체크
+  else if (id === 'club') { setOnboarding({ clubVisited: true }); window.Shell?.goNav('club'); }
+});
+document.querySelector('#nav [data-nav="club"]')?.addEventListener('click', () => { if (!(state.onboarding || {}).clubVisited) setOnboarding({ clubVisited: true }); });
 // 새 버전 업그레이드 띠(updater.js): 있으면 오늘 화면 위에. 누르면 받기 → 다 받으면 저장·동기화 뒤 설치하고 다시 시작
 function showUpdate(st) {
   const b = $('update-banner'); if (!b || !st) return;
@@ -2712,6 +2738,7 @@ if (IS_LAB) {
   state.rolloverOverdue = cfg.rolloverOverdue !== false;
   $('inp-rollover').checked = state.rolloverOverdue;
   state.lmsDone = (cfg.lmsDone && typeof cfg.lmsDone === 'object') ? cfg.lmsDone : {};
+  state.onboarding = (cfg.onboarding && typeof cfg.onboarding === 'object') ? cfg.onboarding : {};   // 첫 실행 안내(이 기기 전용)
   state.materialsDone = (cfg.materialsDone && typeof cfg.materialsDone === 'object') ? cfg.materialsDone : {};
   state.assignDone = (cfg.assignDone && typeof cfg.assignDone === 'object') ? cfg.assignDone : {};
   // v1.1.10: 과제 파일이 잘못된 폴더(수업자료)로 저장되던 기록 1회 초기화 → 다음 새로고침에 '과제' 폴더로 재수집

@@ -278,3 +278,18 @@ header button .sd-ico { width: 16px; height: 16px; }
 .update-banner { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface, transparent)); }
 .update-banner > .sd-ico { color: var(--accent); }
 .update-banner[aria-busy="true"] { cursor: progress; }
+/* 첫 실행 안내(오늘 화면 '시작하기') */
+.onboard { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.onboard-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.onboard-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.onboard-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.onboard-steps button { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 9px 2px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.onboard-steps li:first-child button { border-top: 0; }
+.onboard-steps button:hover:not([aria-disabled="true"]) { background: var(--bg-raised); }
+.onboard-steps .sd-ico { flex: none; margin-top: 2px; color: var(--accent); }
+.onboard-steps .sd-grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.onboard-steps strong { font-size: 13px; font-weight: 500; }
+.onboard-steps .sd-muted { font-size: 12px; }
+.onboard-steps .done button { cursor: default; color: var(--text-muted); }
+.onboard-steps .done strong { text-decoration: line-through; }
+.onboard-steps .done .sd-ico { color: var(--success, var(--accent)); }
