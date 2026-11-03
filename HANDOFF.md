@@ -11,7 +11,8 @@
 - `lab` = `main` + 커밋 여러 개(아래, `git log origin/main..lab`). `main`은 `83e1808`(v1.4.0)에 머물러 있다.
 - ⚠️ **GitHub에 v1.4.0 태그·릴리스가 없다**(마지막 태그 v1.3.4). 다운로드 페이지는 GitHub 최신 릴리스를 읽으므로, 새 버전 릴리스를 **게시(Publish)** 해야 오픈 날 받을 파일이 생긴다.
 - 클라우드에서 확인한 것: `npm test` 32개 통과. 로컬 PostgreSQL로 띄운 서버에서 `test-server-files`·`test-file-sync`·`test-server-sync` 통과, **예전 앱(v1.4.0)의 파일 동기화도 바뀐 서버에서 파일을 지우거나 다시 올리지 않음** 확인.
-- 클라우드에서 못 한 것: 실험실·운영 서버 배포, `test-server-community/rooms/focus/positions`·`test-lab-*`(서버 주소·SSH 고정), Electron 빌드·실행, 실제 충북대 LMS 로그인 창에서 학번 채우기.
+- **클라우드에서 추가로 확인(11/03 밤):** 로컬 PostgreSQL 16 + lab 서버로 `test:server` 전체(서버 테스트 8개, Electron 실험실 테스트 3개, 운영 전환 리허설)와 `test:ui`(Electron 3개)가 모두 통과. 테스트는 `scripts/lab-target.js`로 다른 서버를 가리킬 수 있다. → PC에서는 **실험실 서버에 배포한 뒤** 같은 테스트를 한 번 더 돌려서 실제 서버(PostgreSQL 17·Docker)에서도 같은지만 보면 된다.
+- 클라우드에서 못 한 것: 실험실·운영 서버 배포(Docker), 설치 파일 빌드·설치(윈도우·맥), 실제 충북대 LMS 로그인 창에서 학번 채우기, 업그레이드 실제 설치·재시작.
 
 ### lab에만 있는 변경(운영 반영 대상)
 | 커밋 | 내용 | 서버 변경 |
@@ -135,6 +136,11 @@ cd ~/studeck/prod/server && docker compose up -d
 ## 참고 문서
 - 동아리원 안내문: `docs/club-guide.md` (오픈 공지에 붙이기, 다운로드 주소는 공지에 직접)
 - 사용 시나리오(화면 캡처 모음)는 claude.ai 아티팩트로 사용자에게 공유됨
+
+## 오픈 뒤에 합칠 것: `lab-next` 브랜치
+lab에서 갈라져 이미 만들어 둔 것(클라우드에서 테스트 통과). 오픈 릴리스가 끝나면 PC에서 확인하고 `git checkout lab && git merge --ff-only lab-next`.
+- 출석 상태 호환(4개 + 출석 인정), 새 학기 도우미, GitHub 동기화 코드 제거, 칭호·배지(진행 중)
+- 확인 항목은 lab-next의 HANDOFF.md에 따로 적는다.
 
 ## 오픈 뒤 할 일(급하지 않음)
 칭호·배지 시스템, 출석 상태 호환(5개 ↔ 4개), 내 자료 화면 GPT 디자인(`docs/design-requests/my-files.md`), 웹 버전, GitHub 동기화 코드 제거(운영 전환 1주 경과 — 사용자 확인 후).
