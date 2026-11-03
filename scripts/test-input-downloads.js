@@ -13,6 +13,7 @@ assert.equal(added, 0);
 keydown(enter);
 assert.equal(added, 1);
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studeck-download-test-'));
+const cfg = {};   // 자료 저장 위치 설정(테스트 중 바꿈)
 const source = fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8');
 const names = {}; vm.createContext(names);
 vm.runInContext(source.slice(source.indexOf('function safeName('), source.indexOf('function parseCdFilename(')), names);
@@ -20,7 +21,7 @@ assert.equal(names.safeName('팀.pdf'.normalize('NFD')), '팀.pdf');
 let body = Buffer.from('first submission');
 const hash = b => crypto.createHash('sha1').update(b).digest('hex');
 const { preserveMaterial } = require('../material-history');
-const context = { wasDeletedFile: require('../deleted-files').wasDeletedFile, preserveMaterial, ...require('../material-dedupe'), fs, path, STUDECK_DIR: () => root, safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
+const context = { wasDeletedFile: require('../deleted-files').wasDeletedFile, preserveMaterial, ...require('../material-dedupe'), fs, path, STUDECK_DIR: () => root, materialTarget: (course, kind) => require('../material-folders').resolveTarget(cfg, course, kind, root, s => s), MATERIAL_BACKUP_DIR: () => path.join(root, '.userData-backups'), safeName: s => s, sha1: hash, fetchMaterialBytes: async () => ({ body, filename: 'assignment.pdf' }) };
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('), source.indexOf("ipcMain.handle('lms-download'")), context);
 (async () => {
@@ -110,6 +111,22 @@ vm.runInContext(source.slice(source.indexOf('async function downloadMaterial('),
   fs.mkdirSync(path.join(root, 'Only', '수업자료', '이전 자료'), { recursive: true }); fs.mkdirSync(path.join(root, 'Only', '.studeck'), { recursive: true });
   fs.writeFileSync(path.join(root, 'Only', '수업자료', '이전 자료', 'old.pdf'), 'v1'); fs.writeFileSync(path.join(root, 'Only', '.studeck', 'x.pdf'), 'v1');
   assert.equal(findSameFile(path.join(root, 'Only'), Buffer.from('v1'), hash), null);
+  // 사용자가 고른 저장 위치: 그 폴더에 받고, 지운 파일은 다시 만들지 않고, 바뀐 판은 이 기기 백업에
+  const study = path.join(root, '..', path.basename(root) + '-study');
+  cfg.materialsRoot = study; cfg.materialsSubdirs = { material: 'materials', assign: 'assignments' };
+  body = Buffer.from('custom v1');
+  const c1 = await context.downloadMaterial('cus', 'Algo', '', { mode: 'new' });
+  assert.equal(path.dirname(c1.path), path.join(study, 'Algo', 'materials'));
+  body = Buffer.from('custom v2');
+  const c2 = await context.downloadMaterial('cus', 'Algo', '', { mode: 'recheck', dest: c1.path });
+  assert.equal(c2.changed, true); assert.equal(fs.readFileSync(c1.path, 'utf8'), 'custom v2');
+  assert.equal(fs.existsSync(path.join(study, 'Algo', 'materials', '이전 자료')), false, '사용자 폴더에 이전 자료 폴더를 만들지 않음');
+  assert.equal(fs.readdirSync(path.join(root, '.userData-backups', 'Algo')).length, 1);
+  fs.unlinkSync(c1.path);
+  const c3 = await context.downloadMaterial('cus', 'Algo', '', { mode: 'recheck', dest: c1.path });
+  assert.equal(c3.missing, true); assert.equal(fs.existsSync(c1.path), false, '지운 파일은 다시 받지 않음');
+  delete cfg.materialsRoot; delete cfg.materialsSubdirs; fs.rmSync(study, { recursive: true, force: true });
   console.log('PASS: IME Enter adds once; same-name resubmission replaces with backup; same-name lecture files from different LMS items saved separately; every refresh checks assignments');
   console.log('PASS: 수업자료 중복 저장 방지 — 같은 내용이면 사본을 만들지 않음, 같이 쓰는 파일은 덮어쓰지 않음, 과목 폴더 안에서 옮긴 파일은 따라감');
+  console.log('PASS: 사용자가 고른 저장 위치 — 그 폴더에 받기, 지운 파일 다시 안 받기, 이전 판은 기기 백업');
 })().finally(() => fs.rmSync(root, { recursive: true, force: true })).catch(e => { console.error(e); process.exitCode = 1; });

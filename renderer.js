@@ -1256,9 +1256,10 @@ async function syncDownloads(list, doneMap, kind, force) {
     // 수업자료만: 다른 항목과 겹친 경로 → 새 이름으로(과제는 같은 이름 재제출이면 덮어쓰는 게 맞음)
     // (내용이 똑같아 다른 항목의 파일을 같이 쓰는 기록(same)은 그대로 둔다 — 또 받으면 같은 파일이 두 개 생김)
     if (kind === 'material' && rec && rec.path && !rec.same && owner[rec.path.toLowerCase()] !== m.url) rec = null;
-    // 과제인데 기록 경로가 '과제' 폴더가 아니면(옛 버그로 수업자료에 저장됨) 신규로 재수집
-    const wrongFolder = rec && rec.path && kind === 'assign' && !/[\\/]과제[\\/]/.test(rec.path);
+    // 과제인데 기록 경로가 '수업자료' 폴더면(옛 버그로 잘못 저장됨) 신규로 재수집 — 과제 폴더 이름은 사용자가 바꿀 수 있어서 '과제'로 검사하지 않음
+    const wrongFolder = rec && rec.path && kind === 'assign' && /[\\/]수업자료[\\/]/.test(rec.path);
     if (!rec || wrongFolder) items.push({ url: m.url, course, title: m.title, kind, mode: 'new', avoid: kind === 'material' ? avoidFor(m.url) : [] });
+    else if (rec.missing && !force) return;   // 사용자 폴더에서 지운 자료: 다시 확인하지 않음
     else if (kind === 'assign' || force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig, shared: !!rec.same, avoid: kind === 'material' ? avoidFor(m.url) : [] });
   });
   if (!items.length) return { gotNew: [], changed: [] };
@@ -1270,7 +1271,7 @@ async function syncDownloads(list, doneMap, kind, force) {
     if (!r || !r.ok) return;
     const it = byUrl[r.url]; if (!it) return;
     const prev = doneMap[r.url];
-    doneMap[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now, ...(r.same ? { same: true } : {}) };
+    doneMap[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now, ...(r.same ? { same: true } : {}), ...(r.missing ? { missing: true } : {}) };
     if (r.changed && it.mode === 'recheck') changed.push({ course: it.course, title: r.filename || it.title, at: now, kind, changed: true });
     else if (!prev && !r.existed) gotNew.push({ course: it.course, title: r.filename || it.title, at: now, kind });
   });
@@ -1934,6 +1935,48 @@ if ($('inp-focus-goal')) $('inp-focus-goal').onchange = () => {
   const fv = $('focus-view'); if (fv && !fv.classList.contains('hidden')) renderFocus();
 };
 $('btn-open-studeck').onclick = () => window.api.openStudeckFolder('root');
+// 자료 저장 위치(이 기기 전용): LMS 수업자료·과제를 받을 폴더. 보조자료는 서버와 맞추는 자료라 늘 Studeck 폴더
+async function openMaterialLocationPanel() {
+  const P = UI.panel('mat-location-panel', '자료 저장 위치', '설정');
+  const ico = (n) => `<span class="sd-ico" data-icon="${n}" aria-hidden="true"></span>`;
+  const courses = ((state.lms && state.lms.courses) || []).filter((c) => c.track !== false).map((c) => cleanCourse(c.name)).filter((v, i, a) => v && a.indexOf(v) === i);
+  const HOW = { default: '기본 위치', root: '전체 위치 안 과목 폴더', readme: 'README 제목이 같은 폴더', course: '과목별로 지정' };
+  const render = async () => {
+    const r = await window.api.materialsSettings(courses);
+    P.sub.hidden = false;
+    P.sub.textContent = '이 기기에만 적용돼요. 수업자료·과제는 LMS에서 다시 받을 수 있어서 서버에 올리지 않아요.';
+    P.body.innerHTML = `<h3 class="sd-gap">전체 위치</h3>
+      <div class="frow sd-file-row"><div class="sd-grow"><strong class="sd-truncate" title="${escapeHtml(r.root || r.defaultRoot)}">${escapeHtml(r.root || r.defaultRoot)}</strong>
+        <span class="sd-muted">${r.root ? '고른 폴더 안에 과목 폴더를 만들어요(README.md 첫 줄이 과목명인 폴더가 있으면 그 폴더).' : '기본: Studeck 폴더'}</span></div>
+        <button type="button" class="sd-btn sd-btn-small" data-root-choose>${ico('folder-open')}고르기</button>
+        ${r.root ? '<button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-root-reset>기본으로</button>' : ''}</div>
+      <h3 class="sd-gap-lg">과목 폴더 안 하위 폴더 이름</h3>
+      <div class="sd-row sd-gap"><div class="sd-field sd-grow"><label for="mat-sub-material">수업자료</label><input class="sd-input" id="mat-sub-material" value="${escapeHtml(r.subdirs.material)}" maxlength="60"></div>
+        <div class="sd-field sd-grow"><label for="mat-sub-assign">과제</label><input class="sd-input" id="mat-sub-assign" value="${escapeHtml(r.subdirs.assign)}" maxlength="60"></div></div>
+      <button type="button" class="sd-btn sd-btn-small sd-gap" data-sub-save>이름 저장</button>
+      <h3 class="sd-gap-lg">과목별 위치 <span class="sd-muted">${r.courses.length}</span></h3>
+      ${r.courses.map((c) => `<div class="frow sd-file-row" data-course="${escapeHtml(c.name)}"><div class="sd-grow"><strong class="sd-truncate">${escapeHtml(c.name)}</strong>
+          <span class="sd-muted sd-truncate" title="${escapeHtml(c.courseDir)}">${escapeHtml(HOW[c.how] || '')} · ${escapeHtml(c.courseDir)}</span></div>
+          <button type="button" class="sd-btn sd-btn-small" data-course-choose>고르기</button>
+          ${c.folder ? '<button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-course-reset>해제</button>' : ''}</div>`).join('') || '<p class="sd-muted sd-gap">LMS에 로그인하면 과목이 보여요.</p>'}
+      <p class="sd-muted sd-gap-lg">기본이 아닌 위치에서는 옮기거나 지운 자료를 다시 받지 않고, 교수님이 바꾼 자료의 이전 판은 이 기기 백업에 남겨요. 이미 받은 자료는 옮기지 않아요(새로 받는 자료부터 적용).</p>`;
+  };
+  P.el.addEventListener('click', async (e) => {
+    const save = async (patch, msg) => { await window.api.materialsSave(patch); showToast(msg); await render(); updateMatLocationLabel(); };
+    if (e.target.closest('[data-root-choose]')) { const d = await window.api.materialsChooseDir('수업자료·과제를 받을 폴더'); if (d) await save({ root: d }, '전체 위치를 바꿨어요'); return; }
+    if (e.target.closest('[data-root-reset]')) return save({ root: '' }, '기본 위치(Studeck 폴더)로 돌렸어요');
+    if (e.target.closest('[data-sub-save]')) return save({ subdirs: { material: $('mat-sub-material').value, assign: $('mat-sub-assign').value } }, '하위 폴더 이름을 저장했어요');
+    const row = e.target.closest('[data-course]'); if (!row) return;
+    if (e.target.closest('[data-course-choose]')) { const d = await window.api.materialsChooseDir(row.dataset.course + ' 자료 폴더'); if (d) await save({ course: row.dataset.course, folder: d }, `${row.dataset.course} 위치를 정했어요`); return; }
+    if (e.target.closest('[data-course-reset]')) return save({ course: row.dataset.course, folder: '' }, `${row.dataset.course} 과목별 위치를 해제했어요`);
+  });
+  render();
+}
+async function updateMatLocationLabel() {
+  try { const r = await window.api.materialsSettings([]); $('mat-location-label').textContent = r.root ? `전체 위치: ${r.root}` : 'LMS 수업자료·과제를 받을 폴더 (이 기기에만)'; } catch (e) {}
+}
+$('btn-mat-location').onclick = openMaterialLocationPanel;
+updateMatLocationLabel();
 // GitHub 동기화
 async function refreshGitStatus() {
   try {

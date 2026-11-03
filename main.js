@@ -14,6 +14,7 @@ const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files')
 const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
 const { findSameFile, freePath } = require('./material-dedupe');
 const lmsRemember = require('./lms-remember');
+const { resolveTarget } = require('./material-folders');
 const { createServerStore, serverCall } = require('./server-sync');
 const { createFileSync, scanLocal } = require('./file-sync');
 
@@ -239,6 +240,9 @@ const STUDECK_DIR = () => path.join(app.getPath('desktop'), PROFILE.studeckFolde
 function safeName(s) {
   return String(s || '').normalize('NFC').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '기타';
 }
+// 자료 저장 위치 — 규칙은 material-folders.js (설정은 이 기기 config에만: materialsRoot·materialsFolders·materialsSubdirs)
+const materialTarget = (course, kind) => resolveTarget(loadConfig(), course, kind, STUDECK_DIR(), safeName);
+const MATERIAL_BACKUP_DIR = () => path.join(app.getPath('userData'), 'backups', 'materials');
 function parseCdFilename(cd) {
   if (!cd) return '';
   let m = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(cd);
@@ -348,8 +352,9 @@ async function downloadMaterial(url, course, title, opts) {
   if (!got || !got.body) return { url, ok: false, error: 'download-fail' };
   const sig = sha1(got.body);
   const isAssign = opts.kind === 'assign';
-  const courseDir = path.join(STUDECK_DIR(), safeName(course));
-  const dir = path.join(courseDir, isAssign ? '과제' : '수업자료');
+  // 저장 위치: 기본(Studeck/과목/수업자료·과제) 또는 사용자가 고른 폴더(material-folders.js)
+  const target = materialTarget(course, isAssign ? 'assign' : 'material');
+  const courseDir = target.courseDir, dir = target.dir;
   // 다른 LMS 항목이 이미 쓰는 파일 이름이면(교수님이 같은 이름으로 두 번 올림) ' (2)'를 붙여 따로 저장한다.
   // 같은 경로를 두 항목이 번갈아 덮어쓰면 매번 '바뀜'으로 다시 받고 이전 자료가 쌓이기 때문
   const avoid = new Set((opts.avoid || []).map((p) => path.resolve(p).toLowerCase()));
@@ -358,7 +363,7 @@ async function downloadMaterial(url, course, title, opts) {
   const result = (p, extra) => ({ url, ok: true, path: p, filename: path.basename(p), sig, changed: false, ...extra });
   try {
     const existed = fs.existsSync(dest);
-    if (!existed && isAssign && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
+    if (!existed && isAssign && !target.custom && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
       return result(dest, { existed: true, deleted: true });
     }
     const oldSig = existed ? sha1(fs.readFileSync(dest)) : null;
@@ -369,8 +374,10 @@ async function downloadMaterial(url, course, title, opts) {
       const found = findSameFile(courseDir, got.body, sha1, { skipTop: ['과제'] });   // 내 제출물(과제)은 수업자료로 치지 않음
       if (found) return result(found, { existed: true, same: avoid.has(path.resolve(found).toLowerCase()) });
     }
+    // 사용자가 고른 폴더: 옮기거나 지운 파일은 다시 만들지 않는다(사용자가 정리한 것)
+    if (target.custom && !existed && opts.mode === 'recheck' && opts.dest) return result(dest, { existed: true, missing: true });
     // 수업자료 폴더 밖(보조자료 등)을 가리키던 기록인데 그 파일이 없어졌으면, 그 자리(다른 기기와 동기화되는 곳)에 되살리지 않고 수업자료 폴더에 받는다
-    if (!existed && !isAssign && path.relative(dir, dest).startsWith('..')) dest = freePath(dir, got.filename, avoid);
+    if (!existed && !isAssign && !target.custom && path.relative(dir, dest).startsWith('..')) dest = freePath(dir, got.filename, avoid);
     // 다른 항목과 함께 쓰던 파일인데 이 항목 내용만 달라졌으면, 그 파일을 덮어쓰지 않고 새 이름으로 따로 저장
     if (existed && opts.shared && !isAssign) {
       const own = freePath(dir, got.filename, avoid);
@@ -383,7 +390,12 @@ async function downloadMaterial(url, course, title, opts) {
       fs.mkdirSync(backup, { recursive: true });
       fs.copyFileSync(dest, path.join(backup, oldSig + '-' + path.basename(dest)));
     }
-    if (existed && !isAssign) preserveMaterial(STUDECK_DIR(), path.relative(STUDECK_DIR(), dest), fs.readFileSync(dest));
+    if (existed && !isAssign && target.custom) {
+      // 사용자 폴더는 '이전 자료' 폴더로 어지럽히지 않고 이 기기 백업(userData/backups/materials)에 이전 판을 둔다
+      const old = fs.readFileSync(dest), backup = path.join(MATERIAL_BACKUP_DIR(), safeName(course));
+      fs.mkdirSync(backup, { recursive: true });
+      fs.writeFileSync(path.join(backup, oldSig.slice(0, 12) + '-' + path.basename(dest)), old);
+    } else if (existed && !isAssign) preserveMaterial(STUDECK_DIR(), path.relative(STUDECK_DIR(), dest), fs.readFileSync(dest));
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, got.body);
     return result(dest, { changed: existed });
@@ -399,11 +411,41 @@ ipcMain.handle('open-studeck-folder', (_e, { kind, course } = {}) => {
   try {
     let dir = STUDECK_DIR();
     if (kind === 'subject') dir = path.join(dir, safeName(course));
+    else if (kind === 'materials' || kind === 'assignment') dir = materialTarget(course, kind === 'assignment' ? 'assign' : 'material').dir;   // 사용자가 고른 위치 반영
     else if (CAT_DIR[kind]) dir = path.join(dir, safeName(course), CAT_DIR[kind]);
     fs.mkdirSync(dir, { recursive: true });
     shell.openPath(dir);
     return { ok: true, dir };
   } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+
+// 자료 저장 위치 설정(이 기기 전용)
+ipcMain.handle('materials-settings', (_e, courses) => {
+  const c = loadConfig();
+  return {
+    root: c.materialsRoot || '', defaultRoot: STUDECK_DIR(),
+    subdirs: { material: '수업자료', assign: '과제', ...(c.materialsSubdirs || {}) },
+    courses: (courses || []).map((name) => { const t = materialTarget(name, 'material'); return { name, how: t.how, courseDir: t.courseDir, folder: (c.materialsFolders || {})[name] || '' }; }),
+  };
+});
+ipcMain.handle('materials-choose-dir', async (_e, title) => {
+  const r = await dialog.showOpenDialog(win, { title: title || '폴더 선택', properties: ['openDirectory', 'createDirectory'] });
+  return r.canceled ? '' : r.filePaths[0];
+});
+// 부분 저장: { root } 전체 위치('' = 기본) · { subdirs } · { course, folder } 과목별 위치(folder '' = 해제)
+ipcMain.handle('materials-save', (_e, patch = {}) => {
+  const c = loadConfig();
+  if ('root' in patch) { if (patch.root) c.materialsRoot = String(patch.root); else delete c.materialsRoot; }
+  if (patch.subdirs) {
+    const clean = (v, d) => String(v || '').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 60) || d;
+    c.materialsSubdirs = { material: clean(patch.subdirs.material, '수업자료'), assign: clean(patch.subdirs.assign, '과제') };
+  }
+  if (patch.course) {
+    c.materialsFolders = { ...(c.materialsFolders || {}) };
+    if (patch.folder) c.materialsFolders[patch.course] = String(patch.folder); else delete c.materialsFolders[patch.course];
+  }
+  saveConfig(c);
+  return { ok: true };
 });
 
 // 예전 '분류 먼저'(수업자료/과목) 구조를 '과목 먼저'(과목/수업자료)로 1회 이동
