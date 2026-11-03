@@ -293,3 +293,9 @@ header button .sd-ico { width: 16px; height: 16px; }
 .onboard-steps .done button { cursor: default; color: var(--text-muted); }
 .onboard-steps .done strong { text-decoration: line-through; }
 .onboard-steps .done .sd-ico { color: var(--success, var(--accent)); }
+/* 운영진 관리 › 저장 공간 */
+.storage-admin { display: flex; flex-direction: column; gap: 6px; }
+.storage-sum { display: flex; flex-direction: column; gap: 4px; padding-bottom: 6px; }
+.storage-sum p { margin: 0; font-size: 12px; }
+.storage-row .storage-use { flex: none; width: 128px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.storage-row .storage-use .sd-progress { width: 100%; margin: 0; }

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { pool } from './db.js';
-import { authenticate } from './auth.js';
+import { authenticate, requireAdmin } from './auth.js';
 import { termPolicy, termOf, termLabel } from './terms.js';
 
 const FILES_DIR = process.env.FILES_DIR || '/data/files';
@@ -46,6 +46,28 @@ export function registerFiles(app) {
 
   app.get('/files/usage', { preHandler: authenticate }, async req => ({ used: await usage(req.user.id), limit: QUOTA, fileMax: FILE_MAX,
     terms: { ends: TERMS.ends.map(([m, d]) => `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`), graceDays: TERMS.graceDays } }));
+
+  // 운영진: 저장 공간 현황(보조자료 할당량 정할 때 근거). 회원별 사용량은 사용량 계산(usage)과 같은 기준
+  app.get('/admin/storage', { preHandler: requireAdmin }, async () => {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.username, u.display_name,
+        coalesce((SELECT sum(size) FROM (SELECT sha256, size FROM files WHERE user_id = u.id AND NOT expired
+                                          UNION SELECT sha256, size FROM file_versions WHERE user_id = u.id) t), 0)::bigint AS used,
+        (SELECT count(*) FROM files WHERE user_id = u.id AND NOT deleted AND NOT expired)::int AS files,
+        (SELECT min(stored_at) FROM files WHERE user_id = u.id AND NOT deleted AND NOT expired) AS oldest
+      FROM users u WHERE u.status IN ('approved', 'suspended') ORDER BY used DESC, u.username`);
+    const { rows: [m] } = await pool.query('SELECT coalesce(sum(size), 0)::bigint AS size, count(*)::int AS n FROM media');
+    let disk = null;
+    try { const st = fs.statfsSync(FILES_DIR); disk = { total: st.blocks * st.bsize, free: st.bavail * st.bsize }; } catch { /* 폴더 없음 */ }
+    const now = Date.now();
+    const users = rows.map(r => {
+      const used = Number(r.used);
+      const nextCleanup = r.oldest ? termOf(new Date(r.oldest).getTime(), TERMS).expiresAt : null;
+      return { id: r.id, username: r.username, name: r.display_name, used, files: r.files, percent: QUOTA ? Math.round(used / QUOTA * 1000) / 10 : 0, nextCleanup: nextCleanup && nextCleanup > now ? nextCleanup : null };
+    });
+    return { quota: QUOTA, fileMax: FILE_MAX, terms: TERMS, users, total: users.reduce((a, u) => a + u.used, 0), media: { size: Number(m.size), count: m.n }, disk,
+      reserved: users.length * QUOTA };   // 모두가 할당량을 다 쓰면 필요한 크기
+  });
 
   // 실험실 전용 시험 손잡이: 내 파일만, 주어진 시각(at) 기준으로 학기 정리를 바로 실행
   if ((process.env.STUDECK_CHANNEL || 'lab') === 'lab') {

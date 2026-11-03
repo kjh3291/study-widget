@@ -45,6 +45,26 @@
         <span class="sd-badge ${q.status === 'new' ? 'sd-badge-accent' : ''}">${STATUS[q.status]}</span></button>`).join('')
       : '<span class="set-hint">처리할 문의가 없어요.</span>';
     adminList = list;
+    renderStorage();
+  }
+  // 저장 공간 현황: 보조자료 전체·회원별(많이 쓰는 순)·서버 디스크. 할당량(QUOTA_MB)을 정할 때 근거
+  const fmt = n => n >= 1073741824 ? (n / 1073741824).toFixed(1) + 'GB' : n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(0, Math.round(n / 1024)) + 'KB';
+  async function renderStorage() {
+    const box = $('storage-admin'); if (!box) return;
+    const r = await C.call('GET', '/admin/storage');
+    if (!r || !r.users) { box.innerHTML = `<span class="set-hint">${esc(r?.error || '불러오지 못했어요.')}</span>`; return; }
+    const d = r.disk, used = d ? d.total - d.free : 0, pct = d ? Math.round(used / d.total * 100) : 0;
+    const tight = d && r.reserved > d.free + r.total;   // 모두가 할당량을 다 쓰면 디스크가 모자람
+    const top = r.users.filter(u => u.used > 0).slice(0, 10);
+    box.innerHTML = `<div class="storage-sum">
+        <div class="sd-row"><span>보조자료 전체 <b>${fmt(r.total)}</b> · 회원 ${r.users.length}명 · 1인 ${fmt(r.quota)}</span><span class="sd-muted">사진 ${fmt(r.media.size)}</span></div>
+        ${d ? `<div class="sd-progress" role="progressbar" aria-label="서버 디스크 사용" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="--progress:${pct}%"></span></div>
+        <p class="sd-muted">서버 디스크 ${fmt(used)} / ${fmt(d.total)} 사용 · 남은 공간 ${fmt(d.free)}</p>` : ''}
+        ${tight ? `<p class="sd-danger-text">모두가 할당량(${fmt(r.quota)})을 다 쓰면 ${fmt(r.reserved)}가 필요해서 디스크가 모자라요. 디스크를 늘리거나 QUOTA_MB를 낮춰 주세요.</p>` : `<p class="sd-muted">모두가 할당량을 다 써도 ${fmt(r.reserved)}로 디스크 안에 들어가요.</p>`}
+      </div>
+      ${top.length ? top.map(u => `<div class="admin-row storage-row"><div class="who"><b>${esc(u.name)}</b> ${esc(u.username)}<small>파일 ${u.files}개${u.nextCleanup ? ` · ${new Date(u.nextCleanup - 1).toLocaleDateString()}까지 서버 보관` : ''}</small></div>
+          <span class="storage-use"><span class="sd-progress" aria-hidden="true"><span style="--progress:${Math.min(100, u.percent)}%"></span></span><span>${fmt(u.used)} · ${u.percent}%</span></span></div>`).join('')
+        : '<span class="set-hint">아직 보조자료를 올린 회원이 없어요.</span>'}`;
   }
   let adminList = [];
   $('posreq-admin-list')?.addEventListener('click', async e => {

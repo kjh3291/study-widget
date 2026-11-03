@@ -18,6 +18,7 @@ async function account() {
   const auth = { authorization: 'Bearer ' + l.json.token };
   const q = (p, extra = '') => `?path=${encodeURIComponent(p)}${extra}`;
   return {
+    username: u,
     put: (p, buf, at) => fetch(URL + '/files/content' + q(p, '&updatedAt=' + at), { method: 'PUT', headers: { ...auth, 'content-type': 'application/octet-stream' }, body: buf }).then(async r => ({ status: r.status, json: await r.json() })),
     get: (p) => fetch(URL + '/files/content' + q(p), { headers: auth }).then(async r => ({ status: r.status, buf: Buffer.from(await r.arrayBuffer()) })),
     getSha: (sha) => fetch(URL + '/files/content?sha=' + sha, { headers: auth }).then(r => r.status),
@@ -78,7 +79,8 @@ async function account() {
   r = await A.put('a/b/big.bin', Buffer.alloc(50 * 1024 * 1024 + 1), 1); assert.equal(r.status, 413);
   const usage = await A.json('/files/usage');
   assert.ok(usage.used > 0 && usage.limit >= 1024 * 1024 * 1024);
-  PASS('위험한 경로 거부, 50MB 초과 거부, 사용량 표시');
+  assert.equal((await fetch(URL + '/admin/storage', { headers: { authorization: 'Bearer ' + (await serverCall(URL, 'POST', '/auth/login', { username: A.username, password: pw })).json.token } })).status, 403, '저장 공간 현황은 운영진만');
+  PASS('위험한 경로 거부, 50MB 초과 거부, 사용량 표시, 저장 공간 현황은 운영진만');
   // 학기 단위 정리: 실험실 손잡이(/files/expire-now)로 '1년 뒤'를 흉내 낸다
   const C = await account();
   const T = '알고리즘/보조자료/학기노트.pdf';
