@@ -12,7 +12,7 @@
     "pack": "electron-builder --dir",
     "dist:lab": "node scripts/build-lab.js",
     "test:server": "node scripts/test-server-sync.js && node scripts/test-server-files.js && node scripts/test-file-sync.js && node scripts/test-server-accounts.js && node scripts/test-server-community.js && node scripts/test-server-rooms.js && node scripts/test-server-focus.js && node scripts/test-server-positions.js && electron scripts/test-lab-main.cjs && electron scripts/test-lab-accounts.cjs && electron scripts/test-lab-community.cjs && node scripts/test-prod-switch.js && node scripts/lab-cleanup.js",
-    "test": "node scripts/test-timetable-sync.js && node scripts/test-deleted-files.js && node scripts/test-sync-reliability.js && node scripts/test-git-sync.js && node scripts/test-shared-settings.js && node scripts/test-input-downloads.js && node scripts/test-material-folders.js && node scripts/test-syllabus.js && node scripts/test-review.js && node scripts/test-lms-notices.js && node scripts/test-lms-remember.js && node scripts/test-file-tree.js && node scripts/test-terms.js && node scripts/test-updater.js && node scripts/test-onboarding.js",
+    "test": "node scripts/test-timetable-sync.js && node scripts/test-deleted-files.js && node scripts/test-sync-reliability.js && node scripts/test-git-sync.js && node scripts/test-shared-settings.js && node scripts/test-input-downloads.js && node scripts/test-material-folders.js && node scripts/test-syllabus.js && node scripts/test-review.js && node scripts/test-lms-notices.js && node scripts/test-lms-remember.js && node scripts/test-file-tree.js && node scripts/test-terms.js && node scripts/test-updater.js && node scripts/test-onboarding.js && node scripts/test-attendance.js",
     "test:ui": "electron scripts/test-sync-ui.cjs && electron scripts/test-sync-main.cjs && electron scripts/test-syllabus-ui.cjs"
   },
   "devDependencies": {
@@ -61,6 +61,7 @@
       "lms-notices.js",
       "file-tree.js",
       "onboarding.js",
+      "attendance.js",
       "my-files.js",
       "focus.js",
       "review-ui.js",

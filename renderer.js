@@ -59,8 +59,6 @@ const state = {
   focusGoalMin: 120,  // 하루 집중 목표(분) — 집중 화면 링 게이지 기준
 };
 
-const ATT_STATES = ['출석', '결석', '지각', '공결', '병결'];
-const ATT_CLASS = { '출석': 'ok', '결석': 'danger', '지각': 'warn', '공결': 'info', '병결': 'mut' };
 
 let currentTab = 'timetable';
 
@@ -1545,29 +1543,38 @@ function effectiveAtt(subj, week) {
   const ov = state.attendance.overrides[subj] || {};
   return ov[week] !== undefined ? ov[week] : defaultAtt(subj, week);
 }
-function cycleAtt(subj, week) {
+// 출석 칸 누르기: 출석 → 지각 → 결석 → 미정 → 자동(attendance.js). 공결·병결은 우클릭·길게 눌러 고른다
+function setAtt(subj, week, value) {
   const ov = state.attendance.overrides;
   ov[subj] = ov[subj] || {};
-  const order = ATT_STATES;
-  const cur = ov[subj][week];
-  let next;
-  if (cur === undefined) {
-    const di = order.indexOf(defaultAtt(subj, week)); // '출석'→0, ''→-1
-    next = order[(di + 1) % order.length];
-  } else {
-    const ci = order.indexOf(cur);
-    next = ci >= order.length - 1 ? '__clear__' : order[ci + 1];
-  }
-  if (next === '__clear__') delete ov[subj][week]; else ov[subj][week] = next;
+  if (value === undefined) delete ov[subj][week]; else ov[subj][week] = value;
   persist({ attendance: state.attendance });
   renderAttendance();
+}
+function cycleAtt(subj, week) {
+  const cur = (state.attendance.overrides[subj] || {})[week];
+  setAtt(subj, week, Attendance.next(cur, defaultAtt(subj, week)));
+}
+function openAttMenu(subj, week, x, y) {
+  closePopover();
+  popEl = document.createElement('div'); popEl.className = 'popover menu'; popEl.setAttribute('role', 'menu');
+  const head = document.createElement('div'); head.className = 'opt-head'; head.textContent = `${subj} · ${week}주차`; popEl.appendChild(head);
+  const cur = effectiveAtt(subj, week);
+  const add = (label, value) => { const o = document.createElement('div'); o.className = 'opt' + (value === cur ? ' active' : ''); o.setAttribute('role', 'menuitem'); o.textContent = label;
+    o.onclick = () => { closePopover(); setAtt(subj, week, value); }; popEl.appendChild(o); };
+  Attendance.MAIN.forEach((v) => add(v, v));
+  const sep = () => { const d = document.createElement('div'); d.className = 'opt-sep'; popEl.appendChild(d); };
+  sep(); Attendance.EXCUSED.forEach((v) => add(Attendance.info(v).label, v));
+  sep(); add(defaultAtt(subj, week) ? '자동(수업 시작하면 출석)' : '자동(수업 전)', undefined);
+  $('app').appendChild(popEl); placeAtCursor(x, y);
+  setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
 }
 function renderAttendance() {
   const box = $('att-grid'); if (!box) return;
   const si = $('att-start'); if (si) si.value = state.attendance.semesterStart || '';
   const subs = attSubjects();
   if (!subs.length) { box.innerHTML = '<div class="empty-note">시간표를 먼저 등록하면 과목별 출석표가 만들어져요.<br/>(시간표 탭 → 공유 링크 등록)</div>'; return; }
-  if (!state.attendance.semesterStart) { box.innerHTML = '<div class="empty-note">위에서 <b>개강일</b>을 한 번 정해주세요.<br/>지난 수업은 자동 출석으로 채워지고, 결석/지각/공결/병결은 칸을 눌러 바꾸면 됩니다.</div>'; return; }
+  if (!state.attendance.semesterStart) { box.innerHTML = '<div class="empty-note">위에서 <b>개강일</b>을 한 번 정해주세요.<br/>지난 수업은 자동 출석으로 채워지고, 지각·결석·미정은 칸을 눌러, 공결·병결(출석 인정)은 우클릭으로 바꿔요.</div>'; return; }
   let head = '<tr><th class="att-name-h">과목</th>';
   for (let w = 1; w <= ATT_WEEKS; w++) head += `<th>${w}</th>`;
   head += '<th class="att-sum-h">결석</th></tr>';
@@ -1577,11 +1584,12 @@ function renderAttendance() {
     for (let w = 1; w <= ATT_WEEKS; w++) {
       const stt = effectiveAtt(subj, w);
       if (stt === '결석') absent++;
-      cells += `<td><div class="att-cell ${stt ? ATT_CLASS[stt] : ''}" data-subj="${escapeHtml(subj)}" data-week="${w}" title="${w}주차 ${stt || '수업 전'}">${stt ? stt[0] : ''}</div></td>`;
+      const inf = Attendance.info(stt);
+      cells += `<td><div class="att-cell ${inf ? inf.cls : ''}" data-subj="${escapeHtml(subj)}" data-week="${w}" title="${w}주차 ${inf ? inf.label : '수업 전'} · 누르면 바꾸기, 우클릭하면 출석 인정(공결·병결)">${inf ? inf.short : ''}</div></td>`;
     }
     rows += `<tr><td class="att-name" title="${escapeHtml(subj)}">${escapeHtml(subj)}</td>${cells}<td class="att-sum ${absent >= 3 ? 'warn' : ''}">${absent}</td></tr>`;
   });
-  box.innerHTML = `<div class="att-legend">눌러서 변경 · <span class="lg ok">출</span>석 <span class="lg danger">결</span>석 <span class="lg warn">지</span>각 <span class="lg info">공</span>결 <span class="lg mut">병</span>결</div><div class="att-scroll"><table class="att-table">${head}${rows}</table></div>`;
+  box.innerHTML = `<div class="att-legend">눌러서 변경 · <span class="lg ok">출</span>석 <span class="lg warn">지</span>각 <span class="lg danger">결</span>석 <span class="lg unknown">?</span>미정 · 우클릭: <span class="lg info">공</span>·<span class="lg info">병</span> 출석 인정</div><div class="att-scroll"><table class="att-table">${head}${rows}</table></div>`;
 }
 
 // =====================================================================
@@ -2027,6 +2035,18 @@ $('stats-content').addEventListener('click', (e) => {
 $('att-grid').addEventListener('click', (e) => {
   const c = e.target.closest('[data-subj]'); if (c) cycleAtt(c.dataset.subj, +c.dataset.week);
 });
+$('att-grid').addEventListener('contextmenu', (e) => {
+  const c = e.target.closest('[data-subj]'); if (!c) return;
+  e.preventDefault(); openAttMenu(c.dataset.subj, +c.dataset.week, e.clientX, e.clientY);
+});
+// 터치(길게 누르기 0.5초)도 같은 메뉴
+let _attPress = null;
+$('att-grid').addEventListener('pointerdown', (e) => {
+  const c = e.target.closest('[data-subj]'); if (!c || e.pointerType === 'mouse') return;
+  _attPress = setTimeout(() => { _attPress = 'fired'; openAttMenu(c.dataset.subj, +c.dataset.week, e.clientX, e.clientY); }, 500);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => $('att-grid').addEventListener(ev, () => { if (_attPress && _attPress !== 'fired') clearTimeout(_attPress); }));
+$('att-grid').addEventListener('click', (e) => { if (_attPress === 'fired') { _attPress = null; e.stopImmediatePropagation(); } }, true);
 $('att-start').addEventListener('change', () => {
   state.attendance.semesterStart = $('att-start').value || '';
   persist({ attendance: state.attendance });

@@ -96,7 +96,7 @@
           <div class="sd-review-report-body">${s.reasons.length ? `<div class="sd-review-reasons">${s.reasons.map(esc).join('<br>')}</div>` : ''}
             <div class="sd-review-stat"><span>할 일</span><span>완료 ${s.todos.done} / 전체 ${s.todos.total}개</span></div>
             <div class="sd-review-stat"><span>LMS 과제</span><span>제출 ${s.lms.submitted} / 전체 ${s.lms.total}개<br><span class="sd-muted">마감 지난 미제출 ${s.lms.missed}개</span></span></div>
-            <div class="sd-review-stat"><span>지나간 수업 출석</span><span>${a.weeks ? `출석 ${a.present} · 지각 ${a.late} · 결석 ${a.absent}<br>공결 ${a.excused} · 병결 ${a.sick}` : '<span class="sd-muted">출석 기록 없음</span>'}</span></div>
+            <div class="sd-review-stat"><span>지나간 수업 출석</span><span>${a.weeks ? `출석 ${a.present} · 지각 ${a.late} · 결석 ${a.absent}${a.excused + a.sick ? `<br>출석 인정 ${a.excused + a.sick}(공결 ${a.excused} · 병결 ${a.sick})` : ''}` : '<span class="sd-muted">출석 기록 없음</span>'}</span></div>
             <div class="sd-review-stat"><span>이번 학기 공부</span><span>${dur(s.studySec)}</span></div>
             <div class="sd-actions">${btn('할 일 보기', 'route', `data-route="today-search" data-subject="${key}"`)}${btn('LMS 열기', 'route', `data-route="subject-lms" data-subject="${key}"`)}${btn(`완료한 일 ${s.todos.done}`, 'route', `data-route="done-list" data-subject="${key}"`)}</div>
           </div></details>`;

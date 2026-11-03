@@ -6,7 +6,7 @@
 //   lmsDone: { [id]: { doneAt, course, title } },          // 제출 처리한 시각
 //   sessions: [{ date, seconds|minutes, subject, task, start, end }],   // 집중 기록(date는 공부일)
 //   courses: ['알고리즘', …],                               // 시간표 과목
-//   attendance: { [course]: ['출석'|'지각'|'결석'|'공결'|'병결'|…] },   // 이미 지난 수업만
+//   attendance: { [course]: ['출석'|'지각'|'결석'|'미정'|'공결'|'병결'] },   // 이미 지난 수업만(공결·병결 = 출석 인정)
 //   events: [{ title, start, end }],
 // }
 (function (root) {
