@@ -54,7 +54,7 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
       signal: AbortSignal.timeout(120000),
     });
     if (res.status === 401) throw new Error('서버 로그인이 만료됐습니다. 다시 로그인해 주세요.');
-    if (res.status === 413) { const j = await res.json().catch(() => ({})); throw Object.assign(new Error(j.error === 'quota' ? '서버 저장 공간(2GB)이 가득 찼습니다.' : '파일이 너무 큽니다(50MB 초과).'), { code: j.error || 'too_large' }); }
+    if (res.status === 413) { const j = await res.json().catch(() => ({})); throw Object.assign(new Error(j.error === 'quota' ? `서버 저장 공간(${j.limit ? Math.round(j.limit / 1048576) + 'MB' : '할당량'})이 가득 찼습니다.` : '파일이 너무 큽니다.'), { code: j.error || 'too_large', limit: j.limit }); }
     if (!res.ok) throw new Error('파일 서버 오류(' + res.status + ')');
     return raw ? Buffer.from(await res.arrayBuffer()) : res.json();
   }
@@ -162,7 +162,7 @@ function createFileSync({ root, stateFile, trash, fetchImpl = fetch, now = Date.
           } else if (rSha) await download(p);                                // 이 기기 삭제 vs 서버 수정 → 수정 유지
           else record(p, null);
         } catch (e) {
-          if (e.code === 'quota') { stats.quotaFull = true; stats.skipped.push({ path: p, reason: '저장 공간 부족' }); continue; }
+          if (e.code === 'quota') { stats.quotaFull = true; stats.quotaLimit = e.limit || 0; stats.skipped.push({ path: p, reason: '저장 공간 부족' }); continue; }
           if (e.code === 'too_large') { stats.skipped.push({ path: p, reason: '50MB 초과' }); continue; }
           throw e;
         }

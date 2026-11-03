@@ -51,4 +51,15 @@ assert.equal(F.expiryChip(gone, now).label, '이 기기에만');
 assert.equal(F.expiryChip(app.find(e => e.source === 'local'), now), null);
 assert.equal(F.nextExpiry(F.findFolder(F.buildTree(app), '자료구조')), now + 20 * DAY);
 assert.equal(F.nextExpiry(F.findFolder(F.buildTree(app), '알고리즘')), 0, '정리된 파일은 예정에서 제외');
+// 학기 정리 알림: 30일·7일·하루 전 단계별로 한 번씩, 정리 후 한 번
+const R = (days, extra = {}) => ({ '자료구조/보조자료/a.pdf': { size: 1, expiresAt: now + days * DAY, term: '2026년 2학기', ...extra }, '자료구조/보조자료/b.pdf': { size: 1, expiresAt: now + days * DAY, term: '2026년 2학기' } });
+assert.deepEqual(F.termNotices(R(40), now), [], '30일보다 멀면 알림 없음');
+let n = F.termNotices(R(20), now);
+assert.equal(n.length, 1); assert.match(n[0].id, /-d30$/); assert.match(n[0].body, /2026년 2학기 보조자료 2개는 \d+\/\d+까지 서버에 보관/); assert.match(n[0].body, /이 기기 파일은 그대로/);
+assert.match(F.termNotices(R(5), now)[0].id, /-d7$/);
+assert.match(F.termNotices(R(1), now)[0].id, /-d1$/); assert.equal(F.termNotices(R(1), now)[0].title, '내일 서버에서 보조자료를 정리해요');
+assert.notEqual(F.termNotices(R(20), now)[0].id, F.termNotices(R(5), now)[0].id, '단계마다 다른 알림');
+n = F.termNotices({ 'x/보조자료/a': { expired: true, expiresAt: now - DAY }, 'x/과제/b': { expired: true, expiresAt: now - DAY } }, now);
+assert.equal(n.length, 1); assert.match(n[0].id, /^term-done-/); assert.match(n[0].body, /1개를 서버에서 지웠어요/);
+console.log('PASS: 학기 정리 알림 — 30일·7일·하루 전 단계별 한 번씩, 정리 후 한 번(과제 등 보조자료 밖은 제외)');
 console.log('PASS: 내 자료 폴더 — 과목›보조자료·수업자료·과제, 앱은 이 기기 파일·웹은 LMS 링크, 중복·지운 자료 제외, 학기 정리 예정·정리됨 표시');

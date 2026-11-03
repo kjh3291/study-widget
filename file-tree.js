@@ -94,6 +94,30 @@
     return best;
   }
 
-  const api = { serverEntries, lmsEntries, expiryChip, buildTree, findFolder, nextExpiry, CAT_ORDER };
+  // 학기 정리 알림: 서버 보조자료(remote) → 띄울 알림 목록 [{ id, title, body }]
+  //   정리 30일 전·7일 전·하루 전에 한 번씩, 정리된 뒤에 한 번. id로 같은 알림을 다시 띄우지 않는다
+  function termNotices(remote, now) {
+    const files = serverEntries(remote);
+    const out = [];
+    const md = (ms) => { const d = new Date(ms - 1); return `${d.getMonth() + 1}/${d.getDate()}`; };   // 보관 마지막 날
+    const soon = files.filter(f => !f.expired && f.expiresAt && f.expiresAt > now && f.expiresAt - now <= 30 * DAY);
+    if (soon.length) {
+      const at = Math.min(...soon.map(f => f.expiresAt));
+      const group = soon.filter(f => f.expiresAt === at), days = Math.ceil((at - now) / DAY);
+      const stage = days <= 1 ? 'd1' : days <= 7 ? 'd7' : 'd30';
+      const term = group[0].term ? group[0].term + ' ' : '';
+      out.push({ id: `term-${at}-${stage}`, title: days <= 1 ? '내일 서버에서 보조자료를 정리해요' : `보조자료 서버 정리 ${days}일 전`,
+        body: `${term}보조자료 ${group.length}개는 ${md(at)}까지 서버에 보관되고 그 뒤 서버에서 지워져요. 이 기기 파일은 그대로 남아요.` });
+    }
+    const gone = files.filter(f => f.expired);
+    if (gone.length) {
+      const at = Math.max(...gone.map(f => f.expiresAt || 0));
+      out.push({ id: `term-done-${at}`, title: '학기 보조자료를 서버에서 정리했어요',
+        body: `보조자료 ${gone.length}개를 서버에서 지웠어요. 이 기기에는 그대로 남아 있어요(다른 기기와는 더 이상 공유되지 않아요).` });
+    }
+    return out;
+  }
+
+  const api = { termNotices, serverEntries, lmsEntries, expiryChip, buildTree, findFolder, nextExpiry, CAT_ORDER };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FileTree = api;
 })(typeof window !== 'undefined' ? window : globalThis);

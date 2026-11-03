@@ -15,6 +15,7 @@ const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-mate
 const { findSameFile, freePath } = require('./material-dedupe');
 const lmsRemember = require('./lms-remember');
 const { resolveTarget } = require('./material-folders');
+const FileTree = require('./file-tree');
 const { createServerStore, serverCall } = require('./server-sync');
 const { createFileSync, scanLocal } = require('./file-sync');
 
@@ -784,6 +785,7 @@ ipcMain.handle('git-sync', async (_e, resolution) => {
   const conn = loadConfig().sync || {};
   if (!conn.enabled || !conn.token) return result;
   const files = await fileSync.run(conn);
+  if (files) files.termNotices = FileTree.termNotices(fileSync.remoteFiles(), Date.now());   // 학기 정리 예정·완료 알림
   return { ...result, files };
 });
 // 실험실 서버 파일: 사용량·휴지통·복구·이전 버전·되돌리기(복구·되돌린 내용은 다음 동기화 때 기기에 받아진다)
