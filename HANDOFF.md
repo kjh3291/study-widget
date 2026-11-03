@@ -137,10 +137,20 @@ cd ~/studeck/prod/server && docker compose up -d
 - 동아리원 안내문: `docs/club-guide.md` (오픈 공지에 붙이기, 다운로드 주소는 공지에 직접)
 - 사용 시나리오(화면 캡처 모음)는 claude.ai 아티팩트로 사용자에게 공유됨
 
-## 오픈 뒤에 합칠 것: `lab-next` 브랜치
-lab에서 갈라져 이미 만들어 둔 것(클라우드에서 테스트 통과). 오픈 릴리스가 끝나면 PC에서 확인하고 `git checkout lab && git merge --ff-only lab-next`.
-- 출석 상태 호환(4개 + 출석 인정), 새 학기 도우미, GitHub 동기화 코드 제거, 칭호·배지(진행 중)
-- 확인 항목은 lab-next의 HANDOFF.md에 따로 적는다.
+## 오픈 뒤에 합칠 것: `lab-next` 브랜치 (이 문서는 lab-next 쪽)
+lab에서 갈라져 만들어 둔 것. 클라우드에서 npm test·test:ui(Electron)·로컬 서버로 test:server 전체가 통과했다.
+오픈 릴리스가 끝나면 PC에서 확인하고 합친다:
+```bash
+git checkout lab-next && git pull origin lab-next && git merge origin/lab   # 그사이 lab에 생긴 것 반영
+npm ci && npm test && npm run test:ui
+```
+실험실 서버에 lab-next를 배포(`~/studeck/lab`에서 `git checkout lab-next && git pull` → `docker compose up -d --build`)한 뒤 `npm run test:server`, `npm run dist:lab`으로 설치해서:
+- [ ] **출석**: 칸을 누르면 출석→지각→결석→미정→자동, 우클릭·길게 누르면 출석 인정(공결·병결). 예전 공결·병결 기록이 그대로 보이는지
+- [ ] **새 학기 도우미**: 지금은 날짜상 안 뜬다. 설정 › 학습 › 지난 학기 기록이 비어 있는지만 확인(3월에 카드가 뜸)
+- [ ] **GitHub 동기화 제거**: 설정에 GitHub 저장소·토큰 칸이 없고, 로그인·동기화·보조자료 공유가 평소처럼 되는지
+- [ ] **칭호·배지**: 더보기 › 배지 · 칭호(배지 계산·칭호 고르기), 동아리 멤버 목록에 칭호, 운영진 › 회원 관리 › 배지 주기·회수, 새 배지 알림
+확인되면 `git checkout lab && git merge --ff-only lab-next && git push origin lab` (lab에 따로 커밋이 생겼으면 lab-next에 먼저 merge).
+- 배지 화면 다듬기: `docs/design-requests/badges.md`를 GPT에 보내 디자인을 받는다.
 
 ## 오픈 뒤 할 일(급하지 않음)
 칭호·배지 시스템, 출석 상태 호환(5개 ↔ 4개), 내 자료 화면 GPT 디자인(`docs/design-requests/my-files.md`), 웹 버전, GitHub 동기화 코드 제거(운영 전환 1주 경과 — 사용자 확인 후).

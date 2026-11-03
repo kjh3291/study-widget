@@ -405,7 +405,7 @@
     const online = S.members.filter(m => m.online || C.state.online.has(m.id));
 
     const row = m => `<button class="person member" data-member="${m.id}">${avatarHtml(m.nickname || m.name, m.avatar)}
-      <span class="mt"><b>${escapeHtml(m.nickname || m.name)} ${window.Roles ? Roles.badges(m.role, m.position) : ''}</b>
+      <span class="mt"><b>${escapeHtml(m.nickname || m.name)} ${window.Badges ? Badges.titleChip(m) : ''}${window.Roles ? Roles.badges(m.role, m.position) : ''}</b>
       <small>${m.bio ? escapeHtml(m.bio) : m.study ? `오늘 ${m.study.todayMinutes}분 공부` : ''}</small></span>
       <span class="online-dot${C.state.online.has(m.id) ? ' on' : ''}" aria-label="${C.state.online.has(m.id) ? '접속 중' : '오프라인'}"></span></button>`;
     return `<div class="member-sum">전체 ${S.members.length}명 · 지금 접속 ${online.length}명</div>
@@ -415,8 +415,9 @@
     const m = S.members.find(x => x.id === id); if (!m) return;
     const days = ['', '월', '화', '수', '목', '금', '토', '일'];
     sheet(m.nickname || m.name, `<div class="profile-card">${avatarHtml(m.nickname || m.name, m.avatar, 'avatar lg')}
-      <b>${escapeHtml(m.nickname || m.name)}</b>${m.nickname ? `<small>${escapeHtml(m.name)}</small>` : ''}<span class="profile-badges">${window.Roles ? Roles.badges(m.role, m.position) : ''}</span>
-      ${m.bio ? `<p>${escapeHtml(m.bio)}</p>` : ''}</div>
+      <b>${escapeHtml(m.nickname || m.name)}</b>${m.nickname ? `<small>${escapeHtml(m.name)}</small>` : ''}<span class="profile-badges">${window.Badges ? Badges.titleChip(m) : ''}${window.Roles ? Roles.badges(m.role, m.position) : ''}</span>
+      ${m.bio ? `<p>${escapeHtml(m.bio)}</p>` : ''}
+      ${window.Badges ? `<button type="button" class="sd-btn sd-btn-small" data-member-badges="${m.id}" data-name="${escapeHtml(m.nickname || m.name)}">배지 ${m.badgeCount || 0}개 보기</button>` : ''}</div>
       ${m.study ? `<div class="set-block"><span class="set-label">오늘 공부</span><span>${m.study.todayMinutes}분</span></div>` : ''}
       ${m.timetable?.length ? `<div class="set-block"><span class="set-label">시간표</span>${m.timetable.map(c => `<div class="set-hint">${escapeHtml(c.name)} · ${(c.times || []).map(t => `${days[t.day] || t.day} ${t.start}~${t.end}`).join(', ')}</div>`).join('')}</div>` : ''}`);
   }

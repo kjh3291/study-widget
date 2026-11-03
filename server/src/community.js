@@ -8,6 +8,7 @@ import { pool } from './db.js';
 import { authenticate, requireAdmin, sha256 } from './auth.js';
 import { registerRooms, ensureAllRoom } from './rooms.js';
 import { createFocus, registerFocus, studyDay } from './focus.js';
+import { titlesFor } from './badges.js';
 
 const MEDIA_DIR = path.join(process.env.FILES_DIR || '/data/files', 'media');
 const IMAGE_MAX = 10 * 1024 * 1024;
@@ -117,7 +118,9 @@ export function registerCommunity(app) {
     const { rows } = await pool.query(`SELECT u.id, u.username, u.display_name, u.role, u.position, p.* FROM users u LEFT JOIN profiles p ON p.user_id = u.id
       WHERE u.status = 'approved' ORDER BY u.display_name`);
     const online = onlineIds();
+    const titles = await titlesFor(rows.map(r => r.id));   // 칭호·배지 수(badges.js)
     return { members: await Promise.all(rows.map(async r => ({ id: r.id, name: r.display_name, nickname: r.nickname || '', role: r.role, position: r.position || 'member', bio: r.bio || '',
+      title: titles.get(r.id)?.title || null, badgeCount: titles.get(r.id)?.badgeCount || 0,
       avatar: r.avatar_sha || null, online: online.has(r.id),
       study: r.show_study ? await publicStudy(r.id) : null, timetable: r.show_timetable ? await publicTimetable(r.id) : null }))) };
   });

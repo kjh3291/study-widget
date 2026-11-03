@@ -125,6 +125,7 @@
         <span class="sd-grow" style="text-align:left"><strong>${escapeHtml(name)}</strong><span class="sd-muted" style="display:block">${escapeHtml(st.username)} · ${role} · 프로필 편집</span></span>${sdIco('chevron-right')}</button>` : ''}
       ${SETTINGS.filter(s => !s.server || SERVER_MODE).map(s => menuRow(`data-cat="${s.cat}"`, s.ico, s.name, s.desc)).join('')}
       ${isAdmin ? menuRow('data-cat="admin"', 'users-round', '운영진 관리', '가입 · 회원 · 방 · 임원 신청 · 문의', '<span id="more-admin-count"></span>') : ''}
+      ${SERVER_MODE ? menuRow('data-more="badges"', 'trophy', '배지 · 칭호', '모은 배지와 이름 옆 칭호') : ''}
       ${SERVER_MODE ? menuRow('data-more="inquiry"', 'message-circle-plus', '문의하기', '오류 신고 · 개선 제안') : ''}</main>`;
     if (isAdmin) { updateAdminCount(); updateMoreBadge(); }
     window.Club?.loadMyAvatar?.('more-avatar');
@@ -148,6 +149,7 @@
     const c = e.target.closest('[data-cat]'); if (c) return openSettings(c.dataset.cat);
     if (e.target.closest('[data-more="profile"]')) window.Club?.openProfileEditor?.();
     if (e.target.closest('[data-more="inquiry"]')) window.Admin?.openInquiry();
+    if (e.target.closest('[data-more="badges"]')) window.Badges?.openPanel();
   });
 
   // ---------- 설정: 카테고리 하나만 보여 준다 ----------

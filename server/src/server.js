@@ -8,6 +8,7 @@ import { registerSite } from './site.js';
 import { registerCommunity, purgeMedia } from './community.js';
 import { registerAccounts, purgeAccounts, CONSENT_VERSION, publicUser } from './accounts.js';
 import { registerInquiries } from './inquiries.js';
+import { registerBadges } from './badges.js';
 import { statusError } from './auth.js';
 
 const CHANNEL = process.env.STUDECK_CHANNEL || 'lab';
@@ -26,6 +27,7 @@ registerSite(app);
 registerCommunity(app);
 registerAccounts(app);
 registerInquiries(app);
+registerBadges(app);
 
 
 app.get('/health', async () => {

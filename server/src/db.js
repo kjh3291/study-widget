@@ -177,6 +177,18 @@ CREATE TABLE IF NOT EXISTS inquiries (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS inquiries_status ON inquiries (status, created_at);
+-- 칭호·배지(badges.js): 자동 배지는 처음 조건을 채운 때, 특별 배지는 운영진이 준 때. 칭호 = 고른 배지 하나
+CREATE TABLE IF NOT EXISTS user_badges (
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  badge       TEXT NOT NULL,                       -- DEFS의 id 또는 'custom:<번호>'
+  label       TEXT NOT NULL DEFAULT '',            -- 특별 배지 이름(자동 배지는 비움)
+  note        TEXT NOT NULL DEFAULT '',            -- 특별 배지를 준 까닭
+  granted_by  INT REFERENCES users(id) ON DELETE SET NULL,
+  earned_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, badge)
+);
+CREATE SEQUENCE IF NOT EXISTS custom_badge_seq;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT;   -- 칭호로 고른 배지(user_badges.badge)
 CREATE TABLE IF NOT EXISTS media (
   sha256      TEXT PRIMARY KEY,
   mime        TEXT NOT NULL,

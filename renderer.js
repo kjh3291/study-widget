@@ -2589,7 +2589,7 @@ async function openMembersPanel() {
         u.status === 'suspended' ? btn('approve', '정지 해제') : btn('suspend', '정지'),
         u.status === 'approved' ? btn('temp-password', '임시 비밀번호') : '',
         myRole === 'owner' && u.status === 'approved' ? (u.role === 'admin' ? btn('role', '운영진 해제', 'data-role="member"') : btn('role', '운영진 지정', 'data-role="admin"')) : '',
-        btn('delete', '삭제', 'class="sd-btn sd-btn-small sd-btn-ghost sd-danger-text"').replace('class="sd-btn sd-btn-small" ', '')].join('') : posBtn(u))).join('') || '<p class="sd-muted sd-gap">찾는 회원이 없어요.</p>'}
+        btn('delete', '삭제', 'class="sd-btn sd-btn-small sd-btn-ghost sd-danger-text"').replace('class="sd-btn sd-btn-small" ', '')].join('') + btn('badge', '배지 주기') : posBtn(u) + (u.status === 'approved' ? btn('badge', '배지 주기') : ''))).join('') || '<p class="sd-muted sd-gap">찾는 회원이 없어요.</p>'}
       <h3 class="sd-gap-lg">삭제된 회원 <span class="sd-muted">${deleted.length} · 30일 안에 복구 가능</span></h3>
       ${deleted.map(u => row(u, canTouch(u) ? btn('restore', '복구') : '')).join('') || '<p class="sd-muted sd-gap">없어요.</p>'}`;
     if (focused) { const q = $('mem-q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
@@ -2598,6 +2598,7 @@ async function openMembersPanel() {
   P.el.addEventListener('click', async e => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const rowEl = b.closest('.mrow'), id = rowEl.dataset.id, name = rowEl.dataset.name, act = b.dataset.act;
+    if (act === 'badge') return window.Badges?.grantSheet(id, name);   // 특별 배지(badges-ui.js)
     if (act === 'position') {
       const pos = await Roles.pickPosition({ title: '직책 변경', name, current: b.dataset.pos });
       if (!pos || pos === b.dataset.pos) return;
