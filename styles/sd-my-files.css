@@ -90,3 +90,4 @@
 .sd-files-scope .sd-menu-row>.sd-ico:first-child{width:20px;height:20px;color:var(--muted)}
 .sd-files-scope .sd-actions{max-width:none}
 .sd-files-scope .sd-actions button:first-child{border-color:transparent;background:var(--surface2)}
+.sd-files-scope .sd-progress span{width:0}   /* 서버 정보가 없을 때(0/0) 원본의 7.1% 기본 폭이 보이지 않게 */

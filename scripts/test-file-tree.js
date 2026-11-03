@@ -57,6 +57,7 @@ assert.deepEqual(F.termNotices(R(40), now), [], '30일보다 멀면 알림 없�
 let n = F.termNotices(R(20), now);
 assert.equal(n.length, 1); assert.match(n[0].id, /-d30$/); assert.match(n[0].body, /2026년 2학기 보조자료 2개는 \d+\/\d+까지 서버에 보관/); assert.match(n[0].body, /이 기기 파일은 그대로/);
 assert.match(F.termNotices(R(5), now)[0].id, /-d7$/);
+assert.match(n[0].short, /^보조자료 2개 \d+\/\d+ 뒤 서버 정리/); assert.ok(n[0].short.length <= 40, '안내 띠에 한 줄로');
 assert.match(F.termNotices(R(1), now)[0].id, /-d1$/); assert.equal(F.termNotices(R(1), now)[0].title, '내일 서버에서 보조자료를 정리해요');
 assert.notEqual(F.termNotices(R(20), now)[0].id, F.termNotices(R(5), now)[0].id, '단계마다 다른 알림');
 n = F.termNotices({ 'x/보조자료/a': { expired: true, expiresAt: now - DAY }, 'x/과제/b': { expired: true, expiresAt: now - DAY } }, now);

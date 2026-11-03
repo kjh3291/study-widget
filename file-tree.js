@@ -107,13 +107,15 @@
       const stage = days <= 1 ? 'd1' : days <= 7 ? 'd7' : 'd30';
       const term = group[0].term ? group[0].term + ' ' : '';
       out.push({ id: `term-${at}-${stage}`, title: days <= 1 ? '내일 서버에서 보조자료를 정리해요' : `보조자료 서버 정리 ${days}일 전`,
-        body: `${term}보조자료 ${group.length}개는 ${md(at)}까지 서버에 보관되고 그 뒤 서버에서 지워져요. 이 기기 파일은 그대로 남아요.` });
+        body: `${term}보조자료 ${group.length}개는 ${md(at)}까지 서버에 보관되고 그 뒤 서버에서 지워져요. 이 기기 파일은 그대로 남아요.`,
+        short: `보조자료 ${group.length}개 ${md(at)} 뒤 서버 정리 (기기 파일은 남아요)` });
     }
     const gone = files.filter(f => f.expired);
     if (gone.length) {
       const at = Math.max(...gone.map(f => f.expiresAt || 0));
       out.push({ id: `term-done-${at}`, title: '학기 보조자료를 서버에서 정리했어요',
-        body: `보조자료 ${gone.length}개를 서버에서 지웠어요. 이 기기에는 그대로 남아 있어요(다른 기기와는 더 이상 공유되지 않아요).` });
+        body: `보조자료 ${gone.length}개를 서버에서 지웠어요. 이 기기에는 그대로 남아 있어요(다른 기기와는 더 이상 공유되지 않아요).`,
+        short: `학기 보조자료 ${gone.length}개를 서버에서 정리했어요 (기기 파일은 남아요)` });
     }
     return out;
   }

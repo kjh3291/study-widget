@@ -2257,7 +2257,7 @@ function reportFileSync(f) {
   if (!SERVER_MODE || !f) return;
   if (!f.ok) return showToast('파일 동기화 실패: ' + f.error);
   // 학기 정리 예정(30일·7일·하루 전)·완료 알림은 단계마다 한 번만
-  (f.termNotices || []).filter((n) => !fired(n.id)).slice(0, 1).forEach((n) => { markFired(n.id); window.api.notify(n.title, n.body); showToast(n.body); });
+  (f.termNotices || []).filter((n) => !fired(n.id)).slice(0, 1).forEach((n) => { markFired(n.id); window.api.notify(n.title, n.body); showToast(n.short || n.body); });
   if (f.quotaFull) showToast(`서버 저장 공간${f.quotaLimit ? `(${fmtSize(f.quotaLimit)})` : ''}이 가득 차서 일부 파일을 올리지 못했어요`);
   else if (f.kept) showToast(`다른 기기에서도 고친 파일 ${f.kept}개는 최신 수정으로 맞췄어요 (이전 수정은 '이전 버전'에 보관)`);
   else if (f.downloaded + f.trashedLocal > 0) showToast(`다른 기기의 파일 변경 ${f.downloaded + f.trashedLocal}건을 받았어요` + (f.trashedLocal ? ' (지워진 파일은 휴지통으로)' : ''));
