@@ -12,6 +12,7 @@ const { autoResolve, describeConflicts, resolveConflicts } = require('./sync-con
 const { preserveMaterial, archiveGitChanges } = require('./material-history');
 const { preserveIncomingDeletions, wasDeletedFile } = require('./deleted-files');
 const { untrackLocalMaterials, filterIncomingMaterials } = require('./local-materials');
+const { findSameFile, freePath } = require('./material-dedupe');
 const { createServerStore, serverCall } = require('./server-sync');
 const { createFileSync, scanLocal } = require('./file-sync');
 
@@ -329,36 +330,51 @@ async function downloadMaterial(url, course, title, opts) {
   const got = await fetchMaterialBytes(url, title);
   if (!got || !got.body) return { url, ok: false, error: 'download-fail' };
   const sig = sha1(got.body);
-  const dir = path.join(STUDECK_DIR(), safeName(course), opts.kind === 'assign' ? '과제' : '수업자료');
+  const isAssign = opts.kind === 'assign';
+  const courseDir = path.join(STUDECK_DIR(), safeName(course));
+  const dir = path.join(courseDir, isAssign ? '과제' : '수업자료');
   // 다른 LMS 항목이 이미 쓰는 파일 이름이면(교수님이 같은 이름으로 두 번 올림) ' (2)'를 붙여 따로 저장한다.
   // 같은 경로를 두 항목이 번갈아 덮어쓰면 매번 '바뀜'으로 다시 받고 이전 자료가 쌓이기 때문
   const avoid = new Set((opts.avoid || []).map((p) => path.resolve(p).toLowerCase()));
   let dest = opts.mode === 'recheck' && opts.dest ? opts.dest : path.join(dir, got.filename);
-  if (opts.mode !== 'recheck' && avoid.has(path.resolve(dest).toLowerCase())) {
-    const ext = path.extname(dest), base = path.basename(dest, ext);
-    for (let i = 2; ; i++) { const c = path.join(dir, `${base} (${i})${ext}`); if (!avoid.has(path.resolve(c).toLowerCase()) && !fs.existsSync(c)) { dest = c; break; } }
-  }
+  if (opts.mode !== 'recheck' && avoid.has(path.resolve(dest).toLowerCase())) dest = freePath(dir, got.filename, avoid);
+  const result = (p, extra) => ({ url, ok: true, path: p, filename: path.basename(p), sig, changed: false, ...extra });
   try {
     const existed = fs.existsSync(dest);
-    if (!existed && opts.kind === 'assign' && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
-      return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true, deleted: true };
+    if (!existed && isAssign && ((opts.mode === 'recheck' && opts.dest) || await wasDeletedFile(STUDECK_DIR(), dest))) {
+      return result(dest, { existed: true, deleted: true });
     }
     const oldSig = existed ? sha1(fs.readFileSync(dest)) : null;
-    if (existed && oldSig === sig) return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: false, existed: true };
-    if (existed && opts.kind === 'assign') {
+    if (existed && oldSig === sig) return result(dest, { existed: true, same: !!opts.shared });
+    // 수업자료: 내용이 똑같은 파일이 과목 폴더 안에 이미 있으면 새로 쓰지 않고 그 파일을 가리킨다(중복 저장 방지).
+    // 다른 항목이 쓰는 파일(avoid)과 같으면 same=true — 나중에 그 항목의 파일을 덮어쓰지 않도록 화면 쪽 기록에 표시한다
+    if (!isAssign) {
+      const found = findSameFile(courseDir, got.body, sha1, { skipTop: ['과제'] });   // 내 제출물(과제)은 수업자료로 치지 않음
+      if (found) return result(found, { existed: true, same: avoid.has(path.resolve(found).toLowerCase()) });
+    }
+    // 수업자료 폴더 밖(보조자료 등)을 가리키던 기록인데 그 파일이 없어졌으면, 그 자리(다른 기기와 동기화되는 곳)에 되살리지 않고 수업자료 폴더에 받는다
+    if (!existed && !isAssign && path.relative(dir, dest).startsWith('..')) dest = freePath(dir, got.filename, avoid);
+    // 다른 항목과 함께 쓰던 파일인데 이 항목 내용만 달라졌으면, 그 파일을 덮어쓰지 않고 새 이름으로 따로 저장
+    if (existed && opts.shared && !isAssign) {
+      const own = freePath(dir, got.filename, avoid);
+      fs.mkdirSync(path.dirname(own), { recursive: true });
+      fs.writeFileSync(own, got.body);
+      return result(own, { changed: true });
+    }
+    if (existed && isAssign) {
       const backup = path.join(STUDECK_DIR(), '.studeck', 'backups', 'submissions', safeName(course));
       fs.mkdirSync(backup, { recursive: true });
       fs.copyFileSync(dest, path.join(backup, oldSig + '-' + path.basename(dest)));
     }
-    if (existed && opts.kind !== 'assign') preserveMaterial(STUDECK_DIR(), path.relative(STUDECK_DIR(), dest), fs.readFileSync(dest));
+    if (existed && !isAssign) preserveMaterial(STUDECK_DIR(), path.relative(STUDECK_DIR(), dest), fs.readFileSync(dest));
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, got.body);
-    return { url, ok: true, path: dest, filename: path.basename(dest), sig, changed: existed };
+    return result(dest, { changed: existed });
   } catch (e) { return { url, ok: false, error: String(e && e.message || e) }; }
 }
 ipcMain.handle('lms-download', async (_e, items) => {
   const out = [];
-  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title, { mode: it.mode, dest: it.dest, prevSig: it.sig, kind: it.kind, avoid: it.avoid }));
+  for (const it of (items || [])) out.push(await downloadMaterial(it.url, it.course, it.title, { mode: it.mode, dest: it.dest, prevSig: it.sig, kind: it.kind, avoid: it.avoid, shared: it.shared }));
   return out;
 });
 const CAT_DIR = { materials: '수업자료', aux: '보조자료', assignment: '과제' };

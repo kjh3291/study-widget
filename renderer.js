@@ -1236,17 +1236,18 @@ async function syncDownloads(list, doneMap, kind, force) {
   const items = [];
   // 경로별 주인: 같은 경로를 여러 항목이 쓰면 가장 먼저 받은 항목만 그 경로를 갖고, 나머지는 새 이름으로 다시 받는다
   const owner = {};
-  Object.entries(doneMap).sort((a, b) => (a[1].at || 0) - (b[1].at || 0)).forEach(([url, r]) => { if (r && r.path) { const k = r.path.toLowerCase(); if (!owner[k]) owner[k] = url; } });
+  Object.entries(doneMap).sort((a, b) => (a[1].at || 0) - (b[1].at || 0)).forEach(([url, r]) => { if (r && r.path && !r.same) { const k = r.path.toLowerCase(); if (!owner[k]) owner[k] = url; } });
   const avoidFor = (url) => Object.entries(owner).filter(([, u]) => u !== url).map(([p]) => p);
   cand.forEach((m) => {
     let rec = doneMap[m.url];
     const course = cleanCourse(m.courseName) || '기타';
     // 수업자료만: 다른 항목과 겹친 경로 → 새 이름으로(과제는 같은 이름 재제출이면 덮어쓰는 게 맞음)
-    if (kind === 'material' && rec && rec.path && owner[rec.path.toLowerCase()] !== m.url) rec = null;
+    // (내용이 똑같아 다른 항목의 파일을 같이 쓰는 기록(same)은 그대로 둔다 — 또 받으면 같은 파일이 두 개 생김)
+    if (kind === 'material' && rec && rec.path && !rec.same && owner[rec.path.toLowerCase()] !== m.url) rec = null;
     // 과제인데 기록 경로가 '과제' 폴더가 아니면(옛 버그로 수업자료에 저장됨) 신규로 재수집
     const wrongFolder = rec && rec.path && kind === 'assign' && !/[\\/]과제[\\/]/.test(rec.path);
     if (!rec || wrongFolder) items.push({ url: m.url, course, title: m.title, kind, mode: 'new', avoid: kind === 'material' ? avoidFor(m.url) : [] });
-    else if (kind === 'assign' || force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig });
+    else if (kind === 'assign' || force || !rec.checkedAt || (now - rec.checkedAt) > DAY) items.push({ url: m.url, course, title: m.title, kind, mode: 'recheck', dest: rec.path, sig: rec.sig, shared: !!rec.same, avoid: kind === 'material' ? avoidFor(m.url) : [] });
   });
   if (!items.length) return { gotNew: [], changed: [] };
   const byUrl = {}; items.forEach((it) => (byUrl[it.url] = it));
@@ -1257,7 +1258,7 @@ async function syncDownloads(list, doneMap, kind, force) {
     if (!r || !r.ok) return;
     const it = byUrl[r.url]; if (!it) return;
     const prev = doneMap[r.url];
-    doneMap[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now };
+    doneMap[r.url] = { course: it.course, title: r.filename || it.title, path: r.path, at: (prev && prev.at) || now, sig: r.sig, checkedAt: now, ...(r.same ? { same: true } : {}) };
     if (r.changed && it.mode === 'recheck') changed.push({ course: it.course, title: r.filename || it.title, at: now, kind, changed: true });
     else if (!prev && !r.existed) gotNew.push({ course: it.course, title: r.filename || it.title, at: now, kind });
   });

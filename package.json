@@ -46,6 +46,7 @@
       "package.json",
       "deleted-files.js",
       "local-materials.js",
+      "material-dedupe.js",
       "server-sync.js",
       "file-sync.js",
       "community-client.js",
