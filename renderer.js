@@ -592,7 +592,7 @@ function renderTimetable(subjects) {
       if (t.day !== d) continue;
       const top = (toMin(t.start) - gridStart) * pxPerMin;
       const h = (toMin(t.end) - toMin(t.start)) * pxPerMin;
-      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 과목 폴더 열기" style="top:${top}px;height:${h}px;--subject-color:${window.Focus ? Focus.colorVar(s.name) : colorFor(s.name)}">
+      col += `<div class="block" data-subj="${escapeHtml(s.name)}" title="클릭: ${escapeHtml(s.name)} 과목 폴더 열기 · 우클릭: LMS·폴더·집중 메뉴" style="top:${top}px;height:${h}px;--subject-color:${window.Focus ? Focus.colorVar(s.name) : colorFor(s.name)}">
         <div class="b-name">${escapeHtml(s.name)}</div>
         ${t.place ? `<div class="b-place">${escapeHtml(t.place)}</div>` : ''}
         ${s.professor ? `<div class="b-prof">${escapeHtml(s.professor)}</div>` : ''}
@@ -614,6 +614,20 @@ function allSubjects() {
   return [...new Set([...state.timetableSubjects, ...lmsCourses, ...state.subjects])];
 }
 
+// LMS 항목을 내가 직접 완료로 바꾼 것(제출이 없는 데모·안내 등이 계속 떠 있지 않게). 기록은 lmsDone에 manual로
+function lmsManualDone(id) { const r = state.lmsDone && state.lmsDone[id]; return !!(r && r.manual); }
+async function setLmsManualDone(id, done, opts = {}) {
+  const a = ((state.lms && state.lms.assignments) || []).find((x) => x.id === id);
+  if (done) {
+    if (!a) return false;
+    if (!opts.skipConfirm && !(await UI.confirm({ title: '완료로 바꿀까요?', body: `'${a.title}'을(를) 완료로 표시하고 할 일 목록에서 뺄게요. LMS 제출 상태는 바뀌지 않아요. 완료한 일에서 되돌릴 수 있어요.`, ok: '완료로 바꾸기' }))) return false;
+    state.lmsDone[id] = { title: a.title, courseName: a.courseName, doneAt: Date.now(), manual: true };
+  } else if (lmsManualDone(id)) delete state.lmsDone[id];
+  else return false;
+  persist({ lmsDone: state.lmsDone });
+  rerenderTodoAreas(); renderSummary();
+  return true;
+}
 // 수동 할 일 + LMS 과제를 하나의 항목 리스트로
 function activeItems() {
   const items = [];
@@ -625,7 +639,7 @@ function activeItems() {
   });
   const asg = (state.lms && state.lms.assignments) || [];
   asg.forEach((a) => items.push({
-    kind: 'lms', id: a.id, text: a.title, subject: cleanCourse(a.courseName) || '기타', due: a.due, time: a.dueTime, done: a.submitted, url: a.url, starred: state.starredLms.includes(a.id),
+    kind: 'lms', id: a.id, text: a.title, subject: cleanCourse(a.courseName) || '기타', due: a.due, time: a.dueTime, done: a.submitted || lmsManualDone(a.id), submitted: !!a.submitted, url: a.url, starred: state.starredLms.includes(a.id),
   }));
   return items;
 }
@@ -673,7 +687,9 @@ function todoRow(it, showSubj) {
   const title = escapeHtml(it.text);
   if (it.kind === 'lms') {
     return `<article class="sd-task todo ${it.done ? 'done' : ''}" data-id="${escapeHtml(it.id)}" data-kind="lms" data-url="${escapeHtml(it.url || '')}">
-      <div class="sd-task-main"><label class="sd-check" title="LMS 제출 상태"><input type="checkbox" class="check info" disabled ${it.done ? 'checked' : ''}/><span class="sd-sr-only">${title} 제출 상태</span></label>
+      <div class="sd-task-main">${it.submitted
+        ? `<label class="sd-check" title="LMS에 제출됨"><input type="checkbox" class="check info" disabled checked/><span class="sd-sr-only">${title} 제출됨</span></label>`
+        : `<label class="sd-check" title="눌러서 완료로 바꾸기"><input type="checkbox" class="check" data-lmsdone="${escapeHtml(it.id)}" ${it.done ? 'checked' : ''}/><span class="sd-sr-only">${title} 완료</span></label>`}
         <div class="sd-grow"><div class="sd-task-title todo-text" title="${title}">${title}</div><div class="sd-task-badges">${subj}${badge}<span class="sd-badge">LMS</span></div></div>
         <button type="button" class="sd-btn sd-btn-ghost sd-btn-icon sd-task-star star ${it.starred ? 'on' : ''}" data-star-lms="${escapeHtml(it.id)}" aria-label="중요 표시" aria-pressed="${!!it.starred}">${ico('star')}</button></div>
       <div class="sd-task-actions">${play}<button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-open="${escapeHtml(it.url)}">${ico('external-link')}제출하러 가기</button></div>
@@ -807,7 +823,8 @@ function toggleTodo(id, checked) {
 }
 function updateDoneButton() {
   const b = $('btn-done-list'); if (!b) return;
-  const today = todayStr(), n = state.todos.filter((t) => t.done && t.doneAt && fmtD(new Date(t.doneAt)) === today).length;
+  const today = todayStr(), isToday = (ts) => ts && fmtD(new Date(ts)) === today;
+  const n = state.todos.filter((t) => t.done && isToday(t.doneAt)).length + Object.values(state.lmsDone || {}).filter((r) => r && r.manual && isToday(r.doneAt)).length;
   b.querySelector('span:last-child').textContent = n ? `오늘 완료 ${n}` : '완료한 일';
   b.setAttribute('aria-label', `완료한 일 보기, 오늘 완료 ${n}개`);
 }
@@ -830,7 +847,10 @@ function openDoneSheet(opts = {}) {
   const s = UI.sheet(fixed ? `${fixed} · 완료한 일` : '완료한 일', '<div class="done-body"></div>');
   const body = s.el.querySelector('.done-body');
   function render() {
-    const all = state.todos.filter(inRange).sort((a, b) => b.doneAt - a.doneAt);
+    // 직접 완료로 바꾼 LMS 항목도 함께(여기서 체크를 풀면 다시 할 일 목록으로)
+    const lmsManual = Object.entries(state.lmsDone || {}).filter(([, r]) => r && r.manual && r.doneAt)
+      .map(([id, r]) => ({ id: 'lms:' + id, lmsId: id, text: r.title || '과제', subject: cleanCourse(r.courseName) || null, done: true, doneAt: r.doneAt }));
+    const all = [...state.todos, ...lmsManual].filter(inRange).sort((a, b) => b.doneAt - a.doneAt);
     // 칩: 완료가 있는 과목만(많은 순). 고른 과목이 비면 전체로
     const counts = {};
     all.forEach((t) => { const k = t.subject || NO_SUBJECT; counts[k] = (counts[k] || 0) + 1; });
@@ -846,7 +866,7 @@ function openDoneSheet(opts = {}) {
     for (const t of list) {
       const g = dayLabel(t.doneAt);
       if (g !== last) { rows += `<h3 class="done-day">${g}</h3>`; last = g; }
-      rows += `<div class="done-row" data-id="${t.id}"><label class="sd-check"><input type="checkbox" class="check" checked data-undone="${t.id}" aria-label="${escapeHtml(t.text)} 완료 취소"><span class="done-text">${escapeHtml(t.text)}</span></label>
+      rows += `<div class="done-row" data-id="${escapeHtml(t.id)}"><label class="sd-check"><input type="checkbox" class="check" checked data-undone="${escapeHtml(t.id)}" aria-label="${escapeHtml(t.text)} 완료 취소"><span class="done-text">${escapeHtml(t.text)}</span></label>
         <span class="done-meta">${!fixed && filter === '전체' && t.subject ? `<span class="sd-badge">${escapeHtml(t.subject)}</span>` : ''}<span class="sd-muted">${new Date(t.doneAt).toTimeString().slice(0, 5)}</span></span></div>`;
     }
     body.innerHTML = `<p class="sd-muted">체크를 풀면 완료가 취소되고 할 일 목록으로 돌아가요.${fixed ? ` 지금까지 완료한 ${all.length}개예요.` : ` 최근 ${DONE_DAYS}일까지 보여요. 과목별 전체는 학습 › 기록 › 과목에서 볼 수 있어요.`}</p>
@@ -861,6 +881,14 @@ function openDoneSheet(opts = {}) {
   });
   s.el.addEventListener('change', (e) => {
     const box = e.target.closest('[data-undone]'); if (!box || box.checked) return;
+    if (box.dataset.undone.startsWith('lms:')) {
+      const id = box.dataset.undone.slice(4), rec = state.lmsDone[id] && { ...state.lmsDone[id] };
+      setLmsManualDone(id, false).then(() => {
+        render();
+        showToast('LMS 항목 완료를 취소했어요', '실행 취소', () => { if (rec) { state.lmsDone[id] = rec; persist({ lmsDone: state.lmsDone }); rerenderTodoAreas(); } if (body.isConnected) render(); });
+      });
+      return;
+    }
     const t = state.todos.find((x) => x.id === box.dataset.undone); if (!t) return;
     const before = { done: t.done, doneAt: t.doneAt, origDue: t.origDue };
     const twin = removeSpawnedRepeat(t);
@@ -1221,6 +1249,7 @@ function detectLmsSubmissions(prevById) {
   const transitioned = [];
   asg.forEach((a) => {
     if (!a.submitted) return;
+    if (lmsManualDone(a.id)) { state.lmsDone[a.id] = { ...state.lmsDone[a.id], manual: false }; changed = true; return; }   // 직접 완료했던 것이 실제로 제출됨: 기록 유지, 축하는 안 함
     if (!state.lmsDone[a.id]) {
       state.lmsDone[a.id] = { title: a.title, courseName: a.courseName, doneAt: Date.now() };
       changed = true;
@@ -1344,7 +1373,7 @@ function completedItems() {
 }
 // 돌아보기(review.js) 입력: 앱 상태를 계산용 모양으로
 function reviewData() {
-  const lms = ((state.lms && state.lms.assignments) || []).map((a) => ({ id: a.id, title: a.title, course: cleanCourse(a.courseName) || null, due: a.due, submitted: !!a.submitted }));
+  const lms = ((state.lms && state.lms.assignments) || []).map((a) => ({ id: a.id, title: a.title, course: cleanCourse(a.courseName) || null, due: a.due, submitted: !!a.submitted || lmsManualDone(a.id) }));
   const lmsDone = {};
   Object.entries(state.lmsDone || {}).forEach(([id, r]) => { if (r) lmsDone[id] = { doneAt: r.doneAt, title: r.title, course: cleanCourse(r.courseName) || null }; });
   // 출석: 이미 시작한 수업 주차만(자동 출석 포함)
@@ -1671,11 +1700,49 @@ $('focus-view').addEventListener('click', (e) => {
   if (e.target.closest('#fv-pause')) { pauseTimer(); renderFocus(); return; }
   if (e.target.closest('#fv-stop')) { stopTimer(); return; }                    // 종료+기록(자동 exitFocus)
 });
+// 시간표 과목 이름 ↔ LMS 강좌: 띄어쓰기 무시하고 같거나 한쪽이 다른 쪽을 포함하면 같은 과목으로 본다
+// (시간표 '데이터 구조' ↔ LMS '데이터구조'). 자료 폴더 이름은 LMS 쪽 이름을 쓰므로 폴더도 이걸로 연다
+function lmsCourseFor(name) {
+  const sq = (v) => String(v || '').normalize('NFC').replace(/\s+/g, '');
+  const want = sq(name); if (!want) return null;
+  const list = ((state.lms && state.lms.courses) || []).map((c) => ({ name: cleanCourse(c.name), url: c.url })).filter((c) => c.name);
+  return list.find((c) => sq(c.name) === want) || list.find((c) => sq(c.name).includes(want) || want.includes(sq(c.name))) || null;
+}
 // 시간표 수업 블록 클릭 → 수업자료·보조자료·과제가 있는 과목 폴더 열기
 $('grid-wrap').addEventListener('click', (e) => {
   const blk = e.target.closest('.block'); if (!blk || !blk.dataset.subj) return;
-  window.api.openStudeckFolder('subject', blk.dataset.subj);
+  window.api.openStudeckFolder('subject', (lmsCourseFor(blk.dataset.subj) || {}).name || blk.dataset.subj);
 });
+// 시간표 수업 블록 우클릭 → LMS 바로가기·자료 폴더·집중·이 과목 할 일 등
+$('grid-wrap').addEventListener('contextmenu', (e) => {
+  const blk = e.target.closest('.block'); if (!blk || !blk.dataset.subj) return;
+  e.preventDefault();
+  openSubjectMenu(blk.dataset.subj, e.clientX, e.clientY);
+});
+function openSubjectMenu(subj, x, y) {
+  closePopover();
+  const lc = lmsCourseFor(subj), folderName = (lc && lc.name) || subj;
+  popEl = document.createElement('div'); popEl.className = 'popover menu'; popEl.setAttribute('role', 'menu');
+  const head = document.createElement('div'); head.className = 'opt-head'; head.textContent = subj; popEl.appendChild(head);
+  const add = (label, fn, disabled) => { const o = document.createElement('div'); o.className = 'opt' + (disabled ? ' disabled' : ''); o.setAttribute('role', 'menuitem'); o.textContent = label;
+    if (disabled) o.title = disabled; else o.onclick = () => { closePopover(); fn(); }; popEl.appendChild(o); };
+  const sep = () => { const d = document.createElement('div'); d.className = 'opt-sep'; popEl.appendChild(d); };
+  add('LMS 과목 페이지 열기', () => window.api.lmsOpen(lc.url), lc && lc.url ? '' : 'LMS에 로그인해 새로고침하면 연결돼요');
+  sep();
+  add('과목 폴더 열기', () => window.api.openStudeckFolder('subject', folderName));
+  add('수업자료 폴더', () => window.api.openStudeckFolder('materials', folderName));
+  add('보조자료 폴더', () => window.api.openStudeckFolder('aux', folderName));
+  add('과제 폴더', () => window.api.openStudeckFolder('assignment', folderName));
+  if (window.FileTree) add('내 자료에서 보기', () => openMyFilesPanel(folderName));
+  sep();
+  add('이 과목 집중 시작', () => startFocus('', subj));
+  add('이 과목 할 일 보기', () => { window.Shell?.goNav('today'); const si = $('td-search'); if (si) { si.value = subj; si.dispatchEvent(new Event('input', { bubbles: true })); } });
+  add('이 과목 완료한 일', () => openDoneSheet({ subject: subj }));
+  sep();
+  add('자료 저장 위치 설정', () => openMaterialLocationPanel());
+  $('app').appendChild(popEl); placeAtCursor(x, y);
+  setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
+}
 
 // 위임 클릭 (일반 목록 + 미니 목록 공용)
 function onTodoListClick(e) {
@@ -1707,6 +1774,8 @@ function onTodoListClick(e) {
 function onTodoListChange(e) {
   const sub = e.target.closest('[data-subtoggle]');
   if (sub) { const [id, i] = sub.dataset.subtoggle.split(':'); const t = state.todos.find((x) => x.id === id); if (t && t.subs && t.subs[+i]) { t.subs[+i].done = sub.checked; saveTodos(); renderList(); } return; }
+  const lmsBox = e.target.closest('[data-lmsdone]');
+  if (lmsBox) { const want = lmsBox.checked; lmsBox.checked = !want; setLmsManualDone(lmsBox.dataset.lmsdone, want).then((ok) => { if (!ok && lmsBox.isConnected) lmsBox.checked = !want; }); return; }
   const tog = e.target.closest('[data-toggle]'); if (tog) toggleTodo(tog.dataset.toggle, tog.checked);
 }
 function onTodoListKeydown(e) {
@@ -1795,6 +1864,7 @@ function openTodoMenu(kind, id, x, y) {
     const it = activeItems().find((i) => i.id === id) || {};
     add('집중 시작', () => startFocus(it.text, it.subject));
     add('제출 페이지 열기', () => { if (it.url) window.api.lmsOpen(it.url); });
+    if (!it.submitted) add(it.done ? '완료 취소' : '완료로 표시', () => setLmsManualDone(id, !it.done));
     add(state.starredLms.includes(id) ? '별표 해제' : '별표', () => { const i = state.starredLms.indexOf(id); if (i >= 0) state.starredLms.splice(i, 1); else state.starredLms.push(id); persist({ starredLms: state.starredLms }); renderTodos(); });
   } else {
     const t = state.todos.find((v) => v.id === id); if (!t) return;
@@ -1839,6 +1909,8 @@ $('day-panel').addEventListener('click', (e) => {
 });
 $('day-panel').addEventListener('keydown', (e) => { if (!e.isComposing && e.keyCode !== 229 && !e.repeat && e.key === 'Enter' && e.target.id === 'dp-title-input') addEventOnSelected(); });
 $('day-panel').addEventListener('change', (e) => {
+  const lmsBox = e.target.closest('[data-lmsdone]');
+  if (lmsBox) { const want = lmsBox.checked; lmsBox.checked = !want; setLmsManualDone(lmsBox.dataset.lmsdone, want).then((ok) => { if (!ok && lmsBox.isConnected) lmsBox.checked = !want; }); return; }
   const tog = e.target.closest('[data-toggle]'); if (tog) toggleTodo(tog.dataset.toggle, tog.checked);
 });
 // 자동 다운로드 대상 과목 선택 팝오버 (기본 전부 꺼짐 → 체크한 과목만)
