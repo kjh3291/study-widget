@@ -65,10 +65,19 @@ npm run dist:lab
 - [ ] 동아리 탭: 직책·임원 신청·문의하기(지난번 변경)
 - ✅ 사용자가 "운영에 반영해도 된다"고 확인.
 
+### 3-1. 복구 리허설(실험실, 10분)
+```bash
+~/studeck/lab/server/scripts/backup.sh ~/studeck/lab
+~/studeck/lab/server/scripts/restore.sh ~/studeck/lab --check      # 회원·파일 수가 맞는지
+```
+Studeck Lab에서 할 일 하나를 추가·동기화한 뒤 `restore.sh ~/studeck/lab`(스택 이름 `lab` 입력) → 그 할 일이 사라졌으면 복구 성공. 다시 원래대로 하려면 복구 직전에 자동으로 만든 백업으로 한 번 더 복구.
+- ✅ 운영 반영 전에 "백업에서 되돌릴 수 있다"를 확인.
+
 ## 4단계 — 운영 서버 반영(사용자 확인 후에만)
 서버에 접속해서 **백업 먼저**:
 ```bash
 ~/studeck/prod/server/scripts/backup.sh ~/studeck/prod
+~/studeck/prod/server/scripts/restore.sh ~/studeck/prod --check   # 방금 백업이 멀쩡한지(바꾸는 것 없음)
 ls -lh ~/studeck/backups/prod | tail -3
 ```
 PC에서 main을 lab으로 fast-forward:
