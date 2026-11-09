@@ -621,7 +621,7 @@ async function setLmsManualDone(id, done, opts = {}) {
   const a = ((state.lms && state.lms.assignments) || []).find((x) => x.id === id);
   if (done) {
     if (!a) return false;
-    if (!opts.skipConfirm && !(await UI.confirm({ title: '완료로 바꿀까요?', body: `'${a.title}'을(를) 완료로 표시하고 할 일 목록에서 뺄게요. LMS 제출 상태는 바뀌지 않아요. 완료한 일에서 되돌릴 수 있어요.`, ok: '완료로 바꾸기' }))) return false;
+    if (!opts.skipConfirm && !(await UI.confirm({ title: 'LMS 과제예요. 정말 완료로 할까요?', body: `'${a.title}'을(를) 완료로 표시하고 할 일 목록에서 뺄게요. LMS에 제출된 건 아니에요(제출 상태는 그대로). 완료한 일에서 되돌릴 수 있어요.`, ok: '완료로 하기' }))) return false;
     state.lmsDone[id] = { title: a.title, courseName: a.courseName, doneAt: Date.now(), manual: true };
   } else if (lmsManualDone(id)) delete state.lmsDone[id];
   else return false;
