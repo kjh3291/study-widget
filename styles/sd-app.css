@@ -27,6 +27,12 @@
 .subject-wrap .sd-subject { border-bottom: 0; flex: 1; min-width: 0; color: var(--text-primary); cursor: pointer; font-family: inherit; }
 .subject-wrap .sd-subject .sd-ico { color: var(--accent); }
 .subject-more { flex: none; }
+.subject-wrap .sd-subject:not(.active) { cursor: default; }
+.subject-wrap .sd-subject:not(.active):hover { background: var(--transparent); }
+.subject-toggle { flex: none; }
+.subject-toggle .t-hover { display: none; }
+.subject-toggle.running:hover .t-idle, .subject-toggle.running:focus-visible .t-idle { display: none; }
+.subject-toggle.running:hover .t-hover, .subject-toggle.running:focus-visible .t-hover { display: inline-flex; }
 .pick-list .sd-subject { color: var(--text-primary); cursor: pointer; font-family: inherit; }
 
 /* 몰입 화면: 제목 표시줄 아래 전체, 하단 메뉴는 숨김(#app.no-nav) */

@@ -208,10 +208,16 @@
       <div class="sd-row sd-gap"><h3>공부할 과목</h3><button type="button" class="sd-btn sd-btn-small sd-btn-ghost" data-f="add">${ico('plus')}과목 추가</button></div>
       ${list.length ? list.map(s => {
         const on = T && T.subject === s.name;
-        return `<div class="subject-wrap"><button type="button" class="sd-subject${on ? ' active' : ''}" data-subject="${esc(s.name)}" aria-label="${esc(s.name)} ${on ? '진행 중' : '공부 시작'}">
+        // 행을 눌러서는 시작하지 않는다(진행 중이면 몰입 화면). 시작·휴식·다시 공부는 오른쪽 아이콘으로만.
+        // 진행 중: 평소엔 타이머 아이콘, 마우스를 올리면 휴식(일시정지)·다시 공부 아이콘
+        const act = !on ? 'start' : T.phase === 'study' ? 'rest' : 'resume';
+        const actLabel = { start: '공부 시작', rest: '휴식(일시정지)', resume: '다시 공부' }[act];
+        const toggle = `<button type="button" class="sd-btn sd-btn-ghost sd-btn-icon subject-toggle${on ? ' running' : ''}" data-subject-act="${act}" data-name="${esc(s.name)}" aria-label="${esc(s.name)} ${actLabel}" title="${actLabel}">`
+          + (on ? `<span class="t-idle">${ico('timer')}</span><span class="t-hover">${ico(act === 'rest' ? 'pause' : 'play')}</span>` : ico('play')) + '</button>';
+        return `<div class="subject-wrap"><div class="sd-subject${on ? ' active' : ''}" ${on ? `data-subject="${esc(s.name)}" title="몰입 화면 열기"` : ''}>
           <span class="sd-color-dot" style="--subject-color:${colorVar(s.name)}"></span>
           <span class="sd-grow"><strong>${esc(s.name)}</strong><span class="sd-muted">${on ? (T.phase === 'study' ? '공부 중' : '휴식 중') : s.source}</span></span>
-          <strong class="sd-number" data-live="subj:${esc(s.name)}">${hms(subjectToday(s.name))}</strong>${ico(on ? 'timer' : 'play')}</button>
+          <strong class="sd-number" data-live="subj:${esc(s.name)}">${hms(subjectToday(s.name))}</strong>${toggle}</div>
           <button type="button" class="sd-btn sd-btn-ghost sd-btn-icon subject-more" data-subject-edit="${esc(s.name)}" aria-label="${esc(s.name)} 색${s.custom ? '·삭제' : ''}">${ico('ellipsis')}</button></div>`;
       }).join('') : `<div class="sd-empty"><span class="sd-ico" data-icon="book-open" aria-hidden="true"></span><h3>공부할 과목이 없어요.</h3>
         <p>시간표를 등록하면 과목이 자동으로 들어와요. 토익·코딩테스트처럼 직접 추가할 수도 있어요.</p>
@@ -220,8 +226,15 @@
     </main>`;
   }
   $('view-focus').addEventListener('click', e => {
+    const act = e.target.closest('[data-subject-act]');
+    if (act) {
+      const a = act.dataset.subjectAct;
+      if (a === 'start') return start(act.dataset.name, '');
+      if (a === 'rest') return rest();
+      if (a === 'resume') return resume();
+    }
     const s = e.target.closest('[data-subject]');
-    if (s) { const name = s.dataset.subject; return T && T.subject === name ? openImmersive() : start(name, ''); }
+    if (s) return openImmersive();   // 진행 중인 과목 행만 data-subject가 있음
     const ed = e.target.closest('[data-subject-edit]'); if (ed) return editSubject(ed.dataset.subjectEdit);
     const f = e.target.closest('[data-f]')?.dataset.f;
     if (f === 'back') mainBack.go();
