@@ -1334,6 +1334,7 @@ async function doLmsRefresh(silent) {
   if (res.needLogin) {
     state.lms = res.lms || Object.assign({}, state.lms, { sessionValid: false });
     if (!silent && currentTab === 'lms') $('lms-status').innerHTML = '로그인이 필요합니다. <b>로그인</b>을 눌러주세요.';
+    renderSummary();
     return;
   }
   if (res.error) { if (!silent) $('lms-status').textContent = '오류: ' + res.error; return; }
@@ -1353,9 +1354,22 @@ async function doLmsRefresh(silent) {
     if (fresh.length) { state.notifyState.seenNotices = [...new Set([...prevSeen, ...notices.map((n) => n.id)])].slice(-400); saveNotifyState(); }
   }
   if (currentTab === 'lms') renderLms();
-  if (currentTab === 'todos') renderTodos();
+  rerenderTodoAreas();
   updateLmsBadge();
+  renderSummary();   // 로그인 안내 띠·남은 개수 갱신
 }
+// 로그인이 풀렸다고 표시된 상태에서 앱으로 돌아오면(창 포커스·화면 보임) 실제 세션을 다시 확인해
+// 이미 로그인돼 있으면 바로 새로고침한다. 30초에 한 번만.
+let _lmsRecheckAt = 0;
+async function recheckLmsSession() {
+  if (!(state.lms && state.lms.sessionValid === false)) return;
+  if (Date.now() - _lmsRecheckAt < 30000) return;
+  _lmsRecheckAt = Date.now();
+  const s = await window.api.lmsStatus().catch(() => null);
+  if (s && s.valid) await doLmsRefresh(true);
+}
+window.addEventListener('focus', recheckLmsSession);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) recheckLmsSession(); });
 
 // =====================================================================
 // 기록 (완료 통계)

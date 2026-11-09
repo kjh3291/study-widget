@@ -146,6 +146,19 @@ function openLoginWindow(opts = {}) {
       });
     }
     if (opts.onConsole) loginWin.webContents.on('console-message', (e, level, message) => opts.onConsole((e && e.message) || message || ''));
+    // 로그인 페이지에 머물러 있어도(학교 "이미 로그인 하였습니다" 안내 등) 세션이 살아 있으면 로그인된 것으로 본다
+    let probing = false;
+    loginWin.webContents.on('did-finish-load', async () => {
+      if (settled || probing || !loginWin || loginWin.isDestroyed()) return;
+      probing = true;
+      try {
+        const s = await checkSession();
+        if (s.valid && !settled) {
+          finish({ ok: true });
+          if (loginWin && !loginWin.isDestroyed()) loginWin.close();
+        }
+      } catch (e) {} finally { probing = false; }
+    });
     loginWin.webContents.on('did-navigate', check);
     loginWin.webContents.on('did-navigate-in-page', check);
     loginWin.on('closed', () => {

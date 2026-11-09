@@ -162,6 +162,8 @@ ipcMain.on('notify', (_e, { title, body } = {}) => {
 // ---------- LMS IPC ----------
 const LMS_REMEMBER_PATH = path.join(app.getPath('userData'), 'lms-remember.json');
 ipcMain.handle('lms-login', async () => {
+  // 이미 로그인돼 있으면 로그인 창을 띄우지 않는다(학교 "이미 로그인했습니다" 창 방지)
+  try { if ((await lms.checkSession()).valid) return { ok: true, already: true }; } catch (e) {}
   const mem = lmsRemember.load(LMS_REMEMBER_PATH);
   let typed = '';
   const r = await lms.openLoginWindow(mem.enabled ? {
