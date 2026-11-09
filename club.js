@@ -196,6 +196,7 @@
         <div class="room-menu" hidden>
           <button data-c="room-members">${ico('users')}참여자 보기</button>
           ${r.kind === 'study' && r.status === 'active' ? `<button data-c="room-together"><span class="sd-ico" data-icon="timer" aria-hidden="true"></span>같이 공부 · 이 방 랭킹</button>` : ''}
+          ${r.kind === 'all' ? (isAdmin() ? `<button data-c="room-edit"><span class="sd-ico" data-icon="square-pen" aria-hidden="true"></span>방 설정 수정</button>` : '') : canManage ? `<button data-c="room-edit"><span class="sd-ico" data-icon="square-pen" aria-hidden="true"></span>방 설정 수정</button>` : ''}
           ${canManage && r.kind !== 'all' ? `<button data-c="room-invite">${ico('plus')}초대하기</button>` : ''}
           ${r.kind !== 'all' ? `<button data-c="room-leave" class="danger">${ico('logout')}방 나가기</button>` : ''}
           ${canManage && r.kind !== 'all' ? `<button data-c="room-archive" class="danger">${ico('x')}방 닫기</button>` : ''}
@@ -350,6 +351,41 @@
     if (!r?.ok) return showToast(errText(r));
     showToast(archive ? '방을 닫았어요' : '방에서 나왔어요');
     backToList(true);
+  }
+
+  // 방 설정 수정: 이름·한 줄 소개·공개 범위(전체방은 이름·소개만)
+  function roomEdit() {
+    const r = S.room, all = r.kind === 'all';
+    const el = sheet('방 설정 수정', `<form class="club-new" id="room-edit-form">
+        <label for="re-name">방 이름</label><input id="re-name" maxlength="30" required value="${escapeHtml(r.name || '')}">
+        <label for="re-topic">한 줄 소개 <span class="set-hint">(비우면 안 보여요)</span></label><input id="re-topic" maxlength="100" value="${escapeHtml(r.topic || '')}" placeholder="어떤 이야기를 나누는 방인가요?">
+        ${all ? '' : `<label>공개 범위</label>
+        <div class="choice" role="radiogroup">
+          <label class="choice-item"><input type="radio" name="re-vis" value="public" ${r.visibility !== 'private' ? 'checked' : ''}><span>${ico('users')}<b>공개방</b><small>누구나 찾아서 참여</small></span></label>
+          <label class="choice-item"><input type="radio" name="re-vis" value="private" ${r.visibility === 'private' ? 'checked' : ''}><span>${ico('lock')}<b>비공개방</b><small>초대한 사람만</small></span></label>
+        </div>`}
+        <button class="btn primary wide" type="submit">저장</button></form>`);
+    el.querySelector('#re-name').focus();
+    el.querySelector('#room-edit-form').onsubmit = async e => {
+      e.preventDefault();
+      const body = { name: el.querySelector('#re-name').value, topic: el.querySelector('#re-topic').value };
+      if (!all) body.visibility = el.querySelector('[name=re-vis]:checked').value;
+      const res = await C.call('PATCH', `/rooms/${r.id}`, body);
+      if (!res?.room) return showToast(errText(res));
+      closeSheet(); showToast('방 설정을 바꿨어요');
+      S.room = { ...S.room, ...res.room, lastReadId: S.room.lastReadId };
+      applyRoomHead();
+    };
+  }
+  // 대화는 그대로 두고 방 머리(이름·소개)만 다시 그림
+  function applyRoomHead() {
+    const v = view(), r = S.room; if (S.screen !== 'room' || !r) return;
+    const b = v.querySelector('.chat-title b'); if (b) b.textContent = r.name;
+    let tp = v.querySelector('.chat-topic');
+    if (r.topic) {
+      if (!tp) { v.querySelector('.chat-head').insertAdjacentHTML('afterend', `<div class="chat-topic">${ico('megaphone')}<span></span></div>`); tp = v.querySelector('.chat-topic'); }
+      tp.querySelector('span').textContent = r.topic;
+    } else tp?.remove();
   }
 
   // 아래에서 올라오는 시트(참여자·초대·공지 작성·프로필 사진 확대)
@@ -535,6 +571,7 @@
     if (c === 'room-together') return window.Focus?.openTogether(S.room.id, { label: '채팅방', nav: 'club', go: () => window.Shell.goNav('club') });
     if (c === 'together') return window.Focus?.openTogether();
     if (c === 'room-invite') return roomInvite();
+    if (c === 'room-edit') return roomEdit();
     if (c === 'room-leave') return roomLeave(false);
     if (c === 'room-archive') return roomLeave(true);
   });
@@ -583,6 +620,7 @@
       if (ev.action === 'invited') showToast('새 채팅방에 초대됐어요');
       if (ev.action === 'pending' && isAdmin()) showToast('승인을 기다리는 방이 있어요');
       if (S.room) { const r = S.rooms.find(x => x.id === S.room.id); if (r) S.room = { ...S.room, ...r, lastReadId: S.room.lastReadId }; }
+      if (ev.action === 'update' && S.room?.id === ev.roomId) applyRoomHead();
       if (visible() && S.screen === 'list') renderList();
     });
     C.on('notice', async ev => {

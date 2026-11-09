@@ -92,6 +92,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     assert.equal((await C.rooms()).find(r => r.id === social.id).unread, 0, '읽음은 뒤로 가지 않음');
     PASS('방별 안 읽은 수·마지막 메시지·읽음(본 데까지, 되돌아가지 않음)·정렬(전체 고정+최근순)');
 
+    // 방 설정 수정: 방장·운영진만, 전체방은 운영진만(공개 범위는 그대로), 멤버에게 실시간 알림
+    const ed = await B.send('PATCH', `/rooms/${social.id}`, { name: '수다방2', topic: '새 소개', visibility: 'private' });
+    assert.equal(ed.json.room.name, '수다방2'); assert.equal(ed.json.room.topic, '새 소개'); assert.equal(ed.json.room.visibility, 'private');
+    await B.send('PATCH', `/rooms/${social.id}`, { visibility: 'public' });
+    assert.equal((await C.send('PATCH', `/rooms/${social.id}`, { topic: 'x' })).json.error, 'room_owner_only', '일반 멤버는 수정 불가');
+    assert.equal((await B.send('PATCH', `/rooms/${social.id}`, { name: '  ' })).json.error, 'empty');
+    assert.equal((await A.send('PATCH', `/rooms/${social.id}`, { topic: '운영진 수정' })).json.room.topic, '운영진 수정');
+    assert.equal((await B.send('PATCH', `/rooms/${allB.id}`, { topic: 'x' })).json.error, 'room_owner_only', '전체방은 운영진만');
+    const allTopic = allB.topic;
+    const ae = await A.send('PATCH', `/rooms/${allB.id}`, { topic: '전체 공지 소개', visibility: 'private' });
+    assert.equal(ae.json.room.topic, '전체 공지 소개'); assert.equal(ae.json.room.visibility, allB.visibility, '전체방 공개 범위는 그대로');
+    await A.send('PATCH', `/rooms/${allB.id}`, { topic: allTopic || '' });
+    await sleep(300);
+    assert.ok(lc.events.some(e => e.type === 'room' && e.action === 'update' && e.roomId === social.id), '멤버에게 실시간 알림');
+    PASS('방 설정 수정(이름·소개·공개 범위): 방장·운영진만, 전체방은 운영진만, 실시간 알림');
+
     // 방장이 나가면 다음 사람이 방장, 운영진은 방 보관 가능
     await B.send('POST', `/rooms/${social.id}/leave`);
     assert.equal((await C.rooms()).find(r => r.id === social.id).myRole, 'owner');

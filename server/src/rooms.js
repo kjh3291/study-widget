@@ -129,7 +129,23 @@ export function registerRooms(app, { sendTo }) {
     return { members: rows.map(r => ({ id: r.id, name: r.nickname || r.display_name, avatar: r.avatar_sha || null, role: r.role })) };
   });
 
-  // 방 정보 수정·보관: 방장 또는 운영진
+  // 방 정보 수정(이름·한 줄 소개·공개 범위): 방장 또는 운영진. 전체방은 운영진만, 공개 범위는 못 바꿈
+  app.patch('/rooms/:id', { preHandler: authenticate }, async (req, reply) => {
+    const id = Number(req.params.id);
+    const { rows: [r] } = await pool.query(`SELECT r.*, rm.role FROM rooms r LEFT JOIN room_members rm ON rm.room_id = r.id AND rm.user_id = $2 WHERE r.id = $1 AND NOT r.archived`, [id, req.user.id]);
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    if (r.kind === 'all' ? !isAdmin(req.user) : (r.role !== 'owner' && !isAdmin(req.user))) return reply.code(403).send({ error: 'room_owner_only' });
+    const b = req.body || {};
+    const name = b.name === undefined ? r.name : String(b.name).trim().slice(0, 30);
+    const topic = b.topic === undefined ? r.topic : String(b.topic).trim().slice(0, 100);
+    const visibility = r.kind === 'all' || b.visibility === undefined ? r.visibility : (b.visibility === 'private' ? 'private' : 'public');
+    if (!name) return reply.code(400).send({ error: 'empty' });
+    await pool.query('UPDATE rooms SET name = $1, topic = $2, visibility = $3 WHERE id = $4', [name, topic, visibility, id]);
+    sendTo(await memberIds(id), { type: 'room', action: 'update', roomId: id });
+    return { room: await myRoom(req.user.id, id) };
+  });
+
+  // 방 보관(닫기): 방장 또는 운영진
   app.delete('/rooms/:id', { preHandler: authenticate }, async (req, reply) => {
     const id = Number(req.params.id);
     const { rows: [r] } = await pool.query(`SELECT r.kind, rm.role FROM rooms r LEFT JOIN room_members rm ON rm.room_id = r.id AND rm.user_id = $2 WHERE r.id = $1 AND NOT r.archived`, [id, req.user.id]);
