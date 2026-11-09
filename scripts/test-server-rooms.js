@@ -94,7 +94,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     // 방 설정 수정: 방장·운영진만, 전체방은 운영진만(공개 범위는 그대로), 멤버에게 실시간 알림
     const ed = await B.send('PATCH', `/rooms/${social.id}`, { name: '수다방2', topic: '새 소개', visibility: 'private' });
-    assert.equal(ed.json.room.name, '수다방2'); assert.equal(ed.json.room.topic, '새 소개'); assert.equal(ed.json.room.visibility, 'private');
+    assert.ok(ed.json.room, JSON.stringify(ed.json)); assert.equal(ed.json.room.name, '수다방2'); assert.equal(ed.json.room.topic, '새 소개'); assert.equal(ed.json.room.visibility, 'private');
     await B.send('PATCH', `/rooms/${social.id}`, { visibility: 'public' });
     assert.equal((await C.send('PATCH', `/rooms/${social.id}`, { topic: 'x' })).json.error, 'room_owner_only', '일반 멤버는 수정 불가');
     assert.equal((await B.send('PATCH', `/rooms/${social.id}`, { name: '  ' })).json.error, 'empty');

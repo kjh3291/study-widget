@@ -142,7 +142,8 @@ export function registerRooms(app, { sendTo }) {
     if (!name) return reply.code(400).send({ error: 'empty' });
     await pool.query('UPDATE rooms SET name = $1, topic = $2, visibility = $3 WHERE id = $4', [name, topic, visibility, id]);
     sendTo(await memberIds(id), { type: 'room', action: 'update', roomId: id });
-    return { room: await myRoom(req.user.id, id) };
+    // 운영진은 그 방 멤버가 아닐 수도 있음 → 기본 정보만
+    return { room: (await myRoom(req.user.id, id)) || { id, name, topic, visibility, kind: r.kind, status: r.status } };
   });
 
   // 방 보관(닫기): 방장 또는 운영진
