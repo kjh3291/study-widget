@@ -59,7 +59,9 @@
 - **로컬 빌드**(`electron-builder --win`/`--mac`)는 그 기기에서 즉시 써보려는 용도. `dist/`는 `.gitignore`라 커밋 안 됨(그대로 둘 것).
 
 ## OS별 빌드
-- 윈도우: `npx electron-builder --win` → `dist/StudyWidget-<v>-Setup.exe`
+- 윈도우: `npm run dist:local -- --win` → `dist/StudyWidget-<v>-Setup.exe`
+  - 프로젝트가 OneDrive 안에 있으면 결과물은 `%LOCALAPPDATA%\studeck-build\dist`(실험실은 `...\dist-lab`)에 생깁니다. 수백 MB가 클라우드로 올라가지 않게 하려는 것. `STUDECK_BUILD_DIR`로 바꿀 수 있습니다.
+  - 빌드 전에 `package.json` 의존성이 다 설치됐는지 검사합니다(빠지면 설치본이 켜지자마자 죽음). 실패하면 `npm install`.
 - 맥(arm64): `npx electron-builder --mac` → `dist/StudyWidget-<v>-mac-arm64.dmg`
   - CI에서 `StudyWidget.app`과 Helper에 electron-builder 기본 ad-hoc 서명을 적용하고 실행을 검사합니다. 기존 수동 `--deep` 재서명은 사용하지 않습니다. Apple 공증은 별도이며 최초 실행은 macOS의 확인이 필요할 수 있습니다.
 

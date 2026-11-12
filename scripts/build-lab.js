@@ -3,7 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const builder = require('electron-builder');
+const { buildOut, assertDepsInstalled } = require('./build-out');
 
+assertDepsInstalled();
 const root = path.join(__dirname, '..');
 const pkg = require(path.join(root, 'package.json'));
 const channelFile = path.join(root, 'channel.json');
@@ -15,7 +17,7 @@ const config = {
   productName: 'StudeckLab',
   artifactName: 'StudeckLab-${version}-Setup.${ext}',
   extraMetadata: { name: 'studeck-lab' }, // 설치 폴더(%LOCALAPPDATA%\Programs\studeck-lab) 분리
-  directories: { output: 'dist-lab' },
+  directories: { output: buildOut('dist-lab') }, // OneDrive 안이면 %LOCALAPPDATA%\studeck-build\dist-lab
   publish: null,   // 실험실은 GitHub 릴리스에 올리지 않음(운영 publish 설정과 충돌 방지)
   files: [...base.files.filter(f => !/^icon\./.test(f)), 'channel.json', 'icon-dev.ico', 'icon-dev.png'],
   win: { ...base.win, icon: 'icon-dev.ico' },
