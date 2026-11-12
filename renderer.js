@@ -1837,6 +1837,16 @@ function onTodoListClick(e) {
     return;
   }
   if (open) { window.api.lmsOpen(open.dataset.open); return; }
+  // 할 일 칸을 클릭하면 아래 동작(하위 할 일·집중·삭제 등)을 펼친다. 마우스가 칸 밖으로 나가면 자동으로 접힘
+  if (e.detail > 1 || e.target.closest('button, a, input, label, textarea, select, [contenteditable]')) return;   // 더블클릭(제목 수정)은 펼침 토글 안 함
+  const row = e.target.closest('.sd-task');
+  if (!row || !row.querySelector('.sd-task-actions')) return;
+  const on = !row.classList.contains('show-actions');
+  document.querySelectorAll('.sd-task.show-actions').forEach((x) => x.classList.remove('show-actions'));
+  if (on) {
+    row.classList.add('show-actions');
+    row.addEventListener('mouseleave', () => row.classList.remove('show-actions'), { once: true });
+  }
 }
 function onTodoListChange(e) {
   const sub = e.target.closest('[data-subtoggle]');

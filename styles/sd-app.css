@@ -305,3 +305,5 @@ header button .sd-ico { width: 16px; height: 16px; }
 .storage-sum p { margin: 0; font-size: 12px; }
 .storage-row .storage-use { flex: none; width: 128px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .storage-row .storage-use .sd-progress { width: 100%; margin: 0; }
+
+#app .sd-task:has(.sd-task-actions) { cursor: pointer; }
